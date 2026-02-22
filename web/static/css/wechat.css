@@ -228,6 +228,8 @@ body {
     padding: 2px 6px;
     border-radius: 3px;
     color: #e83e8c;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .article-content pre {
@@ -237,15 +239,38 @@ body {
     margin: 20px 0;
     border: 1px solid #e1e4e8;
     line-height: 1.5;
+    white-space: pre !important;
+    word-wrap: normal;
+    background: #272822; /* Monokai 主题背景色 */
+    tab-size: 4;
+    -moz-tab-size: 4;
+    -o-tab-size: 4;
 }
 
 .article-content pre code {
     background: transparent;
     padding: 0;
-    color: inherit;
+    color: #f8f8f2;
     font-size: 13px;
     line-height: 1.5;
     font-family: inherit;
+    white-space: pre !important;
+    word-break: normal;
+    display: block;
+    tab-size: 4;
+    -moz-tab-size: 4;
+    -o-tab-size: 4;
+}
+
+/* Chroma 内联样式：强制所有子元素保留空格和换行 */
+.article-content pre *,
+.article-content pre code * {
+    white-space: pre !important;
+}
+
+/* Chroma 的每一行代码 */
+.article-content pre .line {
+    display: block !important;
 }
 
 /* 表格 */

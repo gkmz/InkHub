@@ -36,14 +36,31 @@ async function handlePublish() {
             // 等待浏览器完成渲染（关键）
             await new Promise(resolve => setTimeout(resolve, 100));
 
+            // 克隆内容并简化代码块
+            const clonedContent = articleContent.cloneNode(true);
+            
+            // 清除容器的背景色，确保只有代码块有背景
+            clonedContent.style.background = 'transparent';
+            clonedContent.style.backgroundColor = 'transparent';
+            
+            simplifyCodeBlocks(clonedContent);
+            
+            // 临时插入到 DOM 中进行复制
+            clonedContent.style.position = 'absolute';
+            clonedContent.style.left = '-9999px';
+            document.body.appendChild(clonedContent);
+
             // 使用与 copyArticle 完全相同的逻辑复制
             const range = document.createRange();
-            range.selectNodeContents(articleContent);
+            range.selectNodeContents(clonedContent);
             const selection = window.getSelection();
             selection.removeAllRanges();
             selection.addRange(range);
             document.execCommand('copy');
             selection.removeAllRanges();
+            
+            // 清理临时元素
+            document.body.removeChild(clonedContent);
 
             // 恢复原内容
             articleContent.innerHTML = originalHTML;
@@ -127,9 +144,24 @@ async function copyArticle() {
     }
 
     try {
+        // 克隆内容以避免修改原始 DOM
+        const clonedContent = content.cloneNode(true);
+        
+        // 清除容器的背景色，确保只有代码块有背景
+        clonedContent.style.background = 'transparent';
+        clonedContent.style.backgroundColor = 'transparent';
+        
+        // 将所有代码块转换为纯文本格式（保留空格）
+        simplifyCodeBlocks(clonedContent);
+        
+        // 临时插入到 DOM 中进行复制
+        clonedContent.style.position = 'absolute';
+        clonedContent.style.left = '-9999px';
+        document.body.appendChild(clonedContent);
+
         // 使用 Selection API 复制富文本（包含样式）
         const range = document.createRange();
-        range.selectNodeContents(content);
+        range.selectNodeContents(clonedContent);
 
         const selection = window.getSelection();
         selection.removeAllRanges();
@@ -138,13 +170,91 @@ async function copyArticle() {
         // 执行复制命令
         document.execCommand('copy');
 
-        // 清除选区
+        // 清除选区和临时元素
         selection.removeAllRanges();
+        document.body.removeChild(clonedContent);
 
         showNotification('✅ 复制成功！\n\n可直接粘贴到微信公众号后台。\n⚠️ 注意：图片需要手动上传。', 'success');
     } catch (err) {
         showNotification('❌ 复制失败\n\n' + err.message + '\n\n请尝试手动选中文章内容后按 Cmd+C 复制。', 'error');
     }
+}
+
+// 简化代码块：重构为简单结构，使用 &nbsp; 确保空格保留
+function simplifyCodeBlocks(container) {
+    // 清除所有非代码块元素的背景色
+    const allElements = container.querySelectorAll('*:not(pre):not(code)');
+    allElements.forEach(el => {
+        el.style.background = 'transparent';
+        el.style.backgroundColor = 'transparent';
+    });
+    
+    // 处理代码块
+    const preElements = container.querySelectorAll('pre');
+    
+    preElements.forEach(pre => {
+        // 获取所有 .line 元素
+        const lines = pre.querySelectorAll('.line');
+        
+        if (lines.length > 0) {
+            // 重构代码块：为每一行创建独立的 div
+            const newContent = document.createElement('code');
+            newContent.style.display = 'block';
+            newContent.style.whiteSpace = 'pre-wrap';
+            newContent.style.background = 'transparent';
+            
+            lines.forEach((line, index) => {
+                // 获取这一行的 HTML（保留颜色）
+                let lineHTML = line.innerHTML;
+                
+                // 如果有 .cl 子元素，使用它的内容
+                const clElement = line.querySelector('.cl');
+                if (clElement) {
+                    lineHTML = clElement.innerHTML;
+                }
+                
+                // 替换 Tab 为 4 个 &nbsp;
+                lineHTML = lineHTML.replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+                lineHTML = lineHTML.replace(/&#9;/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+                lineHTML = lineHTML.replace(/&#x9;/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
+                
+                // 关键修改：将所有空格替换为 &nbsp;
+                // 但要注意不要替换 HTML 标签内的空格
+                lineHTML = lineHTML.replace(/(<[^>]*>)|( )/g, function(match, tag, space) {
+                    if (tag) {
+                        return tag; // 保留 HTML 标签不变
+                    } else {
+                        return '&nbsp;'; // 替换空格为 &nbsp;
+                    }
+                });
+                
+                // 创建一个 div 来包裹这一行
+                const lineDiv = document.createElement('div');
+                lineDiv.innerHTML = lineHTML;
+                lineDiv.style.whiteSpace = 'pre-wrap';
+                lineDiv.style.margin = '0';
+                lineDiv.style.padding = '0';
+                lineDiv.style.lineHeight = '1.5';
+                
+                newContent.appendChild(lineDiv);
+            });
+            
+            // 清空 pre 并添加新内容
+            pre.innerHTML = '';
+            pre.appendChild(newContent);
+        }
+        
+        // 设置 pre 的样式
+        pre.style.background = '#272822';
+        pre.style.backgroundColor = '#272822';
+        pre.style.padding = '16px';
+        pre.style.borderRadius = '6px';
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.style.fontFamily = '"SF Mono", Monaco, Menlo, Consolas, "Courier New", monospace';
+        pre.style.fontSize = '13px';
+        pre.style.lineHeight = '1.5';
+        pre.style.color = '#f8f8f2';
+    });
 }
 
 // 获取内联样式（从 wechat.css 提取核心样式）
@@ -172,6 +282,8 @@ function getInlineStyles() {
             padding: 2px 6px;
             border-radius: 3px;
             color: #e83e8c;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
         pre {
             border-radius: 6px;
@@ -179,12 +291,22 @@ function getInlineStyles() {
             overflow-x: auto;
             margin: 20px 0;
             line-height: 1.5;
+            white-space: pre !important;
+            word-wrap: normal;
+            background: #2d2d2d;
+            border: 1px solid #e1e4e8;
         }
         pre code {
             background: transparent;
             padding: 0;
-            color: inherit;
+            color: #f8f8f2;
             font-family: inherit;
+            white-space: pre !important;
+            word-break: normal;
+            display: block;
+        }
+        pre *, pre code * {
+            white-space: pre !important;
         }
         blockquote {
             border-left: 4px solid #42b983;

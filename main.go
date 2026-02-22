@@ -40,6 +40,7 @@ type Article struct {
 	RelPath   string    `json:"relPath"` // 相对 posts 的路径，用于定位图片
 	Slug      string    `json:"slug"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // ArticleDetail 文章详情
@@ -68,6 +69,7 @@ func init() {
 				highlighting.WithStyle("monokai"), // 使用高对比度主题
 				highlighting.WithFormatOptions(
 					chromahtml.WithLineNumbers(false), // 微信里行号可能样式混乱，先关闭
+					chromahtml.WithClasses(true),      // 使用 CSS 类
 				),
 			),
 		),
@@ -162,6 +164,7 @@ func main() {
 	r.GET("/api/articles", apiArticles)
 	r.GET("/api/articles/:id", apiArticleDetail)
 	r.POST("/api/publish/:id", handlePublish)
+	r.GET("/chroma.css", handleChromaCSS) // 提供 Chroma 样式
 
 	// 启动服务
 	addr := ":" + *portFlag
@@ -240,11 +243,13 @@ func scanArticles() error {
 			series = parts[0]
 		}
 
-		// 获取修改时间
-		info, _ := d.Info()
+		// 获取修改时间和创建时间
 		updatedAt := time.Now()
-		if info != nil {
+		createdAt := time.Now()
+		info, err := d.Info()
+		if err == nil && info != nil {
 			updatedAt = info.ModTime()
+			createdAt = getFileCreationTime(path)
 		}
 
 		// 生成 ID（去掉 posts/ 前缀和 .md/.adoc 后缀，替换路径分隔符为下划线）
@@ -259,6 +264,7 @@ func scanArticles() error {
 			RelPath:   relPath,
 			Slug:      slug,
 			UpdatedAt: updatedAt,
+			CreatedAt: createdAt,
 		})
 
 		return nil
@@ -266,7 +272,7 @@ func scanArticles() error {
 
 	// 按时间倒序排序 (最近的在前面)
 	sort.Slice(articles, func(i, j int) bool {
-		return articles[i].UpdatedAt.After(articles[j].UpdatedAt)
+		return articles[i].CreatedAt.After(articles[j].CreatedAt)
 	})
 
 	return err
@@ -462,6 +468,14 @@ func handleList(c *gin.Context) {
 		grouped[article.Series] = append(grouped[article.Series], article)
 	}
 
+	// 对每个系列内的文章按更新时间倒序排序
+	for series, articleList := range grouped {
+		sort.Slice(articleList, func(i, j int) bool {
+			return articleList[i].CreatedAt.After(articleList[j].CreatedAt)
+		})
+		grouped[series] = articleList
+	}
+
 	c.HTML(200, "list.html", gin.H{
 		"groupedArticles": grouped,
 	})
@@ -520,11 +534,13 @@ func handleArticle(c *gin.Context) {
 	htmlContent = reLiContent.ReplaceAllString(htmlContent, `<li><span class="li-text">$1</span></li>`)
 
 	// 4. 本地图片路径修正 (动态解析)
-	// 假设图片引用是 relative path: ![](./images/foo.png) or ![](images/foo.png) or even ../../../static/foo.png
+	// Hugo 约定：static 目录下的文件会被映射到网站根目录
+	// 文章中的相对路径可能指向 static 目录
 	articleDir := filepath.Dir(article.Path)
 
 	// 调试日志：打印文章目录
 	fmt.Printf("Debug: Article Dir for %s is %s\n", article.ID, articleDir)
+	fmt.Printf("Debug: Project Root is %s\n", projectRoot)
 
 	// 正则匹配 img src，排除 http 开头的
 	reImg := regexp.MustCompile(`src=["']([^"']+)["']`)
@@ -548,9 +564,20 @@ func handleArticle(c *gin.Context) {
 		if filepath.IsAbs(src) {
 			absImgPath = src
 		} else {
+			// 相对路径：基于文章所在目录解析
 			absImgPath = filepath.Join(articleDir, src)
 		}
 		absImgPath = filepath.Clean(absImgPath)
+
+		fmt.Printf("Debug: Original src: %s\n", src)
+		fmt.Printf("Debug: Resolved absolute path: %s\n", absImgPath)
+
+		// 特殊处理：如果路径包含 /content/static/，替换为 /static/
+		// 这是因为 Hugo 的 static 目录在项目根目录，而不是 content 目录下
+		if strings.Contains(absImgPath, "/content/static/") {
+			absImgPath = strings.Replace(absImgPath, "/content/static/", "/static/", 1)
+			fmt.Printf("Debug: Hugo static path detected, corrected to: %s\n", absImgPath)
+		}
 
 		// 检查是否在 ProjectRoot 内
 		if strings.HasPrefix(absImgPath, projectRoot) {
@@ -562,7 +589,11 @@ func handleArticle(c *gin.Context) {
 				newSrc := fmt.Sprintf("/_local_fs/%s", relPath)
 				fmt.Printf("Debug: Rewriting %s -> %s\n", src, newSrc)
 				return fmt.Sprintf("src=%s%s%s", quote, newSrc, quote)
+			} else {
+				fmt.Printf("Debug: Failed to get relative path: %v\n", err)
 			}
+		} else {
+			fmt.Printf("Debug: Image path %s is not under project root %s\n", absImgPath, projectRoot)
 		}
 
 		fmt.Printf("Debug: Failed to rewrite image path: %s (Root: %s)\n", src, projectRoot)
@@ -677,4 +708,79 @@ func apiArticleDetail(c *gin.Context) {
 		HTML:        buf.String(),
 		RawMarkdown: contentStr,
 	})
+}
+
+// handleChromaCSS 提供 Chroma 语法高亮的 CSS
+func handleChromaCSS(c *gin.Context) {
+	// 生成 Monokai 主题的 CSS
+	css := `
+/* Chroma Monokai 主题 */
+.chroma { background-color: #272822; color: #f8f8f2; white-space: pre !important; }
+.chroma .err { color: #960050; background-color: #1e0010 }
+.chroma .lntd { vertical-align: top; padding: 0; margin: 0; border: 0; }
+.chroma .lntable { border-spacing: 0; padding: 0; margin: 0; border: 0; }
+.chroma .hl { display: block; width: 100%; background-color: #3c3d37 }
+.chroma .lnt { white-space: pre; user-select: none; margin-right: 0.4em; padding: 0 0.4em 0 0.4em; color: #7f7f7f }
+.chroma .ln { white-space: pre; user-select: none; margin-right: 0.4em; padding: 0 0.4em 0 0.4em; color: #7f7f7f }
+.chroma .line { display: inline; white-space: pre !important; }
+.chroma .k { color: #66d9ef }
+.chroma .kc { color: #66d9ef }
+.chroma .kd { color: #66d9ef }
+.chroma .kn { color: #f92672 }
+.chroma .kp { color: #66d9ef }
+.chroma .kr { color: #66d9ef }
+.chroma .kt { color: #66d9ef }
+.chroma .na { color: #a6e22e }
+.chroma .nb { color: #f8f8f2 }
+.chroma .nc { color: #a6e22e }
+.chroma .no { color: #66d9ef }
+.chroma .nd { color: #a6e22e }
+.chroma .ni { color: #f8f8f2 }
+.chroma .ne { color: #a6e22e }
+.chroma .nf { color: #a6e22e }
+.chroma .nl { color: #f8f8f2 }
+.chroma .nn { color: #f8f8f2 }
+.chroma .nx { color: #a6e22e }
+.chroma .py { color: #f8f8f2 }
+.chroma .nt { color: #f92672 }
+.chroma .nv { color: #f8f8f2 }
+.chroma .s { color: #e6db74 }
+.chroma .sa { color: #e6db74 }
+.chroma .sb { color: #e6db74 }
+.chroma .sc { color: #e6db74 }
+.chroma .dl { color: #e6db74 }
+.chroma .sd { color: #e6db74 }
+.chroma .s2 { color: #e6db74 }
+.chroma .se { color: #ae81ff }
+.chroma .sh { color: #e6db74 }
+.chroma .si { color: #e6db74 }
+.chroma .sx { color: #e6db74 }
+.chroma .sr { color: #e6db74 }
+.chroma .s1 { color: #e6db74 }
+.chroma .ss { color: #e6db74 }
+.chroma .m { color: #ae81ff }
+.chroma .mb { color: #ae81ff }
+.chroma .mf { color: #ae81ff }
+.chroma .mh { color: #ae81ff }
+.chroma .mi { color: #ae81ff }
+.chroma .il { color: #ae81ff }
+.chroma .mo { color: #ae81ff }
+.chroma .o { color: #f92672 }
+.chroma .ow { color: #f92672 }
+.chroma .p { color: #f8f8f2 }
+.chroma .c { color: #75715e }
+.chroma .ch { color: #75715e }
+.chroma .cm { color: #75715e }
+.chroma .c1 { color: #75715e }
+.chroma .cs { color: #75715e }
+.chroma .cp { color: #75715e }
+.chroma .cpf { color: #75715e }
+.chroma .gd { color: #f92672 }
+.chroma .ge { font-style: italic }
+.chroma .gi { color: #a6e22e }
+.chroma .gs { font-weight: bold }
+.chroma .gu { color: #75715e }
+`
+	c.Header("Content-Type", "text/css")
+	c.String(200, css)
 }

@@ -71,6 +71,13 @@ func PublishArticle(postPath string, projectRoot string) (*PublishResult, error)
 
 		log.Printf("Debug: Resolving local path. MD Dir: %s, Rel: %s -> Abs: %s\n", mdDir, cleanPath, absPath)
 
+		// 特殊处理：如果路径包含 /content/static/，替换为 /static/
+		// 这是因为 Hugo 的 static 目录在项目根目录，而不是 content 目录下
+		if strings.Contains(absPath, "/content/static/") {
+			absPath = strings.Replace(absPath, "/content/static/", "/static/", 1)
+			log.Printf("Debug: Hugo static path detected, corrected to: %s\n", absPath)
+		}
+
 		// 确保文件存在
 		if _, err := os.Stat(absPath); os.IsNotExist(err) {
 			log.Printf("Debug: File not found at %s\n", absPath)
