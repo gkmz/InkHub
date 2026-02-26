@@ -72,13 +72,13 @@
         // 文章数据
         const articles = [
             {{ range $series, $articleList:= .groupedArticles }}
-        { { range $articleList } }
+        { {range $articleList } }
         {
-            id: "{{ .ID }}",
-                title: "{{ .Title }}",
-                    series: "{{ .Series }}",
-                        updatedAt: "{{ .UpdatedAt.Format "2006-01-02" }}",
-                            createdAt: "{{ .CreatedAt.Format "2006-01-02" }}"
+            id: "{{.ID}}",
+                title: "{{.Title}}",
+                    series: "{{.Series}}",
+                        updatedAt: "{{.UpdatedAt.Format "2006-01-02"}}",
+                            createdAt: "{{.CreatedAt.Format "2006-01-02"}}"
         },
         { { end } }
         { { end } }
