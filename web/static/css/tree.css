@@ -63,7 +63,19 @@
   max-height: calc(100vh - 140px);
   overflow-y: auto;
   position: sticky;
-  top: 80px;
+  top: 20px;
+    transition: all 0.3s ease;
+  }
+  
+  .category-tree.sticky {
+    position: fixed;
+    top: 20px;
+    width: 320px;
+    z-index: 100;
+  }
+  
+  .sidebar.sticky-active {
+    position: relative;
 }
 
 .tree-node {

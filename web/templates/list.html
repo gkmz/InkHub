@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -41,6 +42,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="header">
         <h1>📝 文章列表</h1>
@@ -65,6 +67,33 @@
         let articles = [];
         let categoryTree;
         let articleFilter;
+
+        // 侧边栏粘性定位处理
+        function initStickysidebar() {
+            debugger
+            const sidebar = document.querySelector('.sidebar');
+            const categoryTree = document.querySelector('.category-tree');
+
+            if (!sidebar || !categoryTree) return;
+
+            const sidebarTop = sidebar.offsetTop;
+            const stickyOffset = 20; // 距离顶部的距离
+
+            function handleScroll() {
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+
+                if (scrollTop >= sidebarTop - stickyOffset) {
+                    categoryTree.classList.add('sticky');
+                    sidebar.classList.add('sticky-active');
+                } else {
+                    categoryTree.classList.remove('sticky');
+                    sidebar.classList.remove('sticky-active');
+                }
+            }
+
+            window.addEventListener('scroll', handleScroll);
+            handleScroll(); // 初始化检查
+        }
 
         (async () => {
             // 从 API 加载文章数据
@@ -97,6 +126,9 @@
             window.addEventListener('filterChanged', () => {
                 articleFilter.updateArticleList();
             });
+
+            // 初始化侧边栏粘性定位
+            initStickysidebar();
         })();
 
         function renderArticleList() {
@@ -132,4 +164,5 @@
         }
     </script>
 </body>
+
 </html>
