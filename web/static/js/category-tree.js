@@ -1,7 +1,8 @@
 // 目录树组件
 class CategoryTree {
-  constructor(articles) {
+  constructor(articles, statusManager) {
     this.articles = articles;
+    this.statusManager = statusManager;
     this.tree = this.buildTree();
     this.expandedNodes = this.loadState();
     this.selectedCategory = null;
@@ -26,6 +27,18 @@ class CategoryTree {
     });
 
     return tree;
+  }
+
+  // 获取文章的平台图标
+  getPlatformIcons(articleID) {
+    if (!this.statusManager) return '';
+    
+    const published = this.statusManager.getPublishedPlatforms(articleID);
+    if (published.length === 0) return '';
+    
+    return published.map(p => 
+      `<span class="tree-platform-icon" title="${p.name}">${p.icon}</span>`
+    ).join('');
   }
 
   // 渲染树
@@ -59,12 +72,16 @@ class CategoryTree {
               </div>
               <div class="tree-children ${isExpanded ? 'expanded' : ''}" 
                    data-children="${category}">
-                ${node.articles.map(article => `
-                  <div class="tree-node-header" data-article="${article.id}">
-                    <span class="tree-icon">📄</span>
-                    <span class="tree-label">${article.title}</span>
-                  </div>
-                `).join('')}
+                ${node.articles.map(article => {
+                  const platformIcons = this.getPlatformIcons(article.id);
+                  return `
+                    <div class="tree-node-header" data-article="${article.id}">
+                      <span class="tree-icon">📄</span>
+                      <span class="tree-label">${article.title}</span>
+                      ${platformIcons ? `<span class="tree-platforms">${platformIcons}</span>` : ''}
+                    </div>
+                  `;
+                }).join('')}
               </div>
             </div>
           `;

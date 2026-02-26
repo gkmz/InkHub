@@ -74,7 +74,7 @@
             await statusManager.loadPlatforms();
             await statusManager.loadAllStatus();
 
-            categoryTree = new CategoryTree(articles);
+            categoryTree = new CategoryTree(articles, statusManager);
             categoryTree.render(document.getElementById('category-tree-container'));
 
             // 恢复之前选中的分类

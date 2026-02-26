@@ -9,9 +9,9 @@
 }
 
 .sidebar {
-  width: 280px;
-  min-width: 280px;
-  max-width: 280px;
+  width: 320px;
+  min-width: 320px;
+  max-width: 320px;
   flex-shrink: 0;
 }
 
@@ -122,6 +122,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tree-platforms {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.tree-platform-icon {
+  font-size: 12px;
+  opacity: 0.8;
 }
 
 .tree-count {

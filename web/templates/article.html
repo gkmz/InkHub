@@ -83,8 +83,12 @@
                 const response = await fetch('/api/articles');
                 articles = await response.json();
 
+                // 加载状态数据
+                await statusManager.loadPlatforms();
+                await statusManager.loadAllStatus();
+
                 // 初始化目录树
-                categoryTree = new CategoryTree(articles);
+                categoryTree = new CategoryTree(articles, statusManager);
                 categoryTree.render(document.getElementById('category-tree-container'));
 
                 // 展开当前文章所在的分类并高亮
@@ -103,7 +107,6 @@
                 }
 
                 // 初始化状态管理
-                await statusManager.loadPlatforms();
                 await statusManager.loadStatus(currentArticleID);
 
                 const panel = document.getElementById('publish-status-panel');
