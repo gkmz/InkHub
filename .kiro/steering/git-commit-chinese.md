@@ -1,1 +1,0 @@
-/Users/hank/workspace/mine/dotfiles/ai-ide/steering/git-commit-chinese.md
