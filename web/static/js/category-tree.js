@@ -5,12 +5,13 @@ class CategoryTree {
     this.tree = this.buildTree();
     this.expandedNodes = this.loadState();
     this.selectedCategory = null;
+    this.isDetailPage = window.location.pathname.startsWith('/article/');
   }
 
   // 构建树形结构
   buildTree() {
     const tree = {};
-
+    
     this.articles.forEach(article => {
       const series = article.series || '其他';
       if (!tree[series]) {
@@ -30,7 +31,7 @@ class CategoryTree {
   // 渲染树
   render(container) {
     const categories = Object.keys(this.tree).sort();
-
+    
     const html = `
       <div class="category-tree">
         <div class="tree-node">
@@ -42,11 +43,11 @@ class CategoryTree {
           </div>
         </div>
         ${categories.map(category => {
-      const node = this.tree[category];
-      const isExpanded = this.expandedNodes.has(category);
-      const isSelected = this.selectedCategory === category;
-
-      return `
+          const node = this.tree[category];
+          const isExpanded = this.expandedNodes.has(category);
+          const isSelected = this.selectedCategory === category;
+          
+          return `
             <div class="tree-node">
               <div class="tree-node-header ${isSelected ? 'active' : ''}" 
                    data-category="${category}">
@@ -67,7 +68,7 @@ class CategoryTree {
               </div>
             </div>
           `;
-    }).join('')}
+        }).join('')}
       </div>
     `;
 
@@ -79,31 +80,53 @@ class CategoryTree {
 
   // 绑定事件
   bindEvents(container) {
-    // 展开/折叠
+    // 展开/折叠按钮
     container.querySelectorAll('[data-toggle]').forEach(toggle => {
       toggle.addEventListener('click', (e) => {
         e.stopPropagation();
         const category = e.target.dataset.toggle;
         this.toggleNode(category);
-        this.render(container.parentElement);
+        
+        // 重新渲染
+        const treeContainer = container.querySelector('.category-tree').parentElement;
+        this.render(treeContainer);
       });
     });
 
-    // 选择分类
+    // 分类标题点击
     container.querySelectorAll('[data-category]').forEach(header => {
       header.addEventListener('click', (e) => {
+        // 如果点击的是 toggle 按钮，不处理
+        if (e.target.dataset.toggle) {
+          return;
+        }
+        
         const category = e.currentTarget.dataset.category;
+        
+        // 详情页：跳转到列表页
+        if (this.isDetailPage) {
+          if (category === 'all') {
+            window.location.href = '/';
+          } else {
+            localStorage.setItem('selectedCategory', category);
+            window.location.href = '/';
+          }
+          return;
+        }
+        
+        // 列表页：选择分类
         this.selectCategory(category);
-        this.render(container.parentElement);
+        const treeContainer = container.querySelector('.category-tree').parentElement;
+        this.render(treeContainer);
 
-        // 触发自定义事件
+        // 触发事件通知列表页更新
         window.dispatchEvent(new CustomEvent('categorySelected', {
           detail: { category }
         }));
       });
     });
 
-    // 选择文章
+    // 文章点击：跳转到详情页
     container.querySelectorAll('[data-article]').forEach(header => {
       header.addEventListener('click', (e) => {
         const articleID = e.currentTarget.dataset.article;

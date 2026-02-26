@@ -48,7 +48,7 @@
     </div>
 
     <div class="layout-container">
-        <div class="sidebar"></div>
+        <div class="sidebar">
             <div id="category-tree-container"></div>
         </div>
 
@@ -76,6 +76,14 @@
 
             categoryTree = new CategoryTree(articles);
             categoryTree.render(document.getElementById('category-tree-container'));
+
+            // 恢复之前选中的分类
+            const savedCategory = localStorage.getItem('selectedCategory');
+            if (savedCategory) {
+                categoryTree.selectCategory(savedCategory);
+                categoryTree.render(document.getElementById('category-tree-container'));
+                localStorage.removeItem('selectedCategory');
+            }
 
             articleFilter = new ArticleFilter(articles, statusManager);
             await articleFilter.render(document.getElementById('filter-bar-container'));

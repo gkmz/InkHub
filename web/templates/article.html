@@ -9,25 +9,7 @@
     <link rel="stylesheet" href="/assets/css/tree.css">
     <link rel="stylesheet" href="/chroma.css">
     <style>
-        /* 文章详情页特殊样式 */
-        .article-layout {
-            display: flex;
-            gap: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
-        .article-sidebar {
-            width: 280px;
-            flex-shrink: 0;
-        }
-
-        .article-main {
-            flex: 1;
-            min-width: 0;
-        }
-
-        /* 确保复制时不包含侧边栏 */
+        /* 确保复制时不包含侧边栏和工具栏 */
         .no-copy {
             user-select: none;
         }
@@ -35,16 +17,6 @@
         @media print {
             .no-copy {
                 display: none !important;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .article-layout {
-                flex-direction: column;
-            }
-            
-            .article-sidebar {
-                width: 100%;
             }
         }
     </style>
@@ -60,14 +32,14 @@
     </div>
     <input type="hidden" id="articleId" value="{{ .id }}">
 
-    <div class="article-layout">
+    <div class="layout-container">
         <!-- 左侧：目录导航 -->
-        <div class="article-sidebar no-copy">
+        <div class="sidebar no-copy">
             <div id="category-tree-container"></div>
         </div>
 
         <!-- 右侧：文章内容 -->
-        <div class="article-main">
+        <div class="main-content">
             <div class="article-wrapper">
                 <div class="article-header">
                     <h1>{{ .title }}</h1>
@@ -106,32 +78,39 @@
         const currentArticleID = document.getElementById('articleId').value;
 
         (async () => {
-            // 加载文章列表用于导航
-            const response = await fetch('/api/articles');
-            articles = await response.json();
+            try {
+                // 加载文章列表用于导航
+                const response = await fetch('/api/articles');
+                articles = await response.json();
 
-            // 初始化目录树
-            categoryTree = new CategoryTree(articles);
-            categoryTree.render(document.getElementById('category-tree-container'));
+                // 初始化目录树
+                categoryTree = new CategoryTree(articles);
+                categoryTree.render(document.getElementById('category-tree-container'));
 
-            // 高亮当前文章
-            const currentNode = document.querySelector(`[data-article="${currentArticleID}"]`);
-            if (currentNode) {
-                currentNode.classList.add('active');
-                // 展开当前文章所在的分类
+                // 展开当前文章所在的分类并高亮
                 const article = articles.find(a => a.id === currentArticleID);
                 if (article && article.series) {
                     categoryTree.expandedNodes.add(article.series);
                     categoryTree.render(document.getElementById('category-tree-container'));
+                    
+                    // 高亮当前文章
+                    setTimeout(() => {
+                        const currentNode = document.querySelector(`[data-article="${currentArticleID}"]`);
+                        if (currentNode) {
+                            currentNode.classList.add('active');
+                        }
+                    }, 100);
                 }
+
+                // 初始化状态管理
+                await statusManager.loadPlatforms();
+                await statusManager.loadStatus(currentArticleID);
+
+                const panel = document.getElementById('publish-status-panel');
+                statusManager.renderStatusPanel(currentArticleID, panel);
+            } catch (error) {
+                console.error('初始化失败:', error);
             }
-
-            // 初始化状态管理
-            await statusManager.loadPlatforms();
-            await statusManager.loadStatus(currentArticleID);
-
-            const panel = document.getElementById('publish-status-panel');
-            statusManager.renderStatusPanel(currentArticleID, panel);
         })();
     </script>
 </body>
