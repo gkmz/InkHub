@@ -1,17 +1,56 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ .title }}</title>
     <link rel="stylesheet" href="/assets/css/wechat.css">
     <link rel="stylesheet" href="/assets/css/status.css">
+    <link rel="stylesheet" href="/assets/css/tree.css">
     <link rel="stylesheet" href="/chroma.css">
-</head>
+    <style>
+        /* 文章详情页特殊样式 */
+        .article-layout {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
 
+        .article-sidebar {
+            width: 280px;
+            flex-shrink: 0;
+        }
+
+        .article-main {
+            flex: 1;
+            min-width: 0;
+        }
+
+        /* 确保复制时不包含侧边栏 */
+        .no-copy {
+            user-select: none;
+        }
+
+        @media print {
+            .no-copy {
+                display: none !important;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .article-layout {
+                flex-direction: column;
+            }
+            
+            .article-sidebar {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
 <body>
-    <div class="toolbar">
+    <div class="toolbar no-copy">
         <a href="/" class="btn btn-back">← 返回列表</a>
         <div class="actions">
             <button onclick="copyArticle()" class="btn btn-copy">📋 复制原文</button>
@@ -21,46 +60,79 @@
     </div>
     <input type="hidden" id="articleId" value="{{ .id }}">
 
-    <div class="article-wrapper">
-        <div class="article-header">
-            <h1>{{ .title }}</h1>
-            <div class="article-meta">
-                <span class="series-tag">{{ .series }}</span>
+    <div class="article-layout">
+        <!-- 左侧：目录导航 -->
+        <div class="article-sidebar no-copy">
+            <div id="category-tree-container"></div>
+        </div>
+
+        <!-- 右侧：文章内容 -->
+        <div class="article-main">
+            <div class="article-wrapper">
+                <div class="article-header">
+                    <h1>{{ .title }}</h1>
+                    <div class="article-meta">
+                        <span class="series-tag">{{ .series }}</span>
+                    </div>
+                </div>
+
+                <!-- 发布状态面板 -->
+                <div id="publish-status-panel" class="no-copy"></div>
+
+                <div class="article-content" id="articleContent">
+                    {{ .html }}
+                </div>
+            </div>
+
+            <div class="notice no-copy">
+                <p><strong>💡 使用说明：</strong></p>
+                <ol>
+                    <li>点击"复制文章"按钮</li>
+                    <li>打开微信公众号后台，粘贴到编辑器</li>
+                    <li>⚠️ <strong>图片需要手动上传</strong>（微信不支持外链图片）</li>
+                    <li>🔗 <strong>外部链接</strong>已自动转换为文末脚注</li>
+                </ol>
             </div>
         </div>
-
-        <!-- 发布状态面板 -->
-        <div id="publish-status-panel"></div>
-
-        <div class="article-content" id="articleContent">
-            {{ .html }}
-        </div>
-    </div>
-
-    <div class="notice">
-        <p><strong>💡 使用说明：</strong></p>
-        <ol>
-            <li>点击"复制文章"按钮</li>
-            <li>打开微信公众号后台，粘贴到编辑器</li>
-            <li>⚠️ <strong>图片需要手动上传</strong>（微信不支持外链图片）</li>
-            <li>🔗 <strong>外部链接</strong>已自动转换为文末脚注</li>
-        </ol>
     </div>
 
     <script src="/assets/js/copy.js"></script>
     <script src="/assets/js/wechat-format.js"></script>
     <script src="/assets/js/status-manager.js"></script>
+    <script src="/assets/js/category-tree.js"></script>
     <script>
-        // 初始化状态管理
+        let articles = [];
+        let categoryTree;
+        const currentArticleID = document.getElementById('articleId').value;
+
         (async () => {
-            const articleID = document.getElementById('articleId').value;
+            // 加载文章列表用于导航
+            const response = await fetch('/api/articles');
+            articles = await response.json();
+
+            // 初始化目录树
+            categoryTree = new CategoryTree(articles);
+            categoryTree.render(document.getElementById('category-tree-container'));
+
+            // 高亮当前文章
+            const currentNode = document.querySelector(`[data-article="${currentArticleID}"]`);
+            if (currentNode) {
+                currentNode.classList.add('active');
+                // 展开当前文章所在的分类
+                const article = articles.find(a => a.id === currentArticleID);
+                if (article && article.series) {
+                    categoryTree.expandedNodes.add(article.series);
+                    categoryTree.render(document.getElementById('category-tree-container'));
+                }
+            }
+
+            // 初始化状态管理
             await statusManager.loadPlatforms();
-            await statusManager.loadStatus(articleID);
+            await statusManager.loadStatus(currentArticleID);
 
             const panel = document.getElementById('publish-status-panel');
-            statusManager.renderStatusPanel(articleID, panel);
+            statusManager.renderStatusPanel(currentArticleID, panel);
         })();
     </script>
 </body>
-
 </html>

@@ -147,6 +147,9 @@ async function copyArticle() {
         // 克隆内容以避免修改原始 DOM
         const clonedContent = content.cloneNode(true);
 
+        // 移除所有 .no-copy 元素
+        clonedContent.querySelectorAll('.no-copy').forEach(el => el.remove());
+
         // 清除容器的背景色，确保只有代码块有背景
         clonedContent.style.background = 'transparent';
         clonedContent.style.backgroundColor = 'transparent';
