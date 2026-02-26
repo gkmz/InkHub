@@ -51,10 +51,12 @@ type ArticleDetail struct {
 }
 
 var (
-	postsDir    string // 相对于 tools/wechat-preview 的路径
-	projectRoot string // 项目根目录 (自动探测)
-	articles    []Article
-	md          goldmark.Markdown
+	postsDir        string // 相对于 tools/wechat-preview 的路径
+	projectRoot     string // 项目根目录 (自动探测)
+	articles        []Article
+	md              goldmark.Markdown
+	platformService *services.PlatformService
+	statusService   *services.StatusService
 )
 
 func init() {
@@ -128,9 +130,24 @@ func main() {
 
 	fmt.Printf("Using Project Root: %s\n", projectRoot)
 
+	// 4. 初始化服务
+	configDir := filepath.Join(projectRoot, "config")
+	platformService = services.NewPlatformService(configDir)
+	if err := platformService.Load(); err != nil {
+		fmt.Printf("加载平台配置失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	statusService = services.NewStatusService(configDir)
+	if err := statusService.Load(); err != nil {
+		fmt.Printf("加载状态数据失败: %v\n", err)
+		os.Exit(1)
+	}
+
 	fmt.Println("\n========================================")
 	fmt.Printf("   Wechat Preview Tool - CLI Mode\n")
 	fmt.Printf("   Articles: %d\n", len(articles))
+	fmt.Printf("   Platforms: %d\n", len(platformService.GetAll()))
 	fmt.Printf("   Scanning: %s\n", postsDir)
 	fmt.Println("========================================\n")
 
@@ -165,6 +182,13 @@ func main() {
 	r.GET("/api/articles/:id", apiArticleDetail)
 	r.POST("/api/publish/:id", handlePublish)
 	r.GET("/chroma.css", handleChromaCSS) // 提供 Chroma 样式
+
+	// 新增：平台和状态管理 API
+	r.GET("/api/platforms", handleGetPlatforms)
+	r.GET("/api/status", handleGetAllStatus)
+	r.GET("/api/status/:articleID", handleGetStatus)
+	r.POST("/api/status/:articleID/:platformID", handleMarkPublished)
+	r.DELETE("/api/status/:articleID/:platformID", handleUnmarkPublished)
 
 	// 启动服务
 	addr := ":" + *portFlag
@@ -783,4 +807,78 @@ func handleChromaCSS(c *gin.Context) {
 `
 	c.Header("Content-Type", "text/css")
 	c.String(200, css)
+}
+
+// handleGetPlatforms 获取所有平台
+func handleGetPlatforms(c *gin.Context) {
+	platforms := platformService.GetAll()
+	c.JSON(200, gin.H{
+		"platforms": platforms,
+	})
+}
+
+// handleGetAllStatus 获取所有文章的状态
+func handleGetAllStatus(c *gin.Context) {
+	allStatus := statusService.GetAllStatus()
+	c.JSON(200, gin.H{
+		"articles": allStatus,
+	})
+}
+
+// handleGetStatus 获取文章状态
+func handleGetStatus(c *gin.Context) {
+	articleID := c.Param("articleID")
+	status := statusService.GetArticleStatus(articleID)
+	c.JSON(200, status)
+}
+
+// MarkPublishRequest 标记发布请求
+type MarkPublishRequest struct {
+	URL string `json:"url"`
+}
+
+// handleMarkPublished 标记为已发布
+func handleMarkPublished(c *gin.Context) {
+	articleID := c.Param("articleID")
+	platformID := c.Param("platformID")
+
+	// 验证平台是否存在
+	if platformService.GetByID(platformID) == nil {
+		c.JSON(400, gin.H{"error": "平台不存在"})
+		return
+	}
+
+	// 解析请求体
+	var req MarkPublishRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// URL 是可选的
+		req.URL = ""
+	}
+
+	// 标记为已发布
+	if err := statusService.MarkPublished(articleID, platformID, req.URL); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"success": true,
+		"status":  statusService.GetArticleStatus(articleID),
+	})
+}
+
+// handleUnmarkPublished 取消发布标记
+func handleUnmarkPublished(c *gin.Context) {
+	articleID := c.Param("articleID")
+	platformID := c.Param("platformID")
+
+	if err := statusService.UnmarkPublished(articleID, platformID); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"success": true,
+		"status":  statusService.GetArticleStatus(articleID),
+	})
 }

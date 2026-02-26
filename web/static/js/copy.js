@@ -28,6 +28,9 @@ async function handlePublish() {
             // 替换为 CDN 版本
             articleContent.innerHTML = data.content.html;
 
+            // 清除之前的处理标记（因为内容已经被替换）
+            delete articleContent.dataset.linksProcessed;
+
             // 应用格式化
             if (window.formatWechatContent) {
                 window.formatWechatContent(articleContent);
@@ -38,13 +41,13 @@ async function handlePublish() {
 
             // 克隆内容并简化代码块
             const clonedContent = articleContent.cloneNode(true);
-            
+
             // 清除容器的背景色，确保只有代码块有背景
             clonedContent.style.background = 'transparent';
             clonedContent.style.backgroundColor = 'transparent';
-            
+
             simplifyCodeBlocks(clonedContent);
-            
+
             // 临时插入到 DOM 中进行复制
             clonedContent.style.position = 'absolute';
             clonedContent.style.left = '-9999px';
@@ -58,15 +61,12 @@ async function handlePublish() {
             selection.addRange(range);
             document.execCommand('copy');
             selection.removeAllRanges();
-            
+
             // 清理临时元素
             document.body.removeChild(clonedContent);
 
-            // 恢复原内容
+            // 恢复原内容（原内容已经格式化过，不需要再次格式化）
             articleContent.innerHTML = originalHTML;
-            if (window.formatWechatContent) {
-                window.formatWechatContent(articleContent);
-            }
 
             let msg = '✅ 发布成功！\n';
             if (data.uploaded && data.uploaded.length > 0) {
@@ -146,14 +146,14 @@ async function copyArticle() {
     try {
         // 克隆内容以避免修改原始 DOM
         const clonedContent = content.cloneNode(true);
-        
+
         // 清除容器的背景色，确保只有代码块有背景
         clonedContent.style.background = 'transparent';
         clonedContent.style.backgroundColor = 'transparent';
-        
+
         // 将所有代码块转换为纯文本格式（保留空格）
         simplifyCodeBlocks(clonedContent);
-        
+
         // 临时插入到 DOM 中进行复制
         clonedContent.style.position = 'absolute';
         clonedContent.style.left = '-9999px';
@@ -188,46 +188,46 @@ function simplifyCodeBlocks(container) {
         el.style.background = 'transparent';
         el.style.backgroundColor = 'transparent';
     });
-    
+
     // 处理代码块
     const preElements = container.querySelectorAll('pre');
-    
+
     preElements.forEach(pre => {
         // 获取所有 .line 元素
         const lines = pre.querySelectorAll('.line');
-        
+
         if (lines.length > 0) {
             // 重构代码块：为每一行创建独立的 div
             const newContent = document.createElement('code');
             newContent.style.display = 'block';
             newContent.style.whiteSpace = 'pre-wrap';
             newContent.style.background = 'transparent';
-            
+
             lines.forEach((line, index) => {
                 // 获取这一行的 HTML（保留颜色）
                 let lineHTML = line.innerHTML;
-                
+
                 // 如果有 .cl 子元素，使用它的内容
                 const clElement = line.querySelector('.cl');
                 if (clElement) {
                     lineHTML = clElement.innerHTML;
                 }
-                
+
                 // 替换 Tab 为 4 个 &nbsp;
                 lineHTML = lineHTML.replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
                 lineHTML = lineHTML.replace(/&#9;/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
                 lineHTML = lineHTML.replace(/&#x9;/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
-                
+
                 // 关键修改：将所有空格替换为 &nbsp;
                 // 但要注意不要替换 HTML 标签内的空格
-                lineHTML = lineHTML.replace(/(<[^>]*>)|( )/g, function(match, tag, space) {
+                lineHTML = lineHTML.replace(/(<[^>]*>)|( )/g, function (match, tag, space) {
                     if (tag) {
                         return tag; // 保留 HTML 标签不变
                     } else {
                         return '&nbsp;'; // 替换空格为 &nbsp;
                     }
                 });
-                
+
                 // 创建一个 div 来包裹这一行
                 const lineDiv = document.createElement('div');
                 lineDiv.innerHTML = lineHTML;
@@ -235,15 +235,15 @@ function simplifyCodeBlocks(container) {
                 lineDiv.style.margin = '0';
                 lineDiv.style.padding = '0';
                 lineDiv.style.lineHeight = '1.5';
-                
+
                 newContent.appendChild(lineDiv);
             });
-            
+
             // 清空 pre 并添加新内容
             pre.innerHTML = '';
             pre.appendChild(newContent);
         }
-        
+
         // 设置 pre 的样式
         pre.style.background = '#272822';
         pre.style.backgroundColor = '#272822';

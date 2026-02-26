@@ -1,9 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>文章列表 - 微信公众号预览工具</title>
+    <link rel="stylesheet" href="/assets/css/tree.css">
+    <link rel="stylesheet" href="/assets/css/status.css">
     <style>
         * {
             margin: 0;
@@ -18,98 +21,132 @@
             line-height: 1.6;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 40px 20px;
+        .header {
+            background: white;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
         }
 
-        h1 {
+        .header h1 {
             text-align: center;
-            font-size: 32px;
-            margin-bottom: 10px;
+            font-size: 28px;
             color: #2c3e50;
+            margin-bottom: 5px;
         }
 
-        .subtitle {
+        .header .subtitle {
             text-align: center;
             color: #7f8c8d;
-            margin-bottom: 40px;
             font-size: 14px;
-        }
-
-        .series-group {
-            margin-bottom: 40px;
-        }
-
-        .series-title {
-            font-size: 24px;
-            font-weight: bold;
-            color: #34495e;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #3498db;
-        }
-
-        .article-card {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-            transition: all 0.3s ease;
-            cursor: pointer;
-            text-decoration: none;
-            display: block;
-            color: inherit;
-        }
-
-        .article-card:hover {
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-            transform: translateY(-2px);
-        }
-
-        .article-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 8px;
-        }
-
-        .article-meta {
-            font-size: 13px;
-            color: #95a5a6;
-        }
-
-        .article-meta span {
-            margin-right: 15px;
-        }
-
-        .icon {
-            margin-right: 5px;
         }
     </style>
 </head>
+
 <body>
-    <div class="container">
+    <div class="header">
         <h1>📝 文章列表</h1>
         <p class="subtitle">点击文章查看微信公众号预览效果</p>
-
-        {{ range $series, $articleList := .groupedArticles }}
-        <div class="series-group">
-            <h2 class="series-title">{{ $series }}</h2>
-            {{ range $articleList }}
-            <a href="/article/{{ .ID }}" class="article-card">
-                <div class="article-title">{{ .Title }}</div>
-                <div class="article-meta">
-                    <span><span class="icon">📅</span>{{ .UpdatedAt.Format "2006-01-02" }}</span>
-                    <span><span class="icon">📂</span>{{ .Series }}</span>
-                </div>
-            </a>
-            {{ end }}
-        </div>
-        {{ end }}
     </div>
+
+    <div class="layout-container">
+        <!-- 左侧：目录树 -->
+        <div class="sidebar">
+            <div id="category-tree-container"></div>
+        </div>
+
+        <!-- 右侧：筛选和文章列表 -->
+        <div class="main-content">
+            <!-- 筛选栏 -->
+            <div id="filter-bar-container"></div>
+
+            <!-- 文章列表 -->
+            <div class="article-list" id="article-list"></div>
+        </div>
+    </div>
+
+    <script src="/assets/js/status-manager.js"></script>
+    <script src="/assets/js/category-tree.js"></script>
+    <script src="/assets/js/filter.js"></script>
+    <script>
+        // 文章数据
+        const articles = [
+            {{ range $series, $articleList:= .groupedArticles }}
+        { { range $articleList } }
+        {
+            id: "{{ .ID }}",
+                title: "{{ .Title }}",
+                    series: "{{ .Series }}",
+                        updatedAt: "{{ .UpdatedAt.Format "2006-01-02" }}",
+                            createdAt: "{{ .CreatedAt.Format "2006-01-02" }}"
+        },
+        { { end } }
+        { { end } }
+        ];
+
+        let categoryTree;
+        let articleFilter;
+
+        // 初始化
+        (async () => {
+            // 加载状态数据
+            await statusManager.loadPlatforms();
+            await statusManager.loadAllStatus();
+
+            // 初始化目录树
+            categoryTree = new CategoryTree(articles);
+            categoryTree.render(document.getElementById('category-tree-container'));
+
+            // 初始化筛选器
+            articleFilter = new ArticleFilter(articles, statusManager);
+            await articleFilter.render(document.getElementById('filter-bar-container'));
+
+            // 渲染文章列表
+            renderArticleList();
+
+            // 监听分类选择事件
+            window.addEventListener('categorySelected', () => {
+                renderArticleList();
+            });
+
+            // 监听筛选变化事件
+            window.addEventListener('filterChanged', () => {
+                articleFilter.updateArticleList();
+            });
+        })();
+
+        // 渲染文章列表
+        function renderArticleList() {
+            const filtered = categoryTree.getFilteredArticles();
+            const listContainer = document.getElementById('article-list');
+
+            const html = filtered.map(article => `
+                <div class="article-card" data-article-id="${article.id}">
+                    <div class="article-title">
+                        <a href="/article/${article.id}">${article.title}</a>
+                    </div>
+                    <div class="article-meta">
+                        <span class="article-series">📂 ${article.series}</span>
+                        <span>📅 ${article.updatedAt}</span>
+                    </div>
+                    <div class="article-badges" data-badges="${article.id}"></div>
+                </div>
+            `).join('');
+
+            listContainer.innerHTML = html;
+
+            // 渲染状态徽章
+            filtered.forEach(article => {
+                const container = document.querySelector(`[data-badges="${article.id}"]`);
+                if (container) {
+                    statusManager.renderStatusBadges(article.id, container);
+                }
+            });
+
+            // 应用当前筛选
+            articleFilter.updateArticleList();
+        }
+    </script>
 </body>
 
 </html>

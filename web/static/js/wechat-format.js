@@ -11,6 +11,11 @@ function processLinks(container) {
     const content = container || document.querySelector('.article-content');
     if (!content) return;
 
+    // 检查是否已经处理过（避免重复处理）
+    if (content.dataset.linksProcessed === 'true') {
+        return;
+    }
+
     // 获取所有链接
     const links = content.querySelectorAll('a');
     if (links.length === 0) return;
@@ -56,6 +61,9 @@ function processLinks(container) {
     if (references.length > 0) {
         appendReferences(content, references);
     }
+
+    // 标记为已处理
+    content.dataset.linksProcessed = 'true';
 }
 
 function appendReferences(container, references) {

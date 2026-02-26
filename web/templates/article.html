@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ .title }}</title>
     <link rel="stylesheet" href="/assets/css/wechat.css">
+    <link rel="stylesheet" href="/assets/css/status.css">
     <link rel="stylesheet" href="/chroma.css">
 </head>
 
@@ -28,6 +29,9 @@
             </div>
         </div>
 
+        <!-- 发布状态面板 -->
+        <div id="publish-status-panel"></div>
+
         <div class="article-content" id="articleContent">
             {{ .html }}
         </div>
@@ -45,6 +49,18 @@
 
     <script src="/assets/js/copy.js"></script>
     <script src="/assets/js/wechat-format.js"></script>
+    <script src="/assets/js/status-manager.js"></script>
+    <script>
+        // 初始化状态管理
+        (async () => {
+            const articleID = document.getElementById('articleId').value;
+            await statusManager.loadPlatforms();
+            await statusManager.loadStatus(articleID);
+
+            const panel = document.getElementById('publish-status-panel');
+            statusManager.renderStatusPanel(articleID, panel);
+        })();
+    </script>
 </body>
 
 </html>
