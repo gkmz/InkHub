@@ -10,10 +10,10 @@ import (
 	"github.com/hankmor/mymedia/tools/wechat-preview/config"
 	"github.com/hankmor/mymedia/tools/wechat-preview/models"
 	"github.com/yuin/goldmark"
+	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	goldmarkhtml "github.com/yuin/goldmark/renderer/html"
-	highlighting "github.com/yuin/goldmark-highlighting/v2"
 )
 
 // Processor Markdown 处理器
@@ -111,7 +111,9 @@ func (p *Processor) RemoveTitle(content string) string {
 
 // ReplaceRelRef 替换 Hugo relref shortcode
 func (p *Processor) ReplaceRelRef(content string) string {
-	re := regexp.MustCompile(`\{\{<\s*(?:relref|ref)\s+["']?([^"'\s}]+)["']?\s*>\}\}`)
+	// 改进正则：支持 {{< >}} 和 {{% %}} 两种语法，支持文件名中的空格和特殊字符
+	// 要求必须使用引号包裹路径
+	re := regexp.MustCompile(`\{\{[<%]\s*(?:relref|ref)\s+["']([^"']+)["']\s*[>%]\}\}`)
 	return re.ReplaceAllStringFunc(content, func(match string) string {
 		submatch := re.FindStringSubmatch(match)
 		if len(submatch) < 2 {
@@ -145,37 +147,37 @@ func (p *Processor) ReplaceRelRef(content string) string {
 // findArticle 查找文章
 func (p *Processor) findArticle(path string) *models.Article {
 	path = filepath.ToSlash(path)
+	pathBase := filepath.Base(path) // 提取文件名部分
 
 	for i := range p.articles {
 		art := &p.articles[i]
 		artRelPath := filepath.ToSlash(art.RelPath)
+		artBase := filepath.Base(artRelPath)
+
+		// 1. 完全匹配相对路径
 		if artRelPath == path {
 			return art
 		}
 
-		if strings.HasSuffix(path, artRelPath) {
-			marker := "/" + artRelPath
-			if strings.HasSuffix(path, marker) {
+		// 2. 匹配文件名（忽略目录结构）
+		if artBase == pathBase {
+			return art
+		}
+
+		// 3. 匹配文件名（忽略扩展名差异）
+		pathExt := filepath.Ext(pathBase)
+		artExt := filepath.Ext(artBase)
+		if pathExt != "" && artExt != "" {
+			pathNameNoExt := strings.TrimSuffix(pathBase, pathExt)
+			artNameNoExt := strings.TrimSuffix(artBase, artExt)
+			if pathNameNoExt == artNameNoExt {
 				return art
 			}
 		}
-	}
 
-	// 尝试替换扩展名
-	ext := filepath.Ext(path)
-	if ext != "" {
-		base := strings.TrimSuffix(path, ext)
-		candidates := []string{base + ".md", base + ".adoc"}
-		for _, c := range candidates {
-			if c == path {
-				continue
-			}
-			for i := range p.articles {
-				art := &p.articles[i]
-				if filepath.ToSlash(art.RelPath) == c {
-					return art
-				}
-			}
+		// 4. 后缀匹配（支持部分路径匹配）
+		if strings.HasSuffix(artRelPath, path) {
+			return art
 		}
 	}
 
