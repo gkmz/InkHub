@@ -35,7 +35,7 @@ func NewProcessor(articles []models.Article, projectRoot string) *Processor {
 				highlighting.WithStyle("monokai"),
 				highlighting.WithFormatOptions(
 					html.WithLineNumbers(false),
-					html.WithClasses(true),
+					html.WithClasses(false), // 使用内联样式，确保复制时保留代码高亮
 				),
 			),
 		),

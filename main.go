@@ -20,6 +20,7 @@ import (
 var embedFS embed.FS
 
 func main() {
+	fmt.Println("Just bat!")
 	// 解析命令行参数
 	dirFlag := flag.String("dir", "", "Markdown articles directory (default: current directory)")
 	portFlag := flag.String("port", "8080", "Server port")

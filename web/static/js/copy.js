@@ -13,69 +13,95 @@ async function handlePublish() {
         const data = await response.json();
 
         if (data.success) {
-            // 严格检查：如果有错误日志，则不允许视为成功，不自动复制
-            if (data.logs && data.logs.length > 0) {
-                let errorMsg = '⚠️ 发布中断：检测到以下图片上传失败，请修复后再试：\n\n' + data.logs.join('\n');
-                showNotification(errorMsg, 'error');
-                console.error(errorMsg);
-                return; // 终止后续操作
-            }
+          // 严格检查：如果有错误日志，则不允许视为成功，不自动复制
+          if (data.logs && data.logs.length > 0) {
+            let errorMsg =
+              "⚠️ 发布中断：检测到以下图片上传失败，请修复后再试：\n\n" +
+              data.logs.join("\n");
+            showNotification(errorMsg, "error");
+            console.error(errorMsg);
+            return; // 终止后续操作
+          }
 
-            // 新策略：直接替换 articleContent 然后用 copyArticle 的逻辑
-            const articleContent = document.getElementById('articleContent');
-            const originalHTML = articleContent.innerHTML;
+          // 新策略：直接替换 articleContent 然后用 copyArticle 的逻辑
+          const articleContent = document.getElementById("articleContent");
+          const originalHTML = articleContent.innerHTML;
 
-            // 替换为 CDN 版本
-            articleContent.innerHTML = data.content.html;
+          // 替换为 CDN 版本
+          articleContent.innerHTML = data.content.html;
 
-            // 清除之前的处理标记（因为内容已经被替换）
-            delete articleContent.dataset.linksProcessed;
+          // 清除之前的处理标记（因为内容已经被替换）
+          delete articleContent.dataset.linksProcessed;
 
-            // 应用格式化
-            if (window.formatWechatContent) {
-                window.formatWechatContent(articleContent);
-            }
+          // 应用格式化
+          if (window.formatWechatContent) {
+            window.formatWechatContent(articleContent);
+          }
 
-            // 等待浏览器完成渲染（关键）
-            await new Promise(resolve => setTimeout(resolve, 100));
+          // 等待浏览器完成渲染（关键）
+          await new Promise((resolve) => setTimeout(resolve, 100));
 
-            // 克隆内容并简化代码块
-            const clonedContent = articleContent.cloneNode(true);
+          // 克隆内容并简化代码块
+          const clonedContent = articleContent.cloneNode(true);
 
-            // 清除容器的背景色，确保只有代码块有背景
-            clonedContent.style.background = 'transparent';
-            clonedContent.style.backgroundColor = 'transparent';
+          // 清除容器的背景色，确保只有代码块有背景
+          clonedContent.style.background = "transparent";
+          clonedContent.style.backgroundColor = "transparent";
 
-            simplifyCodeBlocks(clonedContent);
+          // 内联所有元素的样式（关键：确保标题等样式被复制）
+          inlineStyles(clonedContent);
 
-            // 临时插入到 DOM 中进行复制
-            clonedContent.style.position = 'absolute';
-            clonedContent.style.left = '-9999px';
-            document.body.appendChild(clonedContent);
+          // 清理多余的空白字符
+          cleanupWhitespace(clonedContent);
 
-            // 使用与 copyArticle 完全相同的逻辑复制
+          simplifyCodeBlocks(clonedContent);
+
+          // 临时插入到 DOM 中进行复制
+          clonedContent.style.position = "absolute";
+          clonedContent.style.left = "-9999px";
+          document.body.appendChild(clonedContent);
+
+          try {
+            // 使用现代 Clipboard API 支持大文件
+            const htmlContent = clonedContent.innerHTML;
+            const textContent = clonedContent.innerText;
+
+            const clipboardItem = new ClipboardItem({
+              "text/html": new Blob([htmlContent], { type: "text/html" }),
+              "text/plain": new Blob([textContent], { type: "text/plain" }),
+            });
+
+            await navigator.clipboard.write([clipboardItem]);
+          } catch (clipboardErr) {
+            // 降级到 execCommand（兼容旧浏览器）
+            console.warn(
+              "Clipboard API 失败，降级到 execCommand:",
+              clipboardErr,
+            );
+
             const range = document.createRange();
             range.selectNodeContents(clonedContent);
             const selection = window.getSelection();
             selection.removeAllRanges();
             selection.addRange(range);
-            document.execCommand('copy');
+            document.execCommand("copy");
             selection.removeAllRanges();
-
+          } finally {
             // 清理临时元素
             document.body.removeChild(clonedContent);
+          }
 
-            // 恢复原内容（原内容已经格式化过，不需要再次格式化）
-            articleContent.innerHTML = originalHTML;
+          // 恢复原内容（原内容已经格式化过，不需要再次格式化）
+          articleContent.innerHTML = originalHTML;
 
-            let msg = '✅ 发布成功！\n';
-            if (data.uploaded && data.uploaded.length > 0) {
-                msg += `🚀 已上传 ${data.uploaded.length} 张图片到 GitHub\n`;
-            } else {
-                msg += '📝 没有发现需要上传的图片（或已全部存在）\n';
-            }
-            msg += '\n含 CDN 图片链接的内容已复制到剪贴板。';
-            showNotification(msg, 'success');
+          let msg = "✅ 发布成功！\n";
+          if (data.uploaded && data.uploaded.length > 0) {
+            msg += `🚀 已上传 ${data.uploaded.length} 张图片到 GitHub\n`;
+          } else {
+            msg += "📝 没有发现需要上传的图片（或已全部存在）\n";
+          }
+          msg += "\n含 CDN 图片链接的内容已复制到剪贴板。";
+          showNotification(msg, "success");
         } else {
             showNotification('❌ 发布失败: ' + data.error, 'error');
         }
@@ -144,25 +170,50 @@ async function copyArticle() {
     }
 
     try {
-        // 克隆内容以避免修改原始 DOM
-        const clonedContent = content.cloneNode(true);
+      // 克隆内容以避免修改原始 DOM
+      const clonedContent = content.cloneNode(true);
 
-        // 移除所有 .no-copy 元素
-        clonedContent.querySelectorAll('.no-copy').forEach(el => el.remove());
+      // 移除所有 .no-copy 元素
+      clonedContent.querySelectorAll(".no-copy").forEach((el) => el.remove());
 
-        // 清除容器的背景色，确保只有代码块有背景
-        clonedContent.style.background = 'transparent';
-        clonedContent.style.backgroundColor = 'transparent';
+      // 清除容器的背景色，确保只有代码块有背景
+      clonedContent.style.background = "transparent";
+      clonedContent.style.backgroundColor = "transparent";
 
-        // 将所有代码块转换为纯文本格式（保留空格）
-        simplifyCodeBlocks(clonedContent);
+      // 内联所有元素的样式（关键：确保标题等样式被复制）
+      inlineStyles(clonedContent);
 
-        // 临时插入到 DOM 中进行复制
-        clonedContent.style.position = 'absolute';
-        clonedContent.style.left = '-9999px';
-        document.body.appendChild(clonedContent);
+      // 清理多余的空白字符
+      cleanupWhitespace(clonedContent);
 
-        // 使用 Selection API 复制富文本（包含样式）
+      // 将所有代码块转换为纯文本格式（保留空格）
+      simplifyCodeBlocks(clonedContent);
+
+      // 临时插入到 DOM 中
+      clonedContent.style.position = "absolute";
+      clonedContent.style.left = "-9999px";
+      document.body.appendChild(clonedContent);
+
+      try {
+        // 使用现代 Clipboard API 支持大文件
+        const htmlContent = clonedContent.innerHTML;
+        const textContent = clonedContent.innerText;
+
+        const clipboardItem = new ClipboardItem({
+          "text/html": new Blob([htmlContent], { type: "text/html" }),
+          "text/plain": new Blob([textContent], { type: "text/plain" }),
+        });
+
+        await navigator.clipboard.write([clipboardItem]);
+
+        showNotification(
+          "✅ 复制成功！\n\n可直接粘贴到微信公众号后台。\n⚠️ 注意：图片需要手动上传。",
+          "success",
+        );
+      } catch (clipboardErr) {
+        // 降级到 execCommand（兼容旧浏览器）
+        console.warn("Clipboard API 失败，降级到 execCommand:", clipboardErr);
+
         const range = document.createRange();
         range.selectNodeContents(clonedContent);
 
@@ -170,18 +221,194 @@ async function copyArticle() {
         selection.removeAllRanges();
         selection.addRange(range);
 
-        // 执行复制命令
-        document.execCommand('copy');
-
-        // 清除选区和临时元素
+        const success = document.execCommand("copy");
         selection.removeAllRanges();
-        document.body.removeChild(clonedContent);
 
-        showNotification('✅ 复制成功！\n\n可直接粘贴到微信公众号后台。\n⚠️ 注意：图片需要手动上传。', 'success');
+        if (success) {
+          showNotification(
+            "✅ 复制成功！\n\n可直接粘贴到微信公众号后台。\n⚠️ 注意：图片需要手动上传。",
+            "success",
+          );
+        } else {
+          throw new Error("execCommand 复制失败");
+        }
+      } finally {
+        // 清除临时元素
+        document.body.removeChild(clonedContent);
+      }
     } catch (err) {
         showNotification('❌ 复制失败\n\n' + err.message + '\n\n请尝试手动选中文章内容后按 Cmd+C 复制。', 'error');
     }
 }
+// 内联样式函数：将 CSS 样式应用到元素的 style 属性
+function inlineStyles(container) {
+    // 标题样式
+    container.querySelectorAll('h1').forEach(el => {
+        el.style.fontSize = '24px';
+        el.style.fontWeight = 'bold';
+        el.style.margin = '30px 0 20px';
+        el.style.color = '#2c3e50';
+        el.style.lineHeight = '1.4';
+    });
+
+    container.querySelectorAll('h2').forEach(el => {
+        el.style.fontSize = '20px';
+        el.style.fontWeight = 'bold';
+        el.style.margin = '25px 0 15px';
+        el.style.color = '#34495e';
+        el.style.lineHeight = '1.4';
+    });
+
+    container.querySelectorAll('h3').forEach(el => {
+        el.style.fontSize = '18px';
+        el.style.fontWeight = 'bold';
+        el.style.margin = '20px 0 12px';
+        el.style.color = '#34495e';
+        el.style.lineHeight = '1.4';
+    });
+
+    container.querySelectorAll('h4').forEach(el => {
+        el.style.fontSize = '16px';
+        el.style.fontWeight = 'bold';
+        el.style.margin = '18px 0 10px';
+        el.style.color = '#34495e';
+    });
+
+    // 段落样式
+    container.querySelectorAll('p').forEach(el => {
+        el.style.margin = '15px 0';
+        el.style.textAlign = 'justify';
+        el.style.wordBreak = 'break-word';
+    });
+
+    // 强调样式
+    container.querySelectorAll('strong').forEach(el => {
+        el.style.fontWeight = '600';
+        el.style.color = '#2c3e50';
+    });
+
+    // 链接样式
+    container.querySelectorAll('a').forEach(el => {
+        el.style.color = '#3498db';
+        el.style.textDecoration = 'none';
+        el.style.borderBottom = '1px solid #3498db';
+    });
+
+    // 列表样式
+    container.querySelectorAll('ul, ol').forEach(el => {
+        el.style.paddingLeft = '25px';
+        el.style.margin = '15px 0';
+        el.style.lineHeight = '1.8';
+    });
+
+    container.querySelectorAll('li').forEach(el => {
+        el.style.margin = '10px 0';
+        el.style.lineHeight = '1.8';
+    });
+
+    // 引用块样式
+    container.querySelectorAll('blockquote').forEach(el => {
+        el.style.borderLeft = '4px solid #42b983';
+        el.style.background = '#f9f9f9';
+        el.style.padding = '12px 16px';
+        el.style.margin = '20px 0';
+        el.style.color = '#666';
+        el.style.borderRadius = '4px';
+    });
+
+    // 行内代码样式
+    container.querySelectorAll('code:not(pre code)').forEach(el => {
+        el.style.fontFamily = '"SF Mono", Monaco, Menlo, Consolas, "Courier New", monospace';
+        el.style.fontSize = '14px';
+        el.style.background = '#f6f8fa';
+        el.style.padding = '2px 6px';
+        el.style.borderRadius = '3px';
+        el.style.color = '#e83e8c';
+        el.style.whiteSpace = 'pre-wrap';
+        el.style.wordBreak = 'break-word';
+    });
+
+    // 图片样式
+    container.querySelectorAll('img').forEach(el => {
+        el.style.maxWidth = '100%';
+        el.style.height = 'auto';
+        el.style.display = 'block';
+        el.style.margin = '20px auto';
+        el.style.borderRadius = '8px';
+    });
+
+    // 表格样式
+    container.querySelectorAll('table').forEach(el => {
+        el.style.width = '100%';
+        el.style.borderCollapse = 'collapse';
+        el.style.margin = '20px 0';
+        el.style.fontSize = '14px';
+    });
+
+    container.querySelectorAll('th, td').forEach(el => {
+        el.style.border = '1px solid #dfe2e5';
+        el.style.padding = '10px 12px';
+        el.style.textAlign = 'left';
+    });
+
+    container.querySelectorAll('th').forEach(el => {
+        el.style.background = '#f6f8fa';
+        el.style.fontWeight = '600';
+        el.style.color = '#24292e';
+    });
+}
+// 清理多余的空白字符
+function cleanupWhitespace(container) {
+    // 清理所有文本节点中的多余空格（但不包括 pre 和 code 元素）
+    const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        {
+            acceptNode: function(node) {
+                // 跳过 pre 和 code 元素内的文本节点
+                let parent = node.parentElement;
+                while (parent && parent !== container) {
+                    if (parent.tagName === 'PRE' || parent.tagName === 'CODE') {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    parent = parent.parentElement;
+                }
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        }
+    );
+
+    const textNodes = [];
+    let node;
+    while (node = walker.nextNode()) {
+        textNodes.push(node);
+    }
+
+    // 清理每个文本节点
+    textNodes.forEach(textNode => {
+        // 将连续的空白字符（包括换行、制表符）替换为单个空格
+        let text = textNode.textContent;
+        text = text.replace(/\s+/g, ' ');
+
+        // 如果是块级元素的开头或结尾，去掉首尾空格
+        const parent = textNode.parentElement;
+        if (parent) {
+            const isBlockElement = ['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE'].includes(parent.tagName);
+            if (isBlockElement) {
+                if (textNode === parent.firstChild) {
+                    text = text.trimStart();
+                }
+                if (textNode === parent.lastChild) {
+                    text = text.trimEnd();
+                }
+            }
+        }
+
+        textNode.textContent = text;
+    });
+}
+
+
 
 // 简化代码块：重构为简单结构，使用 &nbsp; 确保空格保留
 function simplifyCodeBlocks(container) {
