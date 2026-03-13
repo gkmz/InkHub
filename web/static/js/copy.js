@@ -51,10 +51,11 @@ async function handlePublish() {
           // 内联所有元素的样式（关键：确保标题等样式被复制）
           inlineStyles(clonedContent);
 
-          // 清理多余的空白字符
-          cleanupWhitespace(clonedContent);
-
+          // 将所有代码块转换为纯文本格式（保留空格）- 必须在 cleanupWhitespace 之前
           simplifyCodeBlocks(clonedContent);
+
+          // 清理多余的空白字符（不影响代码块）
+          cleanupWhitespace(clonedContent);
 
           // 临时插入到 DOM 中进行复制
           clonedContent.style.position = "absolute";
@@ -183,11 +184,11 @@ async function copyArticle() {
       // 内联所有元素的样式（关键：确保标题等样式被复制）
       inlineStyles(clonedContent);
 
-      // 清理多余的空白字符
-      cleanupWhitespace(clonedContent);
-
-      // 将所有代码块转换为纯文本格式（保留空格）
+      // 将所有代码块转换为纯文本格式（保留空格）- 必须在 cleanupWhitespace 之前
       simplifyCodeBlocks(clonedContent);
+
+      // 清理多余的空白字符（不影响代码块）
+      cleanupWhitespace(clonedContent);
 
       // 临时插入到 DOM 中
       clonedContent.style.position = "absolute";
@@ -411,80 +412,62 @@ function cleanupWhitespace(container) {
 
 
 // 简化代码块：重构为简单结构，使用 &nbsp; 确保空格保留
+// 简化代码块：确保空格保留，适用于内联样式
 function simplifyCodeBlocks(container) {
-    // 清除所有非代码块元素的背景色
-    const allElements = container.querySelectorAll('*:not(pre):not(code)');
-    allElements.forEach(el => {
-        el.style.background = 'transparent';
-        el.style.backgroundColor = 'transparent';
-    });
+  // 清除所有非代码块元素的背景色
+  const allElements = container.querySelectorAll("*:not(pre):not(code)");
+  allElements.forEach((el) => {
+    el.style.background = "transparent";
+    el.style.backgroundColor = "transparent";
+  });
 
-    // 处理代码块
-    const preElements = container.querySelectorAll('pre');
+  // 处理代码块
+  const preElements = container.querySelectorAll("pre");
 
-    preElements.forEach(pre => {
-        // 获取所有 .line 元素
-        const lines = pre.querySelectorAll('.line');
+  preElements.forEach((pre) => {
+    // 设置 pre 的样式
+    pre.style.background = "#272822";
+    pre.style.backgroundColor = "#272822";
+    pre.style.padding = "16px";
+    pre.style.borderRadius = "6px";
+    pre.style.whiteSpace = "pre";
+    pre.style.fontFamily =
+      '"SF Mono", Monaco, Menlo, Consolas, "Courier New", monospace';
+    pre.style.fontSize = "13px";
+    pre.style.lineHeight = "1.5";
+    pre.style.color = "#f8f8f2";
+    pre.style.overflowX = "auto";
 
-        if (lines.length > 0) {
-            // 重构代码块：为每一行创建独立的 div
-            const newContent = document.createElement('code');
-            newContent.style.display = 'block';
-            newContent.style.whiteSpace = 'pre-wrap';
-            newContent.style.background = 'transparent';
+    // 获取 code 元素
+    const codeElement = pre.querySelector("code");
+    if (codeElement) {
+      codeElement.style.background = "transparent";
+      codeElement.style.padding = "0";
+      codeElement.style.whiteSpace = "pre";
+      codeElement.style.display = "block";
 
-            lines.forEach((line, index) => {
-                // 获取这一行的 HTML（保留颜色）
-                let lineHTML = line.innerHTML;
+      // 将代码内容中的空格替换为 &nbsp; 以确保在微信中正确显示
+      replaceSpacesInCode(codeElement);
+    }
+  });
+}
 
-                // 如果有 .cl 子元素，使用它的内容
-                const clElement = line.querySelector('.cl');
-                if (clElement) {
-                    lineHTML = clElement.innerHTML;
-                }
+// 递归替换代码元素中的空格为 &nbsp;
+function replaceSpacesInCode(element) {
+  const childNodes = Array.from(element.childNodes);
 
-                // 替换 Tab 为 4 个 &nbsp;
-                lineHTML = lineHTML.replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
-                lineHTML = lineHTML.replace(/&#9;/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
-                lineHTML = lineHTML.replace(/&#x9;/g, '&nbsp;&nbsp;&nbsp;&nbsp;');
-
-                // 关键修改：将所有空格替换为 &nbsp;
-                // 但要注意不要替换 HTML 标签内的空格
-                lineHTML = lineHTML.replace(/(<[^>]*>)|( )/g, function (match, tag, space) {
-                    if (tag) {
-                        return tag; // 保留 HTML 标签不变
-                    } else {
-                        return '&nbsp;'; // 替换空格为 &nbsp;
-                    }
-                });
-
-                // 创建一个 div 来包裹这一行
-                const lineDiv = document.createElement('div');
-                lineDiv.innerHTML = lineHTML;
-                lineDiv.style.whiteSpace = 'pre-wrap';
-                lineDiv.style.margin = '0';
-                lineDiv.style.padding = '0';
-                lineDiv.style.lineHeight = '1.5';
-
-                newContent.appendChild(lineDiv);
-            });
-
-            // 清空 pre 并添加新内容
-            pre.innerHTML = '';
-            pre.appendChild(newContent);
-        }
-
-        // 设置 pre 的样式
-        pre.style.background = '#272822';
-        pre.style.backgroundColor = '#272822';
-        pre.style.padding = '16px';
-        pre.style.borderRadius = '6px';
-        pre.style.whiteSpace = 'pre-wrap';
-        pre.style.fontFamily = '"SF Mono", Monaco, Menlo, Consolas, "Courier New", monospace';
-        pre.style.fontSize = '13px';
-        pre.style.lineHeight = '1.5';
-        pre.style.color = '#f8f8f2';
-    });
+  childNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      // 文本节点：替换空格和制表符
+      let text = node.textContent;
+      text = text.replace(/\t/g, "    "); // Tab 转 4 个空格
+      text = text.replace(/ /g, "\u00A0"); // 空格转 &nbsp; (使用 Unicode)
+      node.textContent = text;
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      // 元素节点：递归处理
+      replaceSpacesInCode(node);
+    }
+  });
 }
 
 // 获取内联样式（从 wechat.css 提取核心样式）
