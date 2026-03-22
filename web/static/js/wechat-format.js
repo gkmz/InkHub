@@ -1,10 +1,18 @@
 // 微信公众号格式化工具：自动处理外链为文末引用
 document.addEventListener('DOMContentLoaded', function () {
-    processLinks();
+    formatWechatContent();
 });
 
 // 导出函数供其他模块使用（如 copy.js）
-window.formatWechatContent = processLinks;
+window.formatWechatContent = formatWechatContent;
+
+function formatWechatContent(container) {
+    const content = container || document.querySelector('.article-content');
+    if (!content) return;
+
+    processImages(content);
+    processLinks(content);
+}
 
 function processLinks(container) {
     // 如果没有传入容器，则查找页面中的 .article-content
@@ -12,14 +20,10 @@ function processLinks(container) {
     if (!content) return;
 
     // 检查是否已经处理过（避免重复处理）
-    if (content.dataset.linksProcessed === 'true') {
-        return;
-    }
+    if (content.dataset.linksProcessed === 'true') return;
 
     // 获取所有链接
     const links = content.querySelectorAll('a');
-    if (links.length === 0) return;
-
     const references = [];
     let index = 1;
 
@@ -48,9 +52,12 @@ function processLinks(container) {
         // 或者保留a标签但标明不可跳转。
         // 这里我们保留a标签，但添加上标 [n]
         const sup = document.createElement('sup');
+        sup.className = 'reference-index';
         sup.textContent = `[${index}]`;
-        sup.style.marginLeft = '2px';
-        sup.style.color = '#999';
+        sup.style.marginLeft = '3px';
+        sup.style.color = '#42b883';
+        sup.style.fontSize = '0.72em';
+        sup.style.fontWeight = '700';
 
         link.parentNode.insertBefore(sup, link.nextSibling);
 
@@ -58,7 +65,7 @@ function processLinks(container) {
     });
 
     // 如果有引用，在文末添加引用列表
-    if (references.length > 0) {
+    if (references.length > 0 && !content.querySelector('.references-section')) {
         appendReferences(content, references);
     }
 
@@ -66,42 +73,91 @@ function processLinks(container) {
     content.dataset.linksProcessed = 'true';
 }
 
+function processImages(content) {
+    if (content.dataset.imagesProcessed === 'true') return;
+
+    const images = content.querySelectorAll('img');
+    images.forEach((img) => {
+        if (img.closest('pre, code, .mac-image-frame')) return;
+
+        const paragraph = img.parentElement;
+        const meaningfulChildren = paragraph
+            ? Array.from(paragraph.childNodes).filter((node) => {
+                  if (node.nodeType === Node.TEXT_NODE) {
+                      return node.textContent.trim() !== '';
+                  }
+                  return true;
+              })
+            : [];
+        const isStandaloneImage =
+            paragraph &&
+            paragraph.tagName === 'P' &&
+            meaningfulChildren.length === 1;
+
+        if (!isStandaloneImage) return;
+
+        const frame = document.createElement('figure');
+        frame.className = 'mac-image-frame';
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'mac-image-toolbar';
+        toolbar.innerHTML = `
+            <span class="mac-image-dot dot-red"></span>
+            <span class="mac-image-dot dot-yellow"></span>
+            <span class="mac-image-dot dot-green"></span>
+        `;
+
+        const body = document.createElement('div');
+        body.className = 'mac-image-body';
+
+        paragraph.parentNode.insertBefore(frame, paragraph);
+        body.appendChild(img);
+        frame.appendChild(toolbar);
+        frame.appendChild(body);
+        paragraph.remove();
+    });
+
+    content.dataset.imagesProcessed = 'true';
+}
+
 function appendReferences(container, references) {
     // 创建引用容器
     const refSection = document.createElement('div');
     refSection.className = 'references-section';
-    refSection.style.marginTop = '40px';
-    refSection.style.paddingTop = '20px';
-    refSection.style.borderTop = '1px solid #eee';
+    refSection.style.marginTop = '2.4em';
+    refSection.style.padding = '12px 16px';
+    refSection.style.backgroundColor = '#f8f9fa';
+    refSection.style.borderLeft = '4px solid #42b883';
+    refSection.style.borderRadius = '2px';
 
     // 标题
     const title = document.createElement('h3');
     title.textContent = '引用链接';
-    title.style.fontSize = '16px';
-    title.style.fontWeight = 'bold';
-    title.style.marginBottom = '15px';
+    title.style.fontSize = '1rem';
+    title.style.fontWeight = '600';
+    title.style.color = '#2c3e50';
+    title.style.margin = '0 0 10px';
     refSection.appendChild(title);
 
     // 列表
     const list = document.createElement('ul');
+    list.style.margin = '0';
     list.style.paddingLeft = '0';
     list.style.listStyle = 'none';
 
     references.forEach(ref => {
         const item = document.createElement('li');
         item.style.fontSize = '14px';
-        item.style.color = '#666';
-        item.style.marginBottom = '8px';
-        item.style.lineHeight = '1.6';
+        item.style.color = '#5c6975';
+        item.style.margin = '0.45rem 0';
+        item.style.lineHeight = '1.55';
         item.style.display = 'block'; // 覆盖 wechat.css 可能的 list-item
 
-        // 格式：[1] 链接文本: https://...
-        // 使用 span class="li-text" 包裹，防止微信编辑器自动换行
         item.innerHTML = `
             <span class="li-text">
-                <span style="color: #999; margin-right: 5px;">[${ref.index}]</span>
+                <span class="reference-label" style="color: #42b883; font-weight: 700; margin-right: 6px;">[${ref.index}]</span>
                 ${escapeHtml(ref.text)}: 
-                <span style="color: #333; word-break: break-all;">${ref.href}</span>
+                <span class="reference-url" style="color: #34495e; word-break: break-all;">${ref.href}</span>
             </span>
         `;
         list.appendChild(item);

@@ -243,119 +243,227 @@ async function copyArticle() {
 }
 // 内联样式函数：将 CSS 样式应用到元素的 style 属性
 function inlineStyles(container) {
-    // 标题样式
+    container.style.fontFamily = '"Source Sans 3", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif';
+    container.style.fontSize = '15px';
+    container.style.lineHeight = '1.6';
+    container.style.color = '#34495e';
+    container.style.letterSpacing = '0';
+    container.style.wordSpacing = '0.05rem';
+    container.style.background = 'transparent';
+
     container.querySelectorAll('h1').forEach(el => {
-        el.style.fontSize = '24px';
-        el.style.fontWeight = 'bold';
-        el.style.margin = '30px 0 20px';
+        el.style.fontSize = '2rem';
+        el.style.fontWeight = '600';
+        el.style.margin = '0 0 1rem';
         el.style.color = '#2c3e50';
-        el.style.lineHeight = '1.4';
+        el.style.lineHeight = '1.3';
     });
 
     container.querySelectorAll('h2').forEach(el => {
-        el.style.fontSize = '20px';
-        el.style.fontWeight = 'bold';
-        el.style.margin = '25px 0 15px';
-        el.style.color = '#34495e';
-        el.style.lineHeight = '1.4';
+        el.style.fontSize = '1.75rem';
+        el.style.fontWeight = '600';
+        el.style.margin = '2.8em 0 0.9rem';
+        el.style.color = '#2c3e50';
+        el.style.lineHeight = '1.32';
     });
 
     container.querySelectorAll('h3').forEach(el => {
-        el.style.fontSize = '18px';
-        el.style.fontWeight = 'bold';
-        el.style.margin = '20px 0 12px';
-        el.style.color = '#34495e';
-        el.style.lineHeight = '1.4';
+        el.style.fontSize = '1.5rem';
+        el.style.fontWeight = '600';
+        el.style.margin = '2.2em 0 0.7rem';
+        el.style.color = '#2c3e50';
+        el.style.lineHeight = '1.34';
     });
 
     container.querySelectorAll('h4').forEach(el => {
-        el.style.fontSize = '16px';
-        el.style.fontWeight = 'bold';
-        el.style.margin = '18px 0 10px';
-        el.style.color = '#34495e';
+        el.style.fontSize = '1.25rem';
+        el.style.fontWeight = '600';
+        el.style.margin = '1.8em 0 0.55rem';
+        el.style.color = '#2c3e50';
+        el.style.lineHeight = '1.35';
     });
 
-    // 段落样式
+    container.querySelectorAll('h5').forEach(el => {
+        el.style.fontSize = '1rem';
+        el.style.fontWeight = '600';
+        el.style.margin = '24px 0 0.4rem';
+        el.style.color = '#2c3e50';
+    });
+
+    container.querySelectorAll('h6').forEach(el => {
+        el.style.fontSize = '1rem';
+        el.style.fontWeight = '600';
+        el.style.margin = '24px 0 0.4rem';
+        el.style.color = '#777';
+    });
+
     container.querySelectorAll('p').forEach(el => {
-        el.style.margin = '15px 0';
-        el.style.textAlign = 'justify';
+        el.style.margin = '1.35em 0';
+        el.style.lineHeight = '1.85';
         el.style.wordBreak = 'break-word';
     });
 
-    // 强调样式
     container.querySelectorAll('strong').forEach(el => {
         el.style.fontWeight = '600';
         el.style.color = '#2c3e50';
     });
 
-    // 链接样式
-    container.querySelectorAll('a').forEach(el => {
-        el.style.color = '#3498db';
-        el.style.textDecoration = 'none';
-        el.style.borderBottom = '1px solid #3498db';
+    container.querySelectorAll('em').forEach(el => {
+        el.style.color = '#7f8c8d';
     });
 
-    // 列表样式
+    container.querySelectorAll('a').forEach(el => {
+        el.style.color = '#42b883';
+        el.style.fontWeight = '600';
+        el.style.textDecoration = 'none';
+    });
+
+    container.querySelectorAll('sup.reference-index').forEach(el => {
+        el.style.marginLeft = '3px';
+        el.style.color = '#42b883';
+        el.style.fontSize = '0.72em';
+        el.style.fontWeight = '700';
+        el.style.lineHeight = '0';
+    });
+
     container.querySelectorAll('ul, ol').forEach(el => {
-        el.style.paddingLeft = '25px';
-        el.style.margin = '15px 0';
-        el.style.lineHeight = '1.8';
+        el.style.paddingLeft = '1.5rem';
+        el.style.lineHeight = '1.85';
+        el.style.margin = '1.1em 0 1.3em';
     });
 
     container.querySelectorAll('li').forEach(el => {
-        el.style.margin = '10px 0';
-        el.style.lineHeight = '1.8';
+        el.style.margin = '0.6rem 0';
     });
 
-    // 引用块样式
     container.querySelectorAll('blockquote').forEach(el => {
-        el.style.borderLeft = '4px solid #42b983';
-        el.style.background = '#f9f9f9';
-        el.style.padding = '12px 16px';
-        el.style.margin = '20px 0';
-        el.style.color = '#666';
-        el.style.borderRadius = '4px';
+        el.style.borderLeft = '4px solid #42b883';
+        el.style.padding = '0.55em 0 0.55em 18px';
+        el.style.margin = '1.9em 0';
+        el.style.color = '#858585';
+        el.style.background = 'rgba(66, 184, 131, 0.04)';
+        el.style.borderRadius = '0 10px 10px 0';
     });
 
-    // 行内代码样式
+    container.querySelectorAll('blockquote p').forEach(el => {
+        el.style.margin = '0.55em 0';
+        el.style.fontWeight = '600';
+    });
+
     container.querySelectorAll('code:not(pre code)').forEach(el => {
-        el.style.fontFamily = '"SF Mono", Monaco, Menlo, Consolas, "Courier New", monospace';
-        el.style.fontSize = '14px';
-        el.style.background = '#f6f8fa';
-        el.style.padding = '2px 6px';
-        el.style.borderRadius = '3px';
-        el.style.color = '#e83e8c';
+        el.style.fontFamily = '"Roboto Mono", "SFMono-Regular", Monaco, Consolas, monospace';
+        el.style.fontSize = '0.8rem';
+        el.style.background = '#ffffff';
+        el.style.border = '1px solid #f4bfd7';
+        el.style.padding = '3px 6px';
+        el.style.borderRadius = '6px';
+        el.style.color = '#d63384';
         el.style.whiteSpace = 'pre-wrap';
         el.style.wordBreak = 'break-word';
     });
 
-    // 图片样式
-    container.querySelectorAll('img').forEach(el => {
+    container.querySelectorAll('.mac-image-frame').forEach(el => {
+        el.style.margin = '1.8em 0 2em';
+        el.style.background = '#f5f7fa';
+        el.style.border = '1px solid #e8edf3';
+        el.style.borderRadius = '16px';
+        el.style.overflow = 'hidden';
+        el.style.boxShadow = '0 18px 40px rgba(31, 45, 61, 0.08)';
+    });
+
+    container.querySelectorAll('.mac-image-toolbar').forEach(el => {
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.gap = '8px';
+        el.style.padding = '12px 14px';
+        el.style.background = 'linear-gradient(180deg, #fdfefe 0%, #eef3f7 100%)';
+        el.style.borderBottom = '1px solid #e6edf2';
+    });
+
+    container.querySelectorAll('.mac-image-dot').forEach(el => {
+        el.style.width = '10px';
+        el.style.height = '10px';
+        el.style.borderRadius = '999px';
+        el.style.display = 'inline-block';
+    });
+
+    container.querySelectorAll('.mac-image-dot.dot-red').forEach(el => {
+        el.style.background = '#ff5f57';
+    });
+
+    container.querySelectorAll('.mac-image-dot.dot-yellow').forEach(el => {
+        el.style.background = '#febc2e';
+    });
+
+    container.querySelectorAll('.mac-image-dot.dot-green').forEach(el => {
+        el.style.background = '#28c840';
+    });
+
+    container.querySelectorAll('.mac-image-body').forEach(el => {
+        el.style.padding = '12px';
+        el.style.background = '#fff';
+    });
+
+    container.querySelectorAll('.mac-image-body img, img').forEach(el => {
         el.style.maxWidth = '100%';
         el.style.height = 'auto';
         el.style.display = 'block';
-        el.style.margin = '20px auto';
-        el.style.borderRadius = '8px';
+        el.style.margin = '0 auto';
     });
 
-    // 表格样式
     container.querySelectorAll('table').forEach(el => {
         el.style.width = '100%';
+        el.style.display = 'block';
+        el.style.overflow = 'auto';
         el.style.borderCollapse = 'collapse';
-        el.style.margin = '20px 0';
-        el.style.fontSize = '14px';
+        el.style.borderSpacing = '0';
+        el.style.marginBottom = '1rem';
+    });
+
+    container.querySelectorAll('tr').forEach((el, index) => {
+        el.style.borderTop = '1px solid #ccc';
+        if (index % 2 === 1) {
+            el.style.background = '#f8f8f8';
+        }
     });
 
     container.querySelectorAll('th, td').forEach(el => {
-        el.style.border = '1px solid #dfe2e5';
-        el.style.padding = '10px 12px';
+        el.style.border = '1px solid #ddd';
+        el.style.padding = '6px 13px';
         el.style.textAlign = 'left';
     });
 
     container.querySelectorAll('th').forEach(el => {
-        el.style.background = '#f6f8fa';
+        el.style.fontWeight = '700';
+        el.style.color = '#2c3e50';
+    });
+
+    container.querySelectorAll('.references-section').forEach(el => {
+        el.style.marginTop = '2.4em';
+        el.style.padding = '10px 14px';
+        el.style.background = 'rgba(66, 184, 131, 0.045)';
+        el.style.borderLeft = '3px solid #42b883';
+        el.style.borderRadius = '8px';
+    });
+
+    container.querySelectorAll('.references-section h3').forEach(el => {
+        el.style.margin = '0 0 10px';
+        el.style.fontSize = '0.95rem';
         el.style.fontWeight = '600';
-        el.style.color = '#24292e';
+        el.style.color = '#2c3e50';
+    });
+
+    container.querySelectorAll('.references-section ul').forEach(el => {
+        el.style.margin = '0';
+        el.style.paddingLeft = '0';
+        el.style.listStyle = 'none';
+    });
+
+    container.querySelectorAll('.references-section li').forEach(el => {
+        el.style.display = 'block';
+        el.style.margin = '0.35rem 0';
+        el.style.color = '#5c6975';
+        el.style.lineHeight = '1.7';
     });
 }
 // 清理多余的空白字符
@@ -425,18 +533,20 @@ function simplifyCodeBlocks(container) {
   const preElements = container.querySelectorAll("pre");
 
   preElements.forEach((pre) => {
-    // 设置 pre 的样式
-    pre.style.background = "#272822";
-    pre.style.backgroundColor = "#272822";
-    pre.style.padding = "16px";
-    pre.style.borderRadius = "6px";
+    pre.style.position = "relative";
+    pre.style.background = "#1a1b26";
+    pre.style.backgroundColor = "#1a1b26";
+    pre.style.padding = "0 1.1rem";
+    pre.style.borderRadius = "12px";
     pre.style.whiteSpace = "pre";
     pre.style.fontFamily =
-      '"SF Mono", Monaco, Menlo, Consolas, "Courier New", monospace';
-    pre.style.fontSize = "13px";
-    pre.style.lineHeight = "1.5";
-    pre.style.color = "#f8f8f2";
+      '"Roboto Mono", "SFMono-Regular", Monaco, Consolas, "Courier New", monospace';
+    pre.style.fontSize = "0.82rem";
+    pre.style.lineHeight = "1.7";
+    pre.style.color = "#c0caf5";
     pre.style.overflowX = "auto";
+    pre.style.margin = "1.5em 0";
+    pre.style.border = "1px solid #2f3549";
 
     // 获取 code 元素
     const codeElement = pre.querySelector("code");
@@ -445,6 +555,11 @@ function simplifyCodeBlocks(container) {
       codeElement.style.padding = "0";
       codeElement.style.whiteSpace = "pre";
       codeElement.style.display = "block";
+      codeElement.style.margin = "0 2px";
+      codeElement.style.padding = "2.3em 6px 1.1em";
+      codeElement.style.lineHeight = "inherit";
+      codeElement.style.color = "#c0caf5";
+      codeElement.style.fontSize = "0.82rem";
 
       // 将代码内容中的空格替换为 &nbsp; 以确保在微信中正确显示
       replaceSpacesInCode(codeElement);
@@ -474,45 +589,59 @@ function replaceSpacesInCode(element) {
 function getInlineStyles() {
     return `
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
-            font-size: 16px;
-            line-height: 1.75;
-            color: #333;
-            max-width: 750px;
+            font-family: "Source Sans 3", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            font-size: 15px;
+            line-height: 1.6;
+            color: #34495e;
+            max-width: 960px;
             margin: 0 auto;
-            padding: 20px;
+            padding: 0 15px 40px;
         }
-        h1 { font-size: 24px; font-weight: bold; margin: 30px 0 20px; color: #2c3e50; }
-        h2 { font-size: 20px; font-weight: bold; margin: 25px 0 15px; color: #34495e; }
-        h3 { font-size: 18px; font-weight: bold; margin: 20px 0 12px; color: #34495e; }
-        p { margin: 15px 0; text-align: justify; }
+        h1 { font-size: 2rem; font-weight: 600; margin: 0 0 1rem; color: #2c3e50; line-height: 1.3; }
+        h2 { font-size: 1.75rem; font-weight: 600; margin: 2.8em 0 0.9rem; color: #2c3e50; line-height: 1.32; }
+        h3 { font-size: 1.5rem; font-weight: 600; margin: 2.2em 0 0.7rem; color: #2c3e50; line-height: 1.34; }
+        h4 { font-size: 1.25rem; font-weight: 600; margin: 1.8em 0 0.55rem; color: #2c3e50; line-height: 1.35; }
+        p { margin: 1.35em 0; line-height: 1.85; word-break: break-word; }
+        ul, ol { padding-left: 1.5rem; line-height: 1.85; margin: 1.1em 0 1.3em; }
+        li { margin: 0.6rem 0; }
         strong { font-weight: 600; color: #2c3e50; }
-        a { color: #3498db; text-decoration: none; border-bottom: 1px solid #3498db; }
+        em { color: #7f8c8d; }
+        a { color: #42b883; text-decoration: none; font-weight: 600; }
+        blockquote {
+            border-left: 4px solid #42b883;
+            color: #858585;
+            margin: 1.9em 0;
+            padding: 0.55em 0 0.55em 18px;
+            background: rgba(66, 184, 131, 0.04);
+            border-radius: 0 10px 10px 0;
+        }
         code {
-            font-family: Monaco, Consolas, monospace;
-            font-size: 14px;
-            background: #f6f8fa;
-            padding: 2px 6px;
-            border-radius: 3px;
-            color: #e83e8c;
+            font-family: "Roboto Mono", Monaco, Consolas, monospace;
+            font-size: 0.8rem;
+            background: #ffffff;
+            border: 1px solid #f4bfd7;
+            padding: 3px 6px;
+            border-radius: 6px;
+            color: #d63384;
             white-space: pre-wrap;
             word-break: break-word;
         }
         pre {
-            border-radius: 6px;
-            padding: 16px;
+            border-radius: 12px;
+            padding: 0 1.1rem;
             overflow-x: auto;
-            margin: 20px 0;
-            line-height: 1.5;
+            margin: 1.5em 0;
+            line-height: 1.7;
             white-space: pre !important;
             word-wrap: normal;
-            background: #2d2d2d;
-            border: 1px solid #e1e4e8;
+            background: #1a1b26;
+            border: 1px solid #2f3549;
         }
         pre code {
             background: transparent;
-            padding: 0;
-            color: #f8f8f2;
+            border: none;
+            padding: 2.3em 6px 1.1em;
+            color: #c0caf5;
             font-family: inherit;
             white-space: pre !important;
             word-break: normal;
@@ -521,25 +650,84 @@ function getInlineStyles() {
         pre *, pre code * {
             white-space: pre !important;
         }
-        blockquote {
-            border-left: 4px solid #42b983;
-            background: #f9f9f9;
-            padding: 12px 16px;
-            margin: 20px 0;
-            color: #666;
-        }
         img {
             max-width: 100%;
             height: auto;
             display: block;
-            margin: 20px auto;
+            margin: 0 auto;
+        }
+        .mac-image-frame {
+            margin: 1.8em 0 2em;
+            background: #f5f7fa;
+            border: 1px solid #e8edf3;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 18px 40px rgba(31, 45, 61, 0.08);
+        }
+        .mac-image-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 14px;
+            background: linear-gradient(180deg, #fdfefe 0%, #eef3f7 100%);
+            border-bottom: 1px solid #e6edf2;
+        }
+        .mac-image-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            display: inline-block;
+        }
+        .dot-red { background: #ff5f57; }
+        .dot-yellow { background: #febc2e; }
+        .dot-green { background: #28c840; }
+        .mac-image-body {
+            padding: 12px;
+            background: #fff;
+        }
+        table {
+            width: 100%;
+            display: block;
+            overflow: auto;
+            border-collapse: collapse;
+            border-spacing: 0;
+            margin-bottom: 1rem;
+        }
+        tr { border-top: 1px solid #ccc; }
+        tr:nth-child(2n) { background: #f8f8f8; }
+        th, td { border: 1px solid #ddd; padding: 6px 13px; text-align: left; }
+        th { font-weight: 700; color: #2c3e50; }
+        .references-section {
+            margin-top: 2.4em;
+            padding: 10px 14px;
+            background: rgba(66, 184, 131, 0.045);
+            border-left: 3px solid #42b883;
             border-radius: 8px;
         }
-        ul, ol { padding-left: 25px; margin: 15px 0; }
-        li { margin: 8px 0; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        th, td { border: 1px solid #dfe2e5; padding: 10px; }
-        th { background: #f6f8fa; font-weight: 600; }
+        .references-section h3 {
+            margin: 0 0 10px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        .references-section ul {
+            margin: 0;
+            padding-left: 0;
+            list-style: none;
+        }
+        .references-section li {
+            display: block;
+            margin: 0.35rem 0;
+            color: #5c6975;
+            line-height: 1.7;
+        }
+        sup.reference-index {
+            margin-left: 3px;
+            color: #42b883;
+            font-size: 0.72em;
+            font-weight: 700;
+            line-height: 0;
+        }
     `;
 }
 

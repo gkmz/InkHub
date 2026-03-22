@@ -32,7 +32,7 @@ func NewProcessor(articles []models.Article, projectRoot string) *Processor {
 			extension.Strikethrough,
 			extension.TaskList,
 			highlighting.NewHighlighting(
-				highlighting.WithStyle("monokai"),
+				highlighting.WithStyle("tokyonight-night"),
 				highlighting.WithFormatOptions(
 					html.WithLineNumbers(false),
 					html.WithClasses(false), // 使用内联样式，确保复制时保留代码高亮

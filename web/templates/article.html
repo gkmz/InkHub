@@ -23,11 +23,13 @@
 </head>
 <body>
     <div class="toolbar no-copy">
-        <a href="/" class="btn btn-back">← 返回列表</a>
-        <div class="actions">
-            <button onclick="copyArticle()" class="btn btn-copy">📋 复制原文</button>
-            <button onclick="handlePublish()" class="btn btn-publish"
-                style="background-color: #3b82f6; color: white; margin-left: 10px;">🚀 发布/复制</button>
+        <div class="toolbar-inner">
+            <a href="/" class="btn btn-back">← 返回列表</a>
+            <div class="toolbar-meta">预览模式 · 微信公众号排版</div>
+            <div class="actions">
+                <button onclick="copyArticle()" class="btn btn-copy">复制原文</button>
+                <button onclick="handlePublish()" class="btn btn-publish">发布/复制</button>
+            </div>
         </div>
     </div>
     <input type="hidden" id="articleId" value="{{ .id }}">
