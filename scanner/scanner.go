@@ -124,14 +124,17 @@ func extractMetadata(content string) (string, string) {
 		lines := strings.Split(content, "\n")
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
 			if strings.HasPrefix(line, "# ") {
 				title = strings.TrimPrefix(line, "# ")
-				break
 			}
 			if strings.HasPrefix(line, "= ") {
 				title = strings.TrimPrefix(line, "= ")
-				break
 			}
+			// 只解析一个不为空的行, 不是标题则退出,避免过度扫描内容
+			break
 		}
 	}
 
