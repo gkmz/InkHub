@@ -107,11 +107,12 @@
             categoryTree = new CategoryTree(articles, statusManager);
             categoryTree.render(document.getElementById('category-tree-container'));
 
-            // 恢复之前选中的分类
-            const savedCategory = localStorage.getItem('selectedCategory');
-            if (savedCategory) {
-                categoryTree.selectCategory(savedCategory);
+            // 恢复之前选中的分类（兼容旧 key 和新 key）
+            const savedPath = localStorage.getItem('selectedPath') || localStorage.getItem('selectedCategory');
+            if (savedPath) {
+                categoryTree.selectCategory(savedPath);
                 categoryTree.render(document.getElementById('category-tree-container'));
+                localStorage.removeItem('selectedPath');
                 localStorage.removeItem('selectedCategory');
             }
 

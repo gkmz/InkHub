@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -18,9 +19,10 @@ import (
 
 // Processor Markdown 处理器
 type Processor struct {
-	md           goldmark.Markdown
-	articles     []models.Article
-	projectRoot  string
+	md          goldmark.Markdown
+	articles    []models.Article
+	projectRoot string
+	assetsDir   string // 全局 assets 目录绝对路径
 }
 
 // NewProcessor 创建 Markdown 处理器
@@ -53,6 +55,7 @@ func NewProcessor(articles []models.Article, projectRoot string) *Processor {
 		md:          md,
 		articles:    articles,
 		projectRoot: projectRoot,
+		assetsDir:   filepath.Join(projectRoot, "assets"),
 	}
 }
 
@@ -182,6 +185,37 @@ func (p *Processor) findArticle(path string) *models.Article {
 	}
 
 	return nil
+}
+
+// ResolveWikiLinks 将 Obsidian WikiLink 图片格式转换为标准 Markdown 格式
+// ![[filename.png]] -> ![filename](/_local_fs/assets/filename.png)
+// ![[filename.png|alt]] -> ![alt](/_local_fs/assets/filename.png)
+func (p *Processor) ResolveWikiLinks(content string) string {
+	reWiki := regexp.MustCompile(`!\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]`)
+	return reWiki.ReplaceAllStringFunc(content, func(match string) string {
+		sub := reWiki.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		filename := strings.TrimSpace(sub[1])
+		alt := strings.TrimSpace(sub[2])
+		if alt == "" {
+			alt = filename
+		}
+
+		// 在 assets 目录中查找文件
+		absPath := filepath.Join(p.assetsDir, filepath.Base(filename))
+		if _, err := os.Stat(absPath); err != nil {
+			// 找不到文件，保留原文本（避免渲染出破损图片）
+			return match
+		}
+
+		relPath, err := filepath.Rel(p.projectRoot, absPath)
+		if err != nil {
+			return match
+		}
+		return fmt.Sprintf("![%s](/_local_fs/%s)", alt, filepath.ToSlash(relPath))
+	})
 }
 
 // ProcessImagePaths 处理图片路径

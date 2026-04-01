@@ -36,6 +36,12 @@ func (s *Scanner) Scan() ([]models.Article, error) {
 			return nil
 		}
 
+		// 过滤索引文件
+		base := filepath.Base(path)
+		if base == "_Index.md" || base == "_MOC.md" {
+			return nil
+		}
+
 		// 读取文件获取标题和 Slug
 		content, err := os.ReadFile(path)
 		if err != nil {
@@ -52,12 +58,19 @@ func (s *Scanner) Scan() ([]models.Article, error) {
 			slug = strings.TrimSuffix(filepath.Base(path), ext)
 		}
 
-		// 提取系列名（从目录结构）
+		// 提取路径信息
 		relPath, _ := filepath.Rel(s.postsDir, path)
 		parts := strings.Split(relPath, string(os.PathSeparator))
 		series := "其他"
 		if len(parts) > 1 {
 			series = parts[0]
+		}
+
+		// folderPath: 文件所在目录相对 postsDir 的路径，用正斜杠分隔
+		folderPath := ""
+		if len(parts) > 1 {
+			folderParts := parts[:len(parts)-1]
+			folderPath = strings.Join(folderParts, "/")
 		}
 
 		// 获取修改时间和创建时间
@@ -74,14 +87,15 @@ func (s *Scanner) Scan() ([]models.Article, error) {
 		id = strings.ReplaceAll(id, string(os.PathSeparator), "_")
 
 		articles = append(articles, models.Article{
-			ID:        id,
-			Title:     title,
-			Series:    series,
-			Path:      path,
-			RelPath:   relPath,
-			Slug:      slug,
-			UpdatedAt: updatedAt,
-			CreatedAt: createdAt,
+			ID:         id,
+			Title:      title,
+			Series:     series,
+			FolderPath: folderPath,
+			Path:       path,
+			RelPath:    relPath,
+			Slug:       slug,
+			UpdatedAt:  updatedAt,
+			CreatedAt:  createdAt,
 		})
 
 		return nil

@@ -60,6 +60,7 @@ func (h *Handler) HandleArticle(c *gin.Context) {
 	contentStr := h.Processor.RemoveFrontmatter(string(content))
 	markdownContent := h.Processor.RemoveTitle(contentStr)
 	markdownContent = h.Processor.ReplaceRelRef(markdownContent)
+	markdownContent = h.Processor.ResolveWikiLinks(markdownContent)
 
 	htmlContent, err := h.Processor.Convert(markdownContent)
 	if err != nil {
