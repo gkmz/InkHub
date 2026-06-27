@@ -1,0 +1,28 @@
+{
+  "platforms": [
+    {
+      "id": "wechat",
+      "name": "微信公众号",
+      "icon": "💬",
+      "color": "#07C160"
+    },
+    {
+      "id": "zhihu",
+      "name": "知乎",
+      "icon": "🎓",
+      "color": "#0084FF"
+    },
+    {
+      "id": "juejin",
+      "name": "掘金",
+      "icon": "💎",
+      "color": "#1E80FF"
+    },
+    {
+      "id": "csdn",
+      "name": "CSDN",
+      "icon": "📝",
+      "color": "#FC5531"
+    }
+  ]
+}

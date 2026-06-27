@@ -23,13 +23,19 @@ func Load() {
 	// 尝试加载 .env 文件，如果不存在也不报错（可能通过系统环境变量注入）
 	_ = godotenv.Load()
 
+	githubOwner := strings.TrimSpace(os.Getenv("GITHUB_OWNER"))
+	githubRepo := strings.TrimSpace(os.Getenv("GITHUB_REPO"))
+	if githubOwner != "" && githubRepo != "" && !strings.Contains(githubRepo, "/") {
+		githubRepo = githubOwner + "/" + githubRepo
+	}
+
 	AppConfig = &Config{
-		GitHubToken:      os.Getenv("GITHUB_TOKEN"),
-		GitHubRepo:       os.Getenv("GITHUB_REPO"),
-		GitHubBranch:     os.Getenv("GITHUB_BRANCH"),
-		GitHubPathPrefix: os.Getenv("GITHUB_PATH_PREFIX"),
-		PostsDir:         os.Getenv("POSTS_DIR"),
-		BaseURL:          os.Getenv("POSTS_BASE_URL"),
+		GitHubToken:      strings.TrimSpace(os.Getenv("GITHUB_TOKEN")),
+		GitHubRepo:       githubRepo,
+		GitHubBranch:     strings.TrimSpace(os.Getenv("GITHUB_BRANCH")),
+		GitHubPathPrefix: strings.TrimSpace(os.Getenv("GITHUB_PATH_PREFIX")),
+		PostsDir:         strings.TrimSpace(os.Getenv("POSTS_DIR")),
+		BaseURL:          strings.TrimSpace(os.Getenv("POSTS_BASE_URL")),
 	}
 
 	// 自动去除 .git 后缀

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hankmor/mymedia/tools/wechat-preview/models"
+	"github.com/gkmz/mymedia/tools/wechat-preview/models"
 )
 
 // StatusService 状态服务

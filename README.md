@@ -14,6 +14,7 @@
 - **本地预览**：直接解析本地 Markdown 图片路径（如 `./images/demo.png`），所见即所得
 - **一键发布**：点击“发布/复制”按钮时：
   - 自动扫描文中图片
+  - 自动将 Mermaid 代码块渲染为 SVG 图片（优先本地 `mmdc`，失败自动回退 `kroki.io`）
   - 自动上传至 GitHub CDN (需配置 token)
   - 自动替换为 CDN 链接
   - 自动生成最终 HTML 到剪贴板
@@ -45,6 +46,9 @@ go run main.go
 
 # 指定扫描目录
 go run main.go -dir ../../posts
+
+# 指定监听地址和端口（默认只监听 127.0.0.1:8080）
+go run main.go -host 127.0.0.1 -port 9090
 ```
 
 #### 方式 B：单文件运行 (推荐发布/分发)
@@ -66,11 +70,13 @@ go run main.go -dir ../../posts
     # 或者指定目录
     /path/to/preview -dir /path/to/my/posts
     
-    # 指定端口
-    /path/to/preview -port 9090
+    # 指定监听地址和端口
+    /path/to/preview -host 127.0.0.1 -port 9090
     ```
 
-访问 [http://localhost:8080](http://localhost:8080) 即可预览。
+访问 [http://127.0.0.1:8080](http://127.0.0.1:8080) 即可预览。
+
+默认只监听本机地址，避免局域网设备直接访问你的本地文章和发布接口。如确实需要局域网访问，可以显式传入 `-host 0.0.0.0`，但请只在可信网络中使用。
 
 ## ⚙️ 详细配置说明
 
@@ -109,10 +115,14 @@ GITHUB_PATH_PREFIX=posts
 | :--- | :--- | :--- | :--- |
 | `POSTS_DIR` | ❌ | 本地 Markdown 文章目录 (建议通过 CLI `-dir` 参数指定) | `../../posts` |
 | `GITHUB_TOKEN` | ✅ | 你的 GitHub Token (用于上传图片) | `ghp_xxxx` |
-| `GITHUB_OWNER` | ✅ | GitHub 用户名 | `hankmor` |
+| `GITHUB_OWNER` | ✅ | GitHub 用户名 | `gkmz` |
 | `GITHUB_REPO` | ✅ | 存放图片的仓库名 | `assets` |
 | `GITHUB_BRANCH` | ❌ | 分支名，默认为 `main` | `main` |
 | `GITHUB_PATH_PREFIX` | ❌ | **强烈推荐**。图片在仓库中的根目录前缀。<br>设置后，图片将上传到 `<prefix>/<relative-path-from-root>/...` | `posts` |
+
+### 本地文件访问边界
+
+工具只会暴露项目根目录下的文件和文章目录静态资源，不会映射系统根目录。文章引用项目根目录外的本地图片时，工具会尝试复制到 `assets/imported/` 后再预览；复制失败时会保留原路径，不会通过 Web 路由暴露任意系统文件。
 
 ---
 
@@ -165,8 +175,9 @@ markdown-preview/
 
 ## ⚠️ 注意事项
 
-- **图片上传**：依赖 GitHub API，请确保你的网络环境可以访问 GitHub。
+- **图片上传**：依赖 GitHub API，请确保你的网络环境可以访问 GitHub；请求有超时限制，网络异常会返回错误提示。
 - **Token 安全**：不要将 `.env` 文件提交到版本控制系统中。
+- **本地安全**：默认只监听 `127.0.0.1`。如使用 `-host 0.0.0.0` 暴露到局域网，请确认网络可信。
 
 ## License
 

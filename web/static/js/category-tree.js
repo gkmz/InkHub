@@ -9,6 +9,32 @@ class CategoryTree {
     this.isDetailPage = window.location.pathname.startsWith('/article/');
   }
 
+  // 转义动态文本，避免文件名中的特殊字符破坏导航树结构
+  escapeHTML(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // 导航栏必须展示真实文件名，不能使用文章内容里的标题
+  getArticleFileName(article) {
+    const relPath = article.relPath || article.path || article.title || '';
+    const parts = String(relPath).split(/[\\/]/);
+    return parts[parts.length - 1] || article.title || article.id;
+  }
+
+  // 文件名里的编号需要参与排序，便于按 01、02 这类前缀查找
+  compareArticleByFileName(a, b) {
+    return this.getArticleFileName(a).localeCompare(
+      this.getArticleFileName(b),
+      'zh-CN',
+      { numeric: true, sensitivity: 'base' }
+    );
+  }
+
   // 构建多层嵌套树
   // 每个节点: { name, children: {}, articles: [], count }
   buildTree() {
@@ -53,6 +79,7 @@ class CategoryTree {
 
   // 渲染树
   render(container) {
+    const rootArticles = this.renderArticles(this.tree, 0);
     const html = `
       <div class="category-tree">
         <div class="tree-node">
@@ -63,6 +90,7 @@ class CategoryTree {
             <span class="tree-count">${this.tree.count}</span>
           </div>
         </div>
+        ${rootArticles}
         ${this.renderChildren(this.tree, 0)}
       </div>
     `;
@@ -78,23 +106,37 @@ class CategoryTree {
       .join('');
   }
 
+  // 渲染当前目录下的文章文件
+  renderArticles(node, depth) {
+    const indent = depth * 14;
+    return [...node.articles]
+      .sort((a, b) => this.compareArticleByFileName(a, b))
+      .map(article => {
+        const platformIcons = this.getPlatformIcons(article.id);
+        const fileName = this.escapeHTML(this.getArticleFileName(article));
+        const relPath = this.escapeHTML(article.relPath || this.getArticleFileName(article));
+        const articleID = this.escapeHTML(article.id);
+        return `
+          <div class="tree-node-header tree-article" data-article="${articleID}"
+               style="padding-left: ${indent + 28}px" title="${relPath}">
+            <span class="tree-icon">📄</span>
+            <span class="tree-label">${fileName}</span>
+            ${platformIcons ? `<span class="tree-platforms">${platformIcons}</span>` : ''}
+          </div>
+        `;
+      }).join('');
+  }
+
   renderNode(node, depth) {
     const isExpanded = this.expandedNodes.has(node.path);
     const isSelected = this.selectedPath === node.path;
     const hasChildren = Object.keys(node.children).length > 0;
+    // 叶子目录（只有文章）也需要 toggle 控制
+    const hasArticles = node.articles.length > 0;
+    const isExpandable = hasChildren || hasArticles;
     const indent = depth * 14;
 
-    const articles = node.articles.map(article => {
-      const platformIcons = this.getPlatformIcons(article.id);
-      return `
-        <div class="tree-node-header tree-article" data-article="${article.id}"
-             style="padding-left: ${indent + 28}px">
-          <span class="tree-icon">📄</span>
-          <span class="tree-label">${article.title}</span>
-          ${platformIcons ? `<span class="tree-platforms">${platformIcons}</span>` : ''}
-        </div>
-      `;
-    }).join('');
+    const articles = this.renderArticles(node, depth);
 
     const children = hasChildren && isExpanded
       ? `<div class="tree-children expanded" data-children="${node.path}">
@@ -111,16 +153,16 @@ class CategoryTree {
         <div class="tree-node-header ${isSelected ? 'active' : ''}"
              data-path="${node.path}"
              style="padding-left: ${indent + 4}px">
-          ${hasChildren
+          ${isExpandable
             ? `<span class="tree-toggle ${isExpanded ? 'expanded' : 'collapsed'}"
                      data-toggle="${node.path}"></span>`
             : `<span class="tree-toggle-placeholder"></span>`
           }
-          <span class="tree-icon">${hasChildren ? '📁' : '📂'}</span>
+          <span class="tree-icon">${hasChildren ? (isExpanded ? '📂' : '📁') : '📂'}</span>
           <span class="tree-label">${node.name}</span>
           <span class="tree-count">${node.count}</span>
         </div>
-        ${isExpanded || !hasChildren ? articles : ''}
+        ${isExpanded ? articles : ''}
         ${children}
       </div>
     `;
@@ -161,7 +203,7 @@ class CategoryTree {
     container.querySelectorAll('[data-article]').forEach(header => {
       header.addEventListener('click', (e) => {
         const articleID = e.currentTarget.dataset.article;
-        window.location.href = `/article/${articleID}`;
+        window.location.href = `/article/${encodeURIComponent(articleID)}`;
       });
     });
   }
@@ -190,12 +232,13 @@ class CategoryTree {
   }
 
   saveState() {
-    localStorage.setItem('categoryTreeState', JSON.stringify([...this.expandedNodes]));
+    sessionStorage.setItem('categoryTreeState', JSON.stringify([...this.expandedNodes]));
   }
 
   loadState() {
+    localStorage.removeItem('categoryTreeState');
     try {
-      const saved = localStorage.getItem('categoryTreeState');
+      const saved = sessionStorage.getItem('categoryTreeState');
       return saved ? new Set(JSON.parse(saved)) : new Set();
     } catch {
       return new Set();
@@ -204,3 +247,77 @@ class CategoryTree {
 }
 
 window.CategoryTree = CategoryTree;
+
+// 初始化侧栏和正文之间的拖拽分割条，列表页和文章页共用同一套行为
+function initSidebarResize() {
+  const resizer = document.getElementById('sidebarResizer');
+  const root = document.documentElement;
+  const layout = document.querySelector('.layout-container');
+  if (!resizer || !layout) return;
+
+  const STORAGE_KEY = 'preview.sidebar.width';
+  const MIN_W = 220;
+  const MAX_W = 620;
+  const stackedQuery = window.matchMedia('(max-width: 1024px)');
+
+  // 根据当前视口限制最大宽度，避免拖到正文完全不可用
+  const clamp = (value) => {
+    const viewportMax = Math.max(MIN_W, Math.min(MAX_W, window.innerWidth - 360));
+    return Math.max(MIN_W, Math.min(viewportMax, value));
+  };
+
+  const applyWidth = (value) => {
+    const width = clamp(value);
+    root.style.setProperty('--sidebar-width', `${width}px`);
+    localStorage.setItem(STORAGE_KEY, String(width));
+  };
+
+  const saved = Number(localStorage.getItem(STORAGE_KEY));
+  if (!Number.isNaN(saved) && saved > 0 && !stackedQuery.matches) {
+    applyWidth(saved);
+  }
+
+  let dragging = false;
+
+  const stop = () => {
+    if (!dragging) return;
+    dragging = false;
+    layout.classList.remove('resizing');
+    document.body.classList.remove('sidebar-resizing');
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', stop);
+    window.removeEventListener('pointercancel', stop);
+  };
+
+  const onMove = (event) => {
+    if (!dragging || stackedQuery.matches) return;
+    const layoutLeft = layout.getBoundingClientRect().left;
+    applyWidth(event.clientX - layoutLeft);
+  };
+
+  resizer.addEventListener('pointerdown', (event) => {
+    if (stackedQuery.matches) return;
+    event.preventDefault();
+    dragging = true;
+    layout.classList.add('resizing');
+    document.body.classList.add('sidebar-resizing');
+    resizer.setPointerCapture?.(event.pointerId);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+  });
+
+  window.addEventListener('resize', () => {
+    if (stackedQuery.matches) {
+      stop();
+      return;
+    }
+
+    const current = Number.parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'), 10);
+    if (!Number.isNaN(current)) {
+      applyWidth(current);
+    }
+  });
+}
+
+window.initSidebarResize = initSidebarResize;

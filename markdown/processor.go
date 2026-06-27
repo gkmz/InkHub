@@ -1,15 +1,18 @@
 package markdown
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/alecthomas/chroma/v2/formatters/html"
-	"github.com/hankmor/mymedia/tools/wechat-preview/config"
-	"github.com/hankmor/mymedia/tools/wechat-preview/models"
+	"github.com/gkmz/mymedia/tools/wechat-preview/config"
+	"github.com/gkmz/mymedia/tools/wechat-preview/models"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting/v2"
 	"github.com/yuin/goldmark/extension"
@@ -187,6 +190,33 @@ func (p *Processor) findArticle(path string) *models.Article {
 	return nil
 }
 
+// ResolveAbstract 将 Obsidian [!abstract] callout 转换为带标记的 HTML 块
+// 复制时会被 JS 自动剔除，不影响页面展示
+func (p *Processor) ResolveAbstract(content string) string {
+	// 匹配整个 callout 块：
+	//   > [!abstract]
+	//   > 内容行1
+	//   > 内容行2（可选）
+	re := regexp.MustCompile(`(?m)^> \[!abstract\][^\n]*\n((?:> [^\n]*\n?)*)`)
+	return re.ReplaceAllStringFunc(content, func(match string) string {
+		// 提取每行 "> " 之后的内容
+		lines := strings.Split(strings.TrimRight(match, "\n"), "\n")
+		var bodyLines []string
+		for i, line := range lines {
+			if i == 0 {
+				// 第一行是 > [!abstract]，跳过
+				continue
+			}
+			bodyLines = append(bodyLines, strings.TrimPrefix(line, "> "))
+		}
+		body := strings.Join(bodyLines, "<br>")
+		return fmt.Sprintf(
+			`<div data-abstract class="obsidian-abstract"><strong>摘要</strong><br>%s</div>`+"\n\n",
+			body,
+		)
+	})
+}
+
 // ResolveWikiLinks 将 Obsidian WikiLink 图片格式转换为标准 Markdown 格式
 // ![[filename.png]] -> ![filename](/_local_fs/assets/filename.png)
 // ![[filename.png|alt]] -> ![alt](/_local_fs/assets/filename.png)
@@ -234,16 +264,26 @@ func (p *Processor) ProcessImagePaths(htmlContent, articleDir string) string {
 			return match
 		}
 
-		var absImgPath string
-		if filepath.IsAbs(src) {
-			absImgPath = src
-		} else {
-			absImgPath = filepath.Join(articleDir, src)
+		absImgPath := p.resolveLocalImagePath(src, articleDir)
+		if absImgPath == "" {
+			if assetTail := extractAssetsTail(src); assetTail != "" {
+				newSrc := fmt.Sprintf("/_project_assets/%s", assetTail)
+				return fmt.Sprintf("src=%s%s%s", quote, newSrc, quote)
+			}
+			return match
 		}
-		absImgPath = filepath.Clean(absImgPath)
 
 		if strings.Contains(absImgPath, "/content/static/") {
 			absImgPath = strings.Replace(absImgPath, "/content/static/", "/static/", 1)
+		}
+
+		// 若图片位于 projectRoot 之外，先复制到 projectRoot/assets/imported，确保可通过 /_local_fs 访问
+		if !strings.HasPrefix(absImgPath, p.projectRoot) {
+			if localized, err := p.materializeExternalImage(absImgPath); err == nil {
+				absImgPath = localized
+			} else {
+				return match
+			}
 		}
 
 		if strings.HasPrefix(absImgPath, p.projectRoot) {
@@ -255,8 +295,104 @@ func (p *Processor) ProcessImagePaths(htmlContent, articleDir string) string {
 			}
 		}
 
+		if assetTail := extractAssetsTail(src); assetTail != "" {
+			newSrc := fmt.Sprintf("/_project_assets/%s", assetTail)
+			return fmt.Sprintf("src=%s%s%s", quote, newSrc, quote)
+		}
+
 		return match
 	})
+}
+
+// resolveLocalImagePath 解析 Markdown 原生图片路径，支持路径过深时回退到 projectRoot/assets。
+func (p *Processor) resolveLocalImagePath(src, articleDir string) string {
+	var candidates []string
+
+	if filepath.IsAbs(src) {
+		candidates = append(candidates, filepath.Clean(src))
+	} else {
+		candidates = append(candidates, filepath.Clean(filepath.Join(articleDir, src)))
+	}
+
+	normalized := filepath.ToSlash(strings.TrimSpace(src))
+	normalized = strings.TrimPrefix(normalized, "./")
+	if idx := strings.Index(normalized, "assets/"); idx >= 0 {
+		assetTail := normalized[idx+len("assets/"):]
+		if assetTail != "" {
+			candidates = append(candidates, filepath.Join(p.projectRoot, "assets", filepath.FromSlash(assetTail)))
+		}
+	}
+
+	base := filepath.Base(normalized)
+	if base != "." && base != "/" && base != "" {
+		candidates = append(candidates, filepath.Join(p.projectRoot, "assets", base))
+	}
+
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			return c
+		}
+	}
+	return ""
+}
+
+func extractAssetsTail(src string) string {
+	normalized := filepath.ToSlash(strings.TrimSpace(src))
+	normalized = strings.TrimPrefix(normalized, "./")
+	idx := strings.Index(normalized, "assets/")
+	if idx < 0 {
+		return ""
+	}
+	tail := normalized[idx+len("assets/"):]
+	tail = strings.TrimPrefix(tail, "/")
+	return tail
+}
+
+// materializeExternalImage 将 projectRoot 外部图片复制到 projectRoot/assets/imported，供预览访问。
+func (p *Processor) materializeExternalImage(absPath string) (string, error) {
+	info, err := os.Stat(absPath)
+	if err != nil || info.IsDir() {
+		return "", fmt.Errorf("invalid external image path: %s", absPath)
+	}
+
+	file, err := os.Open(absPath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, file); err != nil {
+		return "", err
+	}
+	sum := hex.EncodeToString(h.Sum(nil))[:16]
+	ext := strings.ToLower(filepath.Ext(absPath))
+	if ext == "" {
+		ext = ".img"
+	}
+
+	targetDir := filepath.Join(p.projectRoot, "assets", "imported")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return "", err
+	}
+	targetPath := filepath.Join(targetDir, "external-"+sum+ext)
+	if _, err := os.Stat(targetPath); err == nil {
+		return targetPath, nil
+	}
+
+	if _, err := file.Seek(0, 0); err != nil {
+		return "", err
+	}
+	out, err := os.Create(targetPath)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, file); err != nil {
+		return "", err
+	}
+	return targetPath, nil
 }
 
 // OptimizeListItems 优化列表项样式

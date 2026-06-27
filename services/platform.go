@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/hankmor/mymedia/tools/wechat-preview/models"
+	"github.com/gkmz/mymedia/tools/wechat-preview/models"
 )
 
 // PlatformService 平台服务

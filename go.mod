@@ -1,4 +1,4 @@
-module github.com/hankmor/mymedia/tools/wechat-preview
+module github.com/gkmz/mymedia/tools/wechat-preview
 
 go 1.24
 

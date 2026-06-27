@@ -110,6 +110,18 @@ function processImages(content) {
         const body = document.createElement('div');
         body.className = 'mac-image-body';
 
+        const src = (img.getAttribute('src') || '').toLowerCase();
+        const alt = (img.getAttribute('alt') || '').toLowerCase();
+        const isMermaidDiagram =
+            src.includes('generated-mermaid/') ||
+            src.includes('mermaid-') ||
+            alt.includes('mermaid');
+        if (isMermaidDiagram) {
+            frame.classList.add('mermaid-diagram-frame');
+            body.classList.add('mermaid-diagram-body');
+            img.classList.add('mermaid-diagram-image');
+        }
+
         paragraph.parentNode.insertBefore(frame, paragraph);
         body.appendChild(img);
         frame.appendChild(toolbar);

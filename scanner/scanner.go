@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hankmor/mymedia/tools/wechat-preview/models"
+	"github.com/gkmz/mymedia/tools/wechat-preview/models"
 )
 
 // Scanner 文章扫描器

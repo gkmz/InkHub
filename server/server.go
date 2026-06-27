@@ -5,9 +5,10 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
-	"github.com/hankmor/mymedia/tools/wechat-preview/handlers"
+	"github.com/gkmz/mymedia/tools/wechat-preview/handlers"
 )
 
 // Server Web 服务器
@@ -39,6 +40,8 @@ func (s *Server) Setup(postsDir string) error {
 	// 挂载项目根目录
 	if s.handler.ProjectRoot != "" {
 		s.router.StaticFS("/_local_fs", gin.Dir(s.handler.ProjectRoot, false))
+		// 单独挂载项目 assets，避免与前端静态资源路由 /assets 冲突。
+		s.router.Static("/_project_assets", filepath.Join(s.handler.ProjectRoot, "assets"))
 	}
 
 	// 映射 posts 目录

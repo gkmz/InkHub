@@ -7,7 +7,8 @@ async function handlePublish() {
     const articleId = document.getElementById('articleId').value;
 
     try {
-        const response = await fetch(`/api/publish/${articleId}`, {
+        // 文章 ID 由文件路径生成，发布接口请求时必须编码特殊字符
+        const response = await fetch(`/api/publish/${encodeURIComponent(articleId)}`, {
             method: 'POST'
         });
         const data = await response.json();
@@ -43,6 +44,9 @@ async function handlePublish() {
 
           // 克隆内容并简化代码块
           const clonedContent = articleContent.cloneNode(true);
+
+          // 移除 abstract 块（仅预览可见，不随文章复制）
+          clonedContent.querySelectorAll("[data-abstract]").forEach((el) => el.remove());
 
           // 清除容器的背景色，确保只有代码块有背景
           clonedContent.style.background = "transparent";
@@ -177,6 +181,9 @@ async function copyArticle() {
       // 移除所有 .no-copy 元素
       clonedContent.querySelectorAll(".no-copy").forEach((el) => el.remove());
 
+      // 移除 abstract 块（仅预览可见，不随文章复制）
+      clonedContent.querySelectorAll("[data-abstract]").forEach((el) => el.remove());
+
       // 清除容器的背景色，确保只有代码块有背景
       clonedContent.style.background = "transparent";
       clonedContent.style.backgroundColor = "transparent";
@@ -241,229 +248,254 @@ async function copyArticle() {
         showNotification('❌ 复制失败\n\n' + err.message + '\n\n请尝试手动选中文章内容后按 Cmd+C 复制。', 'error');
     }
 }
-// 内联样式函数：将 CSS 样式应用到元素的 style 属性
+// 内联样式函数：从页面实际计算样式提取，保证与 wechat.css 一致
 function inlineStyles(container) {
+    // 用 getComputedStyle 读取页面上对应元素的实际渲染值
+    // 取样元素：从真实 DOM 的 articleContent 中找，不从 clone 中找
+    const live = document.getElementById('articleContent');
+
+    function computedOf(selector) {
+        if (!live) return {};
+        const el = live.querySelector(selector);
+        return el ? window.getComputedStyle(el) : {};
+    }
+
+    // 容器
     container.style.fontFamily = '"Source Sans 3", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif';
-    container.style.fontSize = '15px';
-    container.style.lineHeight = '1.6';
-    container.style.color = '#34495e';
-    container.style.letterSpacing = '0';
-    container.style.wordSpacing = '0.05rem';
+    container.style.fontSize = '16px';
+    container.style.lineHeight = '1.65';
+    container.style.color = '#2e3f4f';
     container.style.background = 'transparent';
 
-    container.querySelectorAll('h1').forEach(el => {
-        el.style.fontSize = '2rem';
-        el.style.fontWeight = '600';
-        el.style.margin = '0 0 1rem';
-        el.style.color = '#2c3e50';
-        el.style.lineHeight = '1.3';
+    // 标题 — 直接读计算值，保证与 CSS 一致
+    const headingSpecs = [
+        { sel: 'h1', fallback: { fontSize:'1.9rem', fontWeight:'700', margin:'0 0 1rem', color:'#1a2733', lineHeight:'1.28', letterSpacing:'-0.02em' } },
+        { sel: 'h2', fallback: { fontSize:'1.45rem', fontWeight:'700', margin:'2.8em 0 0.85rem', color:'#1a2733', lineHeight:'1.32', letterSpacing:'-0.01em' } },
+        { sel: 'h3', fallback: { fontSize:'1.2rem',  fontWeight:'700', margin:'2.2em 0 0.65rem', color:'#253545', lineHeight:'1.36' } },
+        { sel: 'h4', fallback: { fontSize:'1.05rem', fontWeight:'700', margin:'1.8em 0 0.5rem',  color:'#3a4f5e', lineHeight:'1.38' } },
+        { sel: 'h5', fallback: { fontSize:'1rem',    fontWeight:'600', margin:'1.6em 0 0.4rem',  color:'#2e3f4f' } },
+        { sel: 'h6', fallback: { fontSize:'0.95rem', fontWeight:'600', margin:'1.4em 0 0.4rem',  color:'#778899' } },
+    ];
+
+    headingSpecs.forEach(({ sel, fallback }) => {
+        const cs = computedOf(sel);
+        container.querySelectorAll(sel).forEach(el => {
+            el.style.fontSize    = cs.fontSize    || fallback.fontSize;
+            el.style.fontWeight  = cs.fontWeight  || fallback.fontWeight;
+            el.style.color       = cs.color       || fallback.color;
+            el.style.lineHeight  = cs.lineHeight  || fallback.lineHeight;
+            el.style.margin      = fallback.margin; // margin 用 computed 会得到 px，不如直接用预设
+            if (fallback.letterSpacing) el.style.letterSpacing = fallback.letterSpacing;
+        });
     });
 
+    // h2 绿色左边框（CSS 里用 border-left + padding-left 实现）
     container.querySelectorAll('h2').forEach(el => {
-        el.style.fontSize = '1.75rem';
-        el.style.fontWeight = '600';
-        el.style.margin = '2.8em 0 0.9rem';
-        el.style.color = '#2c3e50';
-        el.style.lineHeight = '1.32';
+        el.style.borderLeft  = '4px solid #42b883';
+        el.style.paddingLeft = '14px';
     });
 
+    // h3 绿色竖线（::before 伪元素无法复制，改用 border-left + padding-left 内联实现）
     container.querySelectorAll('h3').forEach(el => {
-        el.style.fontSize = '1.5rem';
-        el.style.fontWeight = '600';
-        el.style.margin = '2.2em 0 0.7rem';
-        el.style.color = '#2c3e50';
-        el.style.lineHeight = '1.34';
+        el.style.borderLeft  = '3px solid rgba(66,184,131,0.65)';
+        el.style.paddingLeft = '10px';
     });
 
-    container.querySelectorAll('h4').forEach(el => {
-        el.style.fontSize = '1.25rem';
-        el.style.fontWeight = '600';
-        el.style.margin = '1.8em 0 0.55rem';
-        el.style.color = '#2c3e50';
-        el.style.lineHeight = '1.35';
-    });
-
-    container.querySelectorAll('h5').forEach(el => {
-        el.style.fontSize = '1rem';
-        el.style.fontWeight = '600';
-        el.style.margin = '24px 0 0.4rem';
-        el.style.color = '#2c3e50';
-    });
-
-    container.querySelectorAll('h6').forEach(el => {
-        el.style.fontSize = '1rem';
-        el.style.fontWeight = '600';
-        el.style.margin = '24px 0 0.4rem';
-        el.style.color = '#777';
-    });
-
+    // 正文
     container.querySelectorAll('p').forEach(el => {
-        el.style.margin = '1.35em 0';
-        el.style.lineHeight = '1.85';
-        el.style.wordBreak = 'break-word';
+        el.style.margin    = '1.3em 0';
+        el.style.lineHeight = '1.88';
+        el.style.wordBreak  = 'break-word';
+        el.style.wordSpacing = '0.04rem';
     });
 
     container.querySelectorAll('strong').forEach(el => {
-        el.style.fontWeight = '600';
-        el.style.color = '#2c3e50';
+        el.style.fontWeight = '700';
+        el.style.color = '#1a2733';
     });
 
     container.querySelectorAll('em').forEach(el => {
-        el.style.color = '#7f8c8d';
+        el.style.color = '#6a7d8a';
+        el.style.fontStyle = 'italic';
     });
 
     container.querySelectorAll('a').forEach(el => {
         el.style.color = '#42b883';
         el.style.fontWeight = '600';
         el.style.textDecoration = 'none';
+        el.style.borderBottom = '1px solid rgba(66,184,131,0.3)';
     });
 
     container.querySelectorAll('sup.reference-index').forEach(el => {
-        el.style.marginLeft = '3px';
+        el.style.marginLeft = '2px';
         el.style.color = '#42b883';
         el.style.fontSize = '0.72em';
         el.style.fontWeight = '700';
         el.style.lineHeight = '0';
     });
 
+    // 列表
     container.querySelectorAll('ul, ol').forEach(el => {
-        el.style.paddingLeft = '1.5rem';
-        el.style.lineHeight = '1.85';
-        el.style.margin = '1.1em 0 1.3em';
+        el.style.paddingLeft = '1.6rem';
+        el.style.lineHeight  = '1.88';
+        el.style.margin      = '1em 0 1.2em';
     });
 
     container.querySelectorAll('li').forEach(el => {
-        el.style.margin = '0.6rem 0';
+        el.style.margin = '0.5rem 0';
     });
 
+    // Blockquote
     container.querySelectorAll('blockquote').forEach(el => {
-        el.style.borderLeft = '4px solid #42b883';
-        el.style.padding = '0.55em 0 0.55em 18px';
-        el.style.margin = '1.9em 0';
-        el.style.color = '#858585';
-        el.style.background = 'rgba(66, 184, 131, 0.04)';
+        el.style.borderLeft   = '3px solid #42b883';
+        el.style.padding      = '0.7em 0 0.7em 20px';
+        el.style.margin       = '1.8em 0';
+        el.style.color        = '#5c7080';
+        el.style.background   = 'rgba(66,184,131,0.055)';
         el.style.borderRadius = '0 10px 10px 0';
+        el.style.fontStyle    = 'italic';
     });
 
     container.querySelectorAll('blockquote p').forEach(el => {
-        el.style.margin = '0.55em 0';
-        el.style.fontWeight = '600';
+        el.style.margin = '0.4em 0';
+        el.style.fontWeight = '400';
     });
 
+    // 行内代码
     container.querySelectorAll('code:not(pre code)').forEach(el => {
-        el.style.fontFamily = '"Roboto Mono", "SFMono-Regular", Monaco, Consolas, monospace';
-        el.style.fontSize = '0.8rem';
-        el.style.background = '#ffffff';
-        el.style.border = '1px solid #f4bfd7';
-        el.style.padding = '3px 6px';
-        el.style.borderRadius = '6px';
-        el.style.color = '#d63384';
-        el.style.whiteSpace = 'pre-wrap';
-        el.style.wordBreak = 'break-word';
+        el.style.fontFamily   = '"Roboto Mono", "SFMono-Regular", Monaco, Consolas, monospace';
+        el.style.fontSize     = '0.82rem';
+        el.style.background   = '#f0f4f8';
+        el.style.border       = 'none';
+        el.style.padding      = '2px 7px';
+        el.style.borderRadius = '5px';
+        el.style.color        = '#c7522a';
+        el.style.fontWeight   = '500';
+        el.style.whiteSpace   = 'pre-wrap';
+        el.style.wordBreak    = 'break-word';
     });
 
+    // Mac 图片框
     container.querySelectorAll('.mac-image-frame').forEach(el => {
-        el.style.margin = '1.8em 0 2em';
-        el.style.background = '#f5f7fa';
-        el.style.border = '1px solid #e8edf3';
-        el.style.borderRadius = '16px';
-        el.style.overflow = 'hidden';
-        el.style.boxShadow = '0 18px 40px rgba(31, 45, 61, 0.08)';
+        el.style.display      = 'table';
+        el.style.margin       = '1.8em auto 2em';
+        el.style.background   = '#f0f4f8';
+        el.style.border       = '1px solid #dde6ee';
+        el.style.borderRadius = '12px';
+        el.style.overflow     = 'hidden';
+        el.style.boxShadow    = '0 8px 28px rgba(31,45,61,0.10)';
+        el.style.maxWidth     = '100%';
     });
 
     container.querySelectorAll('.mac-image-toolbar').forEach(el => {
-        el.style.display = 'flex';
-        el.style.alignItems = 'center';
-        el.style.gap = '8px';
-        el.style.padding = '12px 14px';
-        el.style.background = 'linear-gradient(180deg, #fdfefe 0%, #eef3f7 100%)';
-        el.style.borderBottom = '1px solid #e6edf2';
+        el.style.display       = 'flex';
+        el.style.alignItems    = 'center';
+        el.style.gap           = '7px';
+        el.style.padding       = '9px 12px';
+        el.style.background    = 'linear-gradient(180deg, #fdfefe 0%, #eaeff4 100%)';
+        el.style.borderBottom  = '1px solid #dde6ee';
     });
 
     container.querySelectorAll('.mac-image-dot').forEach(el => {
-        el.style.width = '10px';
-        el.style.height = '10px';
+        el.style.width        = '10px';
+        el.style.height       = '10px';
         el.style.borderRadius = '999px';
-        el.style.display = 'inline-block';
+        el.style.display      = 'inline-block';
+        el.style.flexShrink   = '0';
     });
 
-    container.querySelectorAll('.mac-image-dot.dot-red').forEach(el => {
-        el.style.background = '#ff5f57';
-    });
-
-    container.querySelectorAll('.mac-image-dot.dot-yellow').forEach(el => {
-        el.style.background = '#febc2e';
-    });
-
-    container.querySelectorAll('.mac-image-dot.dot-green').forEach(el => {
-        el.style.background = '#28c840';
-    });
+    container.querySelectorAll('.mac-image-dot.dot-red').forEach(el => { el.style.background = '#ff5f57'; });
+    container.querySelectorAll('.mac-image-dot.dot-yellow').forEach(el => { el.style.background = '#febc2e'; });
+    container.querySelectorAll('.mac-image-dot.dot-green').forEach(el => { el.style.background = '#28c840'; });
 
     container.querySelectorAll('.mac-image-body').forEach(el => {
-        el.style.padding = '12px';
+        el.style.padding    = '0';
         el.style.background = '#fff';
+        el.style.display    = 'block';
     });
 
-    container.querySelectorAll('.mac-image-body img, img').forEach(el => {
+    container.querySelectorAll('.mac-image-body img').forEach(el => {
+        el.style.maxWidth      = '100%';
+        el.style.height        = 'auto';
+        el.style.display       = 'block';
+        el.style.margin        = '0';
+        el.style.verticalAlign = 'bottom';
+    });
+
+    container.querySelectorAll('img:not(.mac-image-body img)').forEach(el => {
         el.style.maxWidth = '100%';
-        el.style.height = 'auto';
-        el.style.display = 'block';
-        el.style.margin = '0 auto';
+        el.style.height   = 'auto';
+        el.style.display  = 'block';
+        el.style.margin   = '1.8em auto';
     });
 
+    // 表格
     container.querySelectorAll('table').forEach(el => {
-        el.style.width = '100%';
-        el.style.display = 'block';
-        el.style.overflow = 'auto';
-        el.style.borderCollapse = 'collapse';
-        el.style.borderSpacing = '0';
-        el.style.marginBottom = '1rem';
+        el.style.width           = '100%';
+        el.style.display         = 'block';
+        el.style.overflow        = 'auto';
+        el.style.borderCollapse  = 'collapse';
+        el.style.borderSpacing   = '0';
+        el.style.marginBottom    = '1.4rem';
+        el.style.fontSize        = '0.93em';
+        el.style.lineHeight      = '1.65';
     });
 
-    container.querySelectorAll('tr').forEach((el, index) => {
-        el.style.borderTop = '1px solid #ccc';
-        if (index % 2 === 1) {
-            el.style.background = '#f8f8f8';
-        }
+    container.querySelectorAll('tr').forEach((el, i) => {
+        el.style.borderTop = '1px solid #e4ecf2';
+        if (i % 2 === 1) el.style.background = '#f7f9fb';
     });
 
     container.querySelectorAll('th, td').forEach(el => {
-        el.style.border = '1px solid #ddd';
-        el.style.padding = '6px 13px';
+        el.style.border  = '1px solid #dde6ee';
+        el.style.padding = '9px 16px';
         el.style.textAlign = 'left';
+        el.style.verticalAlign = 'top';
     });
 
     container.querySelectorAll('th').forEach(el => {
         el.style.fontWeight = '700';
-        el.style.color = '#2c3e50';
+        el.style.background = '#eef3f8';
+        el.style.color      = '#1a2733';
+        el.style.fontSize   = '0.9em';
     });
 
+    // 引用区
     container.querySelectorAll('.references-section').forEach(el => {
-        el.style.marginTop = '2.4em';
-        el.style.padding = '10px 14px';
-        el.style.background = 'rgba(66, 184, 131, 0.045)';
-        el.style.borderLeft = '3px solid #42b883';
-        el.style.borderRadius = '8px';
+        el.style.marginTop    = '2.4em';
+        el.style.padding      = '12px 16px';
+        el.style.background   = 'rgba(66,184,131,0.05)';
+        el.style.borderLeft   = '3px solid #42b883';
+        el.style.borderRadius = '0 8px 8px 0';
     });
 
     container.querySelectorAll('.references-section h3').forEach(el => {
-        el.style.margin = '0 0 10px';
-        el.style.fontSize = '0.95rem';
+        el.style.margin     = '0 0 10px';
+        el.style.fontSize   = '0.95rem';
         el.style.fontWeight = '600';
-        el.style.color = '#2c3e50';
+        el.style.color      = '#1a2733';
+        el.style.borderLeft = 'none';
+        el.style.paddingLeft = '0';
     });
 
     container.querySelectorAll('.references-section ul').forEach(el => {
-        el.style.margin = '0';
+        el.style.margin      = '0';
         el.style.paddingLeft = '0';
-        el.style.listStyle = 'none';
+        el.style.listStyle   = 'none';
     });
 
     container.querySelectorAll('.references-section li').forEach(el => {
-        el.style.display = 'block';
-        el.style.margin = '0.35rem 0';
-        el.style.color = '#5c6975';
+        el.style.display    = 'block';
+        el.style.margin     = '0.35rem 0';
+        el.style.color      = '#5c6975';
         el.style.lineHeight = '1.7';
+        el.style.wordBreak  = 'break-word';
+    });
+
+    container.querySelectorAll('hr').forEach(el => {
+        el.style.border       = 'none';
+        el.style.borderBottom = '1px solid #e4ecf2';
+        el.style.margin       = '2.2em 0';
     });
 }
 // 清理多余的空白字符
@@ -522,8 +554,10 @@ function cleanupWhitespace(container) {
 // 简化代码块：重构为简单结构，使用 &nbsp; 确保空格保留
 // 简化代码块：确保空格保留，适用于内联样式
 function simplifyCodeBlocks(container) {
-  // 清除所有非代码块元素的背景色
-  const allElements = container.querySelectorAll("*:not(pre):not(code)");
+  // 清除所有非代码块、非图片框元素的背景色
+  const allElements = container.querySelectorAll(
+    "*:not(pre):not(code):not(.mac-image-frame):not(.mac-image-toolbar):not(.mac-image-body):not(.mac-image-dot)"
+  );
   allElements.forEach((el) => {
     el.style.background = "transparent";
     el.style.backgroundColor = "transparent";
@@ -585,44 +619,45 @@ function replaceSpacesInCode(element) {
   });
 }
 
-// 获取内联样式（从 wechat.css 提取核心样式）
+// 获取内联样式（与 inlineStyles() 保持一致，用于 execCommand 降级路径）
 function getInlineStyles() {
     return `
         body {
             font-family: "Source Sans 3", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-            font-size: 15px;
-            line-height: 1.6;
-            color: #34495e;
-            max-width: 960px;
-            margin: 0 auto;
-            padding: 0 15px 40px;
+            font-size: 16px;
+            line-height: 1.65;
+            color: #2e3f4f;
         }
-        h1 { font-size: 2rem; font-weight: 600; margin: 0 0 1rem; color: #2c3e50; line-height: 1.3; }
-        h2 { font-size: 1.75rem; font-weight: 600; margin: 2.8em 0 0.9rem; color: #2c3e50; line-height: 1.32; }
-        h3 { font-size: 1.5rem; font-weight: 600; margin: 2.2em 0 0.7rem; color: #2c3e50; line-height: 1.34; }
-        h4 { font-size: 1.25rem; font-weight: 600; margin: 1.8em 0 0.55rem; color: #2c3e50; line-height: 1.35; }
-        p { margin: 1.35em 0; line-height: 1.85; word-break: break-word; }
-        ul, ol { padding-left: 1.5rem; line-height: 1.85; margin: 1.1em 0 1.3em; }
-        li { margin: 0.6rem 0; }
-        strong { font-weight: 600; color: #2c3e50; }
-        em { color: #7f8c8d; }
-        a { color: #42b883; text-decoration: none; font-weight: 600; }
+        h1 { font-size: 1.9rem; font-weight: 700; margin: 0 0 1rem; color: #1a2733; line-height: 1.28; letter-spacing: -0.02em; }
+        h2 { font-size: 1.45rem; font-weight: 700; margin: 2.8em 0 0.85rem; color: #1a2733; line-height: 1.32; letter-spacing: -0.01em; border-left: 4px solid #42b883; padding-left: 14px; }
+        h3 { font-size: 1.2rem; font-weight: 700; margin: 2.2em 0 0.65rem; color: #253545; line-height: 1.36; border-left: 3px solid rgba(66,184,131,0.65); padding-left: 10px; }
+        h4 { font-size: 1.05rem; font-weight: 700; margin: 1.8em 0 0.5rem; color: #3a4f5e; line-height: 1.38; }
+        h5 { font-size: 1rem; font-weight: 600; margin: 1.6em 0 0.4rem; color: #2e3f4f; }
+        h6 { font-size: 0.95rem; font-weight: 600; margin: 1.4em 0 0.4rem; color: #778899; }
+        p { margin: 1.3em 0; line-height: 1.88; word-break: break-word; word-spacing: 0.04rem; }
+        ul, ol { padding-left: 1.6rem; line-height: 1.88; margin: 1em 0 1.2em; }
+        li { margin: 0.5rem 0; }
+        strong { font-weight: 700; color: #1a2733; }
+        em { color: #6a7d8a; font-style: italic; }
+        a { color: #42b883; text-decoration: none; font-weight: 600; border-bottom: 1px solid rgba(66,184,131,0.3); }
         blockquote {
-            border-left: 4px solid #42b883;
-            color: #858585;
-            margin: 1.9em 0;
-            padding: 0.55em 0 0.55em 18px;
-            background: rgba(66, 184, 131, 0.04);
+            border-left: 3px solid #42b883;
+            color: #5c7080;
+            margin: 1.8em 0;
+            padding: 0.7em 0 0.7em 20px;
+            background: rgba(66,184,131,0.055);
             border-radius: 0 10px 10px 0;
+            font-style: italic;
         }
+        blockquote p { margin: 0.4em 0; font-weight: 400; }
         code {
-            font-family: "Roboto Mono", Monaco, Consolas, monospace;
-            font-size: 0.8rem;
-            background: #ffffff;
-            border: 1px solid #f4bfd7;
-            padding: 3px 6px;
-            border-radius: 6px;
-            color: #d63384;
+            font-family: "Roboto Mono", "SFMono-Regular", Monaco, Consolas, monospace;
+            font-size: 0.82rem;
+            background: #f0f4f8;
+            padding: 2px 7px;
+            border-radius: 5px;
+            color: #c7522a;
+            font-weight: 500;
             white-space: pre-wrap;
             word-break: break-word;
         }
@@ -630,104 +665,68 @@ function getInlineStyles() {
             border-radius: 12px;
             padding: 0 1.1rem;
             overflow-x: auto;
-            margin: 1.5em 0;
-            line-height: 1.7;
+            margin: 1.6em 0;
+            line-height: 1.72;
             white-space: pre !important;
             word-wrap: normal;
             background: #1a1b26;
-            border: 1px solid #2f3549;
+            border: 1px solid #2a2d3e;
         }
         pre code {
             background: transparent;
             border: none;
-            padding: 2.3em 6px 1.1em;
+            padding: 2.2em 6px 1.1em;
             color: #c0caf5;
             font-family: inherit;
+            font-size: 0.82rem;
             white-space: pre !important;
             word-break: normal;
             display: block;
+            font-weight: 400;
         }
-        pre *, pre code * {
-            white-space: pre !important;
-        }
-        img {
-            max-width: 100%;
-            height: auto;
-            display: block;
-            margin: 0 auto;
-        }
+        pre *, pre code * { white-space: pre !important; }
+        img { max-width: 100%; height: auto; display: block; margin: 1.8em auto; }
         .mac-image-frame {
-            margin: 1.8em 0 2em;
-            background: #f5f7fa;
-            border: 1px solid #e8edf3;
-            border-radius: 16px;
+            display: table;
+            margin: 1.8em auto 2em;
+            background: #f0f4f8;
+            border: 1px solid #dde6ee;
+            border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 18px 40px rgba(31, 45, 61, 0.08);
+            box-shadow: 0 8px 28px rgba(31,45,61,0.10);
+            max-width: 100%;
         }
         .mac-image-toolbar {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 12px 14px;
-            background: linear-gradient(180deg, #fdfefe 0%, #eef3f7 100%);
-            border-bottom: 1px solid #e6edf2;
+            gap: 7px;
+            padding: 9px 12px;
+            background: linear-gradient(180deg, #fdfefe 0%, #eaeff4 100%);
+            border-bottom: 1px solid #dde6ee;
         }
-        .mac-image-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 999px;
-            display: inline-block;
-        }
+        .mac-image-dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
         .dot-red { background: #ff5f57; }
         .dot-yellow { background: #febc2e; }
         .dot-green { background: #28c840; }
-        .mac-image-body {
-            padding: 12px;
-            background: #fff;
-        }
-        table {
-            width: 100%;
-            display: block;
-            overflow: auto;
-            border-collapse: collapse;
-            border-spacing: 0;
-            margin-bottom: 1rem;
-        }
-        tr { border-top: 1px solid #ccc; }
-        tr:nth-child(2n) { background: #f8f8f8; }
-        th, td { border: 1px solid #ddd; padding: 6px 13px; text-align: left; }
-        th { font-weight: 700; color: #2c3e50; }
+        .mac-image-body { padding: 0; background: #fff; display: block; }
+        .mac-image-body img { display: block; max-width: 100%; height: auto; margin: 0; vertical-align: bottom; }
+        table { width: 100%; display: block; overflow: auto; border-collapse: collapse; border-spacing: 0; margin-bottom: 1.4rem; font-size: 0.93em; line-height: 1.65; }
+        tr { border-top: 1px solid #e4ecf2; }
+        tr:nth-child(2n) { background: #f7f9fb; }
+        th, td { border: 1px solid #dde6ee; padding: 9px 16px; text-align: left; vertical-align: top; }
+        th { font-weight: 700; background: #eef3f8; color: #1a2733; font-size: 0.9em; }
+        hr { border: none; border-bottom: 1px solid #e4ecf2; margin: 2.2em 0; }
         .references-section {
             margin-top: 2.4em;
-            padding: 10px 14px;
-            background: rgba(66, 184, 131, 0.045);
+            padding: 12px 16px;
+            background: rgba(66,184,131,0.05);
             border-left: 3px solid #42b883;
-            border-radius: 8px;
+            border-radius: 0 8px 8px 0;
         }
-        .references-section h3 {
-            margin: 0 0 10px;
-            font-size: 0.95rem;
-            font-weight: 600;
-            color: #2c3e50;
-        }
-        .references-section ul {
-            margin: 0;
-            padding-left: 0;
-            list-style: none;
-        }
-        .references-section li {
-            display: block;
-            margin: 0.35rem 0;
-            color: #5c6975;
-            line-height: 1.7;
-        }
-        sup.reference-index {
-            margin-left: 3px;
-            color: #42b883;
-            font-size: 0.72em;
-            font-weight: 700;
-            line-height: 0;
-        }
+        .references-section h3 { margin: 0 0 10px; font-size: 0.95rem; font-weight: 600; color: #1a2733; border-left: none; padding-left: 0; }
+        .references-section ul { margin: 0; padding-left: 0; list-style: none; }
+        .references-section li { display: block; margin: 0.35rem 0; color: #5c6975; line-height: 1.7; word-break: break-word; }
+        sup.reference-index { margin-left: 2px; color: #42b883; font-size: 0.72em; font-weight: 700; line-height: 0; }
     `;
 }
 

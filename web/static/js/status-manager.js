@@ -5,6 +5,21 @@ class StatusManager {
     this.statusData = {};
   }
 
+  // 文章 ID 来自文件路径，拼接 URL 时必须逐段编码
+  encodeSegment(value) {
+    return encodeURIComponent(String(value));
+  }
+
+  // 转义动态属性值，避免特殊字符破坏按钮数据
+  escapeHTML(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   // 加载平台配置
   async loadPlatforms() {
     try {
@@ -34,7 +49,7 @@ class StatusManager {
   // 加载单篇文章状态
   async loadStatus(articleID) {
     try {
-      const response = await fetch(`/api/status/${articleID}`);
+      const response = await fetch(`/api/status/${this.encodeSegment(articleID)}`);
       const data = await response.json();
       this.statusData[articleID] = data;
       return data;
@@ -47,7 +62,7 @@ class StatusManager {
   // 标记为已发布
   async markPublished(articleID, platformID, url = '') {
     try {
-      const response = await fetch(`/api/status/${articleID}/${platformID}`, {
+      const response = await fetch(`/api/status/${this.encodeSegment(articleID)}/${this.encodeSegment(platformID)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -68,7 +83,7 @@ class StatusManager {
   // 取消发布标记
   async unmarkPublished(articleID, platformID) {
     try {
-      const response = await fetch(`/api/status/${articleID}/${platformID}`, {
+      const response = await fetch(`/api/status/${this.encodeSegment(articleID)}/${this.encodeSegment(platformID)}`, {
         method: 'DELETE',
       });
       const data = await response.json();
@@ -136,6 +151,7 @@ class StatusManager {
   // 渲染状态管理面板（用于详情页）
   renderStatusPanel(articleID, container) {
     const status = this.getArticleStatus(articleID);
+    const articleAttr = this.escapeHTML(articleID);
 
     const html = `
       <div class="status-panel">
@@ -157,15 +173,15 @@ class StatusManager {
                   </span>
                   <span class="status-badge published">✓ 已发布</span>
                   <button class="btn-mark unpublish" 
-                          data-article="${articleID}" 
-                          data-platform="${platform.id}">
+                          data-article="${articleAttr}" 
+                          data-platform="${this.escapeHTML(platform.id)}">
                     取消标记
                   </button>
                 ` : `
                   <span class="status-badge unpublished">未发布</span>
                   <button class="btn-mark publish" 
-                          data-article="${articleID}" 
-                          data-platform="${platform.id}">
+                          data-article="${articleAttr}" 
+                          data-platform="${this.escapeHTML(platform.id)}">
                     标记为已发布
                   </button>
                 `}

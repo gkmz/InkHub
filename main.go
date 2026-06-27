@@ -7,22 +7,22 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/hankmor/mymedia/tools/wechat-preview/config"
-	"github.com/hankmor/mymedia/tools/wechat-preview/handlers"
-	"github.com/hankmor/mymedia/tools/wechat-preview/markdown"
-	"github.com/hankmor/mymedia/tools/wechat-preview/scanner"
-	"github.com/hankmor/mymedia/tools/wechat-preview/server"
-	"github.com/hankmor/mymedia/tools/wechat-preview/services"
-	"github.com/hankmor/mymedia/tools/wechat-preview/utils"
+	"github.com/gkmz/mymedia/tools/wechat-preview/config"
+	"github.com/gkmz/mymedia/tools/wechat-preview/handlers"
+	"github.com/gkmz/mymedia/tools/wechat-preview/markdown"
+	"github.com/gkmz/mymedia/tools/wechat-preview/scanner"
+	"github.com/gkmz/mymedia/tools/wechat-preview/server"
+	"github.com/gkmz/mymedia/tools/wechat-preview/services"
+	"github.com/gkmz/mymedia/tools/wechat-preview/utils"
 )
 
 //go:embed web
 var embedFS embed.FS
 
 func main() {
-	fmt.Println("Just bat!")
 	// 解析命令行参数
 	dirFlag := flag.String("dir", "", "Markdown articles directory (default: current directory)")
+	hostFlag := flag.String("host", "127.0.0.1", "Server host (default: 127.0.0.1)")
 	portFlag := flag.String("port", "8080", "Server port")
 	flag.Parse()
 
@@ -80,8 +80,8 @@ func main() {
 	}
 
 	// 启动服务
-	addr := ":" + *portFlag
-	fmt.Printf("Starting server on http://localhost%s\n", addr)
+	addr := *hostFlag + ":" + *portFlag
+	fmt.Printf("Starting server on http://%s\n", addr)
 	fmt.Printf("Press Ctrl+C to stop.\n")
 	if err := srv.Run(addr); err != nil {
 		fmt.Printf("服务器启动失败: %v\n", err)
@@ -116,5 +116,6 @@ func printStartupInfo(articleCount, platformCount int, postsDir string) {
 	fmt.Printf("   Articles: %d\n", articleCount)
 	fmt.Printf("   Platforms: %d\n", platformCount)
 	fmt.Printf("   Scanning: %s\n", postsDir)
-	fmt.Println("========================================\n")
+	fmt.Println("========================================")
+	fmt.Println()
 }

@@ -23,38 +23,48 @@
 
         .header {
             background: rgba(255, 255, 255, 0.92);
-            backdrop-filter: blur(12px);
-            padding: 20px 24px;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.07);
-            margin-bottom: 0;
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            padding: 16px 28px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-logo {
+            font-size: 20px;
+            line-height: 1;
         }
 
         .header h1 {
-            text-align: center;
-            font-size: 30px;
-            color: #2c3e50;
-            margin-bottom: 4px;
-            font-weight: 600;
+            font-size: 17px;
+            color: #1a2733;
+            font-weight: 700;
+            letter-spacing: -0.01em;
         }
 
         .header .subtitle {
-            text-align: center;
-            color: #7f8c8d;
-            font-size: 14px;
+            color: #9aabb5;
+            font-size: 12.5px;
+            margin-left: auto;
+            letter-spacing: 0.01em;
         }
     </style>
 </head>
 
 <body>
     <div class="header">
-        <h1>📝 文章列表</h1>
-        <p class="subtitle">点击文章查看微信公众号预览效果</p>
+        <span class="header-logo">✦</span>
+        <h1>文章列表</h1>
+        <span class="subtitle">微信公众号预览工具</span>
     </div>
 
     <div class="layout-container">
         <div class="sidebar">
             <div id="category-tree-container"></div>
         </div>
+        <div class="sidebar-resizer" id="sidebarResizer" aria-label="调整导航宽度" role="separator"></div>
 
         <div class="main-content">
             <div id="filter-bar-container"></div>
@@ -69,6 +79,16 @@
         let articles = [];
         let categoryTree;
         let articleFilter;
+
+        // 转义列表页动态文本，避免文件名或标题中的特殊字符破坏 HTML
+        function escapeHTML(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
 
         // 侧边栏粘性定位处理
         function initStickysidebar() {
@@ -106,6 +126,7 @@
 
             categoryTree = new CategoryTree(articles, statusManager);
             categoryTree.render(document.getElementById('category-tree-container'));
+            initSidebarResize();
 
             // 恢复之前选中的分类（兼容旧 key 和新 key）
             const savedPath = localStorage.getItem('selectedPath') || localStorage.getItem('selectedCategory');
@@ -139,16 +160,18 @@
 
             const html = filtered.map(article => {
                 const updatedAt = new Date(article.updatedAt).toLocaleDateString('zh-CN');
+                const articleID = escapeHTML(article.id);
+                const articleURL = `/article/${encodeURIComponent(article.id)}`;
                 return `
-                    <div class="article-card" data-article-id="${article.id}">
+                    <div class="article-card" data-article-id="${articleID}">
                         <div class="article-title">
-                            <a href="/article/${article.id}">${article.title}</a>
+                            <a href="${articleURL}">${escapeHTML(article.title)}</a>
                         </div>
                         <div class="article-meta">
-                            <span class="article-series">📂 ${article.series}</span>
+                            <span class="article-series">📂 ${escapeHTML(article.series)}</span>
                             <span>📅 ${updatedAt}</span>
                         </div>
-                        <div class="article-badges" data-badges="${article.id}"></div>
+                        <div class="article-badges" data-badges="${articleID}"></div>
                     </div>
                 `;
             }).join('');
@@ -156,7 +179,8 @@
             listContainer.innerHTML = html;
 
             filtered.forEach(article => {
-                const container = document.querySelector(`[data-badges="${article.id}"]`);
+                const badgeID = window.CSS && CSS.escape ? CSS.escape(article.id) : article.id.replace(/["\\]/g, '\\$&');
+                const container = document.querySelector(`[data-badges="${badgeID}"]`);
                 if (container) {
                     statusManager.renderStatusBadges(article.id, container);
                 }
