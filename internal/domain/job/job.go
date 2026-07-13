@@ -1,7 +1,10 @@
 // Package job 定义持久化后台任务状态。
 package job
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // State 是后台任务状态。
 type State string
@@ -33,11 +36,20 @@ func Transition(from, to State) error {
 
 // Job 是持久化后台任务的领域模型。
 type Job struct {
-	ID          string
-	WorkspaceID string
-	Kind        string
-	DedupeKey   string
-	State       State
-	Progress    int
-	Attempts    int
+	ID           string
+	WorkspaceID  string
+	Kind         string
+	DedupeKey    string
+	State        State
+	Progress     int
+	PayloadJSON  string
+	ResultJSON   string
+	ErrorCode    string
+	ErrorMessage string
+	Attempts     int
+	AvailableAt  time.Time
+	StartedAt    *time.Time
+	FinishedAt   *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }

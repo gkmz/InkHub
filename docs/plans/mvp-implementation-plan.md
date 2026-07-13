@@ -332,20 +332,20 @@ func TestRunVersionDoesNotOpenWorkspace(t *testing.T) {
 **接口：**
 - 产出：`job.Runner.Enqueue`、`job.Runner.Cancel`、`job.Runner.Recover` 及文章/Provider 锁获取能力。
 
-- [ ] **步骤 1：编写失败的生命周期测试**
+- [x] **步骤 1：编写失败的生命周期测试**
 
 覆盖去重、进度、重试退避、取消、文章/Provider 串行化、重启恢复、原子替换不可盲目重试和优雅关闭。
 
-- [ ] **步骤 2：确认测试失败**
+- [x] **步骤 2：确认测试失败**
 
 运行: `go test ./internal/app/job`
 预期：失败，因为 Runner 尚不存在。
 
-- [ ] **步骤 3：实现有限 Worker Runner**
+- [x] **步骤 3：实现有限 Worker Runner**
 
 使用 SQLite 领取/更新事务、context 取消、类型化 Handler 和确定性去重键。外部工作期间不得持有数据库事务。
 
-- [ ] **步骤 4：验证竞态和重启行为**
+- [x] **步骤 4：验证竞态和重启行为**
 
 运行: `go test -race -count=20 ./internal/app/job`
 预期：通过，且 Handler 不会重复执行。
