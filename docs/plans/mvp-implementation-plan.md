@@ -405,28 +405,28 @@ func TestRunVersionDoesNotOpenWorkspace(t *testing.T) {
 **接口：**
 - 产出：规范 1.0 校验器/安装器、Default/Minimal 模板、WeChat Publish Provider。
 
-- [ ] **步骤 1：编写失败的 Manifest 与安全测试**
+- [x] **步骤 1：编写失败的 Manifest 与安全测试**
 
 覆盖 YAML 重复键/alias、Zip Slip、文件限制、摘要不匹配、主动内容格式、Selector/属性/值允许列表、Boolean 映射、不安全 HTML、脚本 URL、版本不可变、更新回滚和索引降级。
 
-- [ ] **步骤 2：编写渲染黄金测试**
+- [x] **步骤 2：编写渲染黄金测试**
 
 Default、Minimal 和第三方 Fixture 使用同一标准预览。断言最终 HTML 不包含 style/script、本地路径或未解析 Token，并且各模板输出不同且确定。
 
-- [ ] **步骤 3：确认测试失败**
+- [x] **步骤 3：确认测试失败**
 
 运行: `go test ./internal/domain/template ./internal/app/template ./internal/provider/publish/wechat`
 预期：失败，因为校验器和 Provider 尚不存在。
 
-- [ ] **步骤 4：实现校验器和原子安装器**
+- [x] **步骤 4：实现校验器和原子安装器**
 
 结构化解析 YAML/CSS，流式限量解压 zip，校验全部摘要、许可证和媒体签名，写入不可变版本目录，并通过 SQLite 事务激活。内置索引使用 `https://raw.githubusercontent.com/gkmz/InkHub/main/templates/index.json`，同时保留高级自定义索引设置。
 
-- [ ] **步骤 5：实现微信 Prepare 与 Deliver**
+- [x] **步骤 5：实现微信 Prepare 与 Deliver**
 
 渲染 Markdown/Mermaid，列出图片供确认，按内容寻址键上传，内联允许的 CSS，清理 HTML，创建预览 Artifact；只有用户直接触发 Deliver 时才能复制。
 
-- [ ] **步骤 6：验证全部模板与微信测试**
+- [x] **步骤 6：验证全部模板与微信测试**
 
 运行: `go test -race ./internal/domain/template ./internal/app/template ./internal/provider/publish/wechat`
 预期：两个内置模板通过同一管线测试。

@@ -35,8 +35,16 @@ type PublishInput struct {
 	Body             string
 	ResourceRefs     []ResourceRef
 	ContentHash      string
+	TemplateRef      *TemplateRef
 	ExpectedRevision string
 	PreviewOnly      bool
+}
+
+// TemplateRef 标识已通过模板校验的不可变模板版本。
+type TemplateRef struct {
+	ID      string
+	Version string
+	Digest  string
 }
 
 // PreflightResult 保存不产生副作用的渠道检查结果。
@@ -61,4 +69,5 @@ type DeliveryResult struct {
 	State            string
 	ProviderRevision string
 	Location         string
+	ConfirmRequired  bool
 }
