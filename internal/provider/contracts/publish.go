@@ -51,6 +51,8 @@ type PreparedArtifact struct {
 	ProviderRevision string
 	ContentHash      string
 	Location         string
+	TargetPath       string
+	PreviewURL       string
 	ExpiresAt        *time.Time
 }
 

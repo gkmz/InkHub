@@ -366,24 +366,24 @@ func TestRunVersionDoesNotOpenWorkspace(t *testing.T) {
 **接口：**
 - 实现：带 OperationID 幂等性的发布 `Preflight`、`Prepare` 和 `Deliver`。
 
-- [ ] **步骤 1：构建最小 Hugo Fixture 和失败集成测试**
+- [x] **步骤 1：构建最小 Hugo Fixture 和失败集成测试**
 
 测试按 source ID 创建/更新同一 bundle、元数据/Keywords 映射、WikiLink/callout 转换、图片冲突、taxonomy 失败、构建失败、原子替换失败、恢复和预览 URL。
 
-- [ ] **步骤 2：确认测试失败；仅 Hugo 不可用时允许跳过集成测试**
+- [x] **步骤 2：确认测试失败；仅 Hugo 不可用时允许跳过集成测试**
 
 运行: `go test ./internal/provider/publish/hugo`
 预期：单元测试初始失败；CI 中集成测试要求 Hugo Extended 0.163.3，本机仅在缺少 Hugo 时明确跳过。
 
-- [ ] **步骤 3：在 staging 中实现 Prepare**
+- [x] **步骤 3：在 staging 中实现 Prepare**
 
 在目标文件系统创建 Job 级临时站点，转换内容/资源、校验 taxonomy、使用参数数组运行 Hugo，并在不修改真实 bundle 的前提下返回有期限的 Artifact。
 
-- [ ] **步骤 4：实现 Deliver 与补偿**
+- [x] **步骤 4：实现 Deliver 与补偿**
 
 备份目标 bundle、原子替换、构建真实站点，失败时恢复，并返回实际源 content hash/revision。重复 OperationID 返回已记录结果。
 
-- [ ] **步骤 5：验证 Hugo 行为**
+- [x] **步骤 5：验证 Hugo 行为**
 
 运行: `go test -race ./internal/provider/publish/hugo`
 预期：通过；存在 Hugo 时运行全部集成测试。

@@ -1,0 +1,15 @@
+version: 1
+categories:
+  - AI应用开发
+series:
+  - InkHub 开发日志
+tags:
+  - name: go
+    aliases:
+      - Golang
+    core: true
+    allowLowFrequency: false
+  - name: hugo
+    aliases: []
+    core: true
+    allowLowFrequency: false

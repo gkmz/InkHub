@@ -46,7 +46,7 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 
 ## Next
 
-任务 1 至任务 8 已完成实现、代码审查和全量验证。下一步按实施计划执行任务 9：Hugo Publish Provider。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁。
+任务 1 至任务 9 已完成实现、代码审查、真实 Hugo 集成测试和全量验证。下一步按实施计划执行任务 10：微信模板引擎与 Publish Provider。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁；每个任务完成后立即提交。
 
 ## Important Decisions
 

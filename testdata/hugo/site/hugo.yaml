@@ -1,0 +1,6 @@
+baseURL: https://example.com/
+languageCode: zh-cn
+title: InkHub Test
+disableKinds:
+  - taxonomy
+  - term
