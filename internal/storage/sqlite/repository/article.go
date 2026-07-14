@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gkmz/InkHub/internal/domain/article"
@@ -61,6 +62,25 @@ indexed_at=excluded.indexed_at,deleted_at=excluded.deleted_at,updated_at=exclude
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("提交文章索引事务: %w", err)
+	}
+	return nil
+}
+
+// MarkMissing 将完整扫描中未出现的文章软删除，源文件不会被修改。
+func (r *ArticleRepository) MarkMissing(ctx context.Context, workspaceID, sourceID string, seenPaths []string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	query := `UPDATE articles SET deleted_at=?,updated_at=? WHERE workspace_id=? AND source_id=? AND deleted_at IS NULL`
+	args := []any{now, now, workspaceID, sourceID}
+	if len(seenPaths) > 0 {
+		placeholders := make([]string, len(seenPaths))
+		for index, relativePath := range seenPaths {
+			placeholders[index] = "?"
+			args = append(args, relativePath)
+		}
+		query += ` AND relative_path NOT IN (` + strings.Join(placeholders, ",") + `)`
+	}
+	if _, err := r.db.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("软删除未见文章: %w", err)
 	}
 	return nil
 }

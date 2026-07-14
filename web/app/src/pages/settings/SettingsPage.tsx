@@ -1,6 +1,6 @@
 import { Activity, Bot, Database, Globe2, Save } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getSettings, saveContentScope } from "../../api/client";
+import { getSettings, previewContentScope, saveContentScope } from "../../api/client";
 import type { SettingsView } from "../../api/types";
 import { ContentScopePicker } from "../../components/ContentScopePicker";
 import { SecretField } from "../../components/SecretField";
@@ -11,15 +11,32 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [scopeResult, setScopeResult] = useState("");
   const [savingScope, setSavingScope] = useState(false);
+  const [scopePreview, setScopePreview] = useState<{ added: number; removed: number } | null>(null);
   useEffect(() => { const controller = new AbortController(); void getSettings(controller.signal).then(setSettings); return () => controller.abort(); }, []);
   if (!settings) return <div className="page-state">正在读取设置…</div>;
-  const updateScope = (content_roots: string[], ignored_folders: string[]) => setSettings({ ...settings, content_roots, ignored_folders });
+  const updateScope = (content_roots: string[], ignored_folders: string[]) => {
+    setScopePreview(null);
+    setScopeResult("");
+    setSettings({ ...settings, content_roots, ignored_folders });
+  };
+  const inspectScopeChange = async () => {
+    setSavingScope(true);
+    setScopeResult("");
+    try {
+      setScopePreview(await previewContentScope(settings.content_roots, settings.ignored_folders));
+    } catch (reason) {
+      setScopeResult(reason instanceof Error ? reason.message : "无法预览变更");
+    } finally {
+      setSavingScope(false);
+    }
+  };
   const persistScope = async () => {
     setSavingScope(true);
     setScopeResult("");
     try {
       const result = await saveContentScope(settings.content_roots, settings.ignored_folders);
       setScopeResult(`已索引 ${result.indexed} 篇，失败 ${result.failed} 篇`);
+      setScopePreview(null);
     } catch (reason) {
       setScopeResult(reason instanceof Error ? reason.message : "保存失败");
     } finally {
@@ -31,7 +48,8 @@ export function SettingsPage() {
       <label>工作区名称<input value={settings.workspace_name} readOnly /></label>
       <label>Obsidian Vault<input value={settings.vault_path} readOnly /></label>
       <ContentScopePicker directories={settings.directories} contentRoots={settings.content_roots} ignoredFolders={settings.ignored_folders} onChange={updateScope} />
-      <button className="secondary" disabled={savingScope || settings.content_roots.length === 0} onClick={persistScope}><Save size={15} />{savingScope ? "正在保存…" : "保存内容范围"}</button>
+      {!scopePreview && <button className="secondary" disabled={savingScope || settings.content_roots.length === 0} onClick={inspectScopeChange}><Save size={15} />{savingScope ? "正在计算…" : "预览内容范围变更"}</button>}
+      {scopePreview && <div className="scope-confirm"><p>将新增 {scopePreview.added} 篇，移出 {scopePreview.removed} 篇。源文件不会被修改。</p><button className="primary" disabled={savingScope} onClick={persistScope}>{savingScope ? "正在保存…" : "确认并重扫"}</button><button className="secondary" onClick={() => setScopePreview(null)}>取消</button></div>}
       {scopeResult && <p className="inline-status" role="status">{scopeResult}</p>}
     </SettingsSection>
     <SettingsSection icon={<Bot />} title="AI 建议" description="只在主动请求时发送内容"><label className="switch-line">启用 AI 建议<input type="checkbox" defaultChecked={settings.ai_enabled} /></label><SecretField label="AI API Key" saved={settings.ai_secret_saved} /><button className="secondary"><Save size={15} />保存 AI 设置</button></SettingsSection>

@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/provider/source/folder"
+	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
 )
 
 type directoryInspectRequest struct {
@@ -137,6 +139,69 @@ func (h *runtimeHandler) saveContentScope(response http.ResponseWriter, request 
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]int{"indexed": report.Indexed, "failed": report.Failed})
+}
+
+func (h *runtimeHandler) previewContentScope(response http.ResponseWriter, request *http.Request) {
+	var input storedSourceScope
+	if decodeJSON(request, &input) != nil || len(input.ContentRoots) == 0 {
+		writeError(response, http.StatusBadRequest, "request.invalid", "内容目录配置无效")
+		return
+	}
+	scope, err := folder.NewScope(input.ContentRoots, input.IgnoredFolders)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, "workspace.scope_invalid", "内容目录规则无效")
+		return
+	}
+	var sourceID, root string
+	if err := h.db.QueryRowContext(request.Context(), `SELECT sources.id,sources.root_path FROM sources JOIN workspaces ON workspaces.id=sources.workspace_id ORDER BY workspaces.last_used_at DESC LIMIT 1`).Scan(&sourceID, &root); err != nil {
+		mapError(response, ErrNotFound)
+		return
+	}
+	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: root, ContentRoots: scope.ContentRoots(), IgnoredFolders: scope.IgnoredFolders()})
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	result, err := source.Scan(request.Context(), contracts.ScanCursor{})
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	active := map[string]bool{}
+	rows, err := h.db.QueryContext(request.Context(), `SELECT relative_path FROM articles WHERE source_id=? AND deleted_at IS NULL`, sourceID)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var relative string
+		if rows.Scan(&relative) == nil {
+			active[relative] = true
+		}
+	}
+	added := 0
+	for _, document := range result.Documents {
+		if !active[document.Ref.RelativePath] && !hasBlockingRuntimeDiagnostic(document.Diagnostics) {
+			added++
+		}
+	}
+	removed := 0
+	for relative := range active {
+		if !scope.Includes(relative) {
+			removed++
+		}
+	}
+	writeJSON(response, http.StatusOK, map[string]int{"added": added, "removed": removed})
+}
+
+func hasBlockingRuntimeDiagnostic(diagnostics []contracts.Diagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Blocking {
+			return true
+		}
+	}
+	return false
 }
 
 func systemScopeDirectory(name string) bool {

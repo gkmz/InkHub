@@ -20,6 +20,7 @@ type Source interface {
 // ArticleStore 保存可重建文章索引。
 type ArticleStore interface {
 	Upsert(ctx context.Context, value article.Article) error
+	MarkMissing(ctx context.Context, workspaceID, sourceID string, seenPaths []string) error
 }
 
 // ScanReport 汇总一次扫描结果。
@@ -32,6 +33,7 @@ type ScanReport struct {
 // ScanOptions 提供索引文章所需的工作区上下文。
 type ScanOptions struct {
 	WorkspaceID string
+	SourceID    string
 }
 
 // ScanWorkspace 扫描内容源并独立更新每篇有效文章。
@@ -44,7 +46,9 @@ func ScanWorkspace(ctx context.Context, source Source, store ArticleStore, optio
 		return ScanReport{}, fmt.Errorf("扫描工作区: %w", err)
 	}
 	report := ScanReport{Next: result.Next}
+	seenPaths := make([]string, 0, len(result.Documents))
 	for _, reference := range result.Documents {
+		seenPaths = append(seenPaths, reference.Ref.RelativePath)
 		if hasBlockingDiagnostic(reference.Diagnostics) {
 			report.Failed++
 			continue
@@ -80,6 +84,12 @@ func ScanWorkspace(ctx context.Context, source Source, store ArticleStore, optio
 			continue
 		}
 		report.Indexed++
+	}
+	unchanged := cursor.Revision != "" && cursor.Revision == result.Next.Revision && len(result.Documents) == 0
+	if result.Complete && !unchanged {
+		if err := store.MarkMissing(ctx, options.WorkspaceID, options.SourceID, seenPaths); err != nil {
+			return report, fmt.Errorf("更新文章索引范围: %w", err)
+		}
 	}
 	return report, nil
 }

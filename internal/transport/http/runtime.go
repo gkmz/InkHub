@@ -78,6 +78,10 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.saveContentScope(response, request)
 		}
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/settings/content-scope/preview":
+		if validateWriteRequest(response, request) {
+			h.previewContentScope(response, request)
+		}
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/wechat/content/"):
 		h.wechatContent(response, request)
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/articles/"):
@@ -171,7 +175,7 @@ func (h *runtimeHandler) writeMetadata(response http.ResponseWriter, request *ht
 		mapError(response, err)
 		return
 	}
-	if _, err := workspaceapp.ScanWorkspace(request.Context(), source, repository.NewArticleRepository(h.db), workspaceapp.ScanOptions{WorkspaceID: workspaceID}, contracts.ScanCursor{}); err != nil {
+	if _, err := workspaceapp.ScanWorkspace(request.Context(), source, repository.NewArticleRepository(h.db), workspaceapp.ScanOptions{WorkspaceID: workspaceID, SourceID: sourceID}, contracts.ScanCursor{}); err != nil {
 		mapError(response, err)
 		return
 	}
@@ -402,7 +406,7 @@ func scanInitialWorkspace(request *http.Request, sourceID, workspaceID, vault st
 	if err != nil {
 		return workspaceapp.ScanReport{}, err
 	}
-	return workspaceapp.ScanWorkspace(request.Context(), source, repository.NewArticleRepository(db), workspaceapp.ScanOptions{WorkspaceID: workspaceID}, contracts.ScanCursor{})
+	return workspaceapp.ScanWorkspace(request.Context(), source, repository.NewArticleRepository(db), workspaceapp.ScanOptions{WorkspaceID: workspaceID, SourceID: sourceID}, contracts.ScanCursor{})
 }
 
 func nullableText(err error, value string) any {

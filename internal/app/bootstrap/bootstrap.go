@@ -95,6 +95,8 @@ func serve(ctx context.Context, config Config) error {
 		return runHTTPServer(ctx, config, httptransport.NewApplicationHandler(httptransport.NewRecoveryHandler(), assets))
 	}
 	defer db.Close()
+	// 启动重扫只修复可重建索引；失败不阻止用户进入设置修正 Vault 或目录规则。
+	_, _ = RescanRecentWorkspace(ctx, db)
 	runner := newPublicationRunner(db)
 	if err := runner.Recover(ctx, time.Now().UTC().Add(-time.Minute)); err != nil {
 		return fmt.Errorf("恢复后台任务: %w", err)

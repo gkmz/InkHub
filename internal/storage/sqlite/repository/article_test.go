@@ -74,3 +74,30 @@ func TestArticleRepositoryMarksApprovedReviewChangedWithContentHash(t *testing.T
 		t.Fatalf("审核未失效: state=%s err=%v", state, err)
 	}
 }
+
+func TestArticleRepositoryMarksMissingAndRestoresReappearingArticle(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	seedWorkspace(t, db)
+	repo := NewArticleRepository(db)
+	for _, value := range []article.Article{
+		{ID: "a1", WorkspaceID: "w1", SourceID: "s1", RelativePath: "one.md"},
+		{ID: "a2", WorkspaceID: "w1", SourceID: "s1", RelativePath: "two.md"},
+	} {
+		if err := repo.Upsert(context.Background(), value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.MarkMissing(context.Background(), "w1", "s1", []string{"one.md"}); err != nil {
+		t.Fatal(err)
+	}
+	var active int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL`).Scan(&active); err != nil || active != 1 {
+		t.Fatalf("软删除结果错误: active=%d err=%v", active, err)
+	}
+	if err := repo.Upsert(context.Background(), article.Article{ID: "a2", WorkspaceID: "w1", SourceID: "s1", RelativePath: "two.md"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL`).Scan(&active); err != nil || active != 2 {
+		t.Fatalf("重新纳入未恢复: active=%d err=%v", active, err)
+	}
+}

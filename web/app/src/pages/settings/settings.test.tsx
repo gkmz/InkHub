@@ -6,6 +6,7 @@ import { SettingsPage } from "./SettingsPage";
 test("已有工作区可以配置内容目录并触发重扫", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
+    if (url.includes("/settings/content-scope/preview")) return Response.json({ added: 12, removed: 1 });
     if (url.includes("/settings/content-scope")) {
       expect(init?.method).toBe("PUT");
       expect(init?.body).toBe(JSON.stringify({ content_roots: ["Areas"], ignored_folders: [] }));
@@ -31,7 +32,9 @@ test("已有工作区可以配置内容目录并触发重扫", async () => {
 
   expect(await screen.findByDisplayValue("极客老墨")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("checkbox", { name: "Areas（12 篇）" }));
-  await userEvent.click(screen.getByRole("button", { name: "保存内容范围" }));
+  await userEvent.click(screen.getByRole("button", { name: "预览内容范围变更" }));
+  expect(await screen.findByText("将新增 12 篇，移出 1 篇。源文件不会被修改。")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "确认并重扫" }));
 
   expect(await screen.findByText("已索引 12 篇，失败 0 篇")).toBeInTheDocument();
 });

@@ -113,3 +113,8 @@ export function getSettings(signal?: AbortSignal) {
 export function saveContentScope(contentRoots: string[], ignoredFolders: string[]) {
   return request<{ indexed: number; failed: number }>("/settings/content-scope", { method: "PUT", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders }) });
 }
+
+/** previewContentScope 计算保存目录规则将新增和移出的索引数量。 */
+export function previewContentScope(contentRoots: string[], ignoredFolders: string[]) {
+  return request<{ added: number; removed: number }>("/settings/content-scope/preview", { method: "POST", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders }) });
+}

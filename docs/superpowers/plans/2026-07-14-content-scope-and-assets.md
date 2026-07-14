@@ -141,27 +141,27 @@ git commit -m "feat(setup): configure managed content folders"
 - Produces: `RescanRecentWorkspace(ctx context.Context, db *sql.DB) (workspace.ScanReport, error)`。
 - Produces: 范围保存前返回精确的新增和移出数量，并要求用户确认后执行。
 
-- [ ] **Step 1: 写软删除、恢复和幂等失败测试**
+- [x] **Step 1: 写软删除、恢复和幂等失败测试**
 
 第一次扫描写入范围内文章；第二次规则缩小后将未见文章设置 `deleted_at`；重新纳入清除 `deleted_at`；应用启动重扫现有 Source 并补齐空稳定 ID文章；重复启动不增加记录。
 
-- [ ] **Step 2: 运行测试并确认 RED**
+- [x] **Step 2: 运行测试并确认 RED**
 
 Run: `go test ./internal/app/workspace ./internal/storage/sqlite/repository ./internal/app/bootstrap -count=1`
 
 Expected: 缺少 `MarkMissing` 和启动重扫编排。
 
-- [ ] **Step 3: 实现事务化索引生命周期与启动重扫**
+- [x] **Step 3: 实现事务化索引生命周期与启动重扫**
 
 扫描收集成功索引的内部 ID，仅在完整扫描结束后软删除未见记录；单篇解析失败的既有文章保留并标记失败，不误删。启动装配在 HTTP 服务监听前重扫最近工作区，错误记录为扫描任务失败但不阻止 UI 启动。
 
-- [ ] **Step 4: reflection 与验证**
+- [x] **Step 4: reflection 与验证**
 
 Run: `go test ./internal/app/workspace ./internal/storage/sqlite/repository ./internal/app/bootstrap ./internal/transport/http -count=1 && go test -race ./internal/app/workspace ./internal/app/bootstrap`
 
 使用临时 Vault 验证缩小、扩大、解析失败和重复启动；不得在测试中读取用户真实 Vault。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git commit -m "feat(index): rescan configured workspace safely"
