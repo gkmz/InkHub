@@ -1,0 +1,112 @@
+package httptransport
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestRouterListsCursorPageWithoutAbsolutePaths(t *testing.T) {
+	t.Parallel()
+
+	api := &fakeAPI{page: ArticlePage{Items: []ArticleSummary{{ID: "a1", Title: "标题", State: "approved"}}, NextCursor: "next"}}
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/api/v1/articles?cursor=cursor&limit=20", nil)
+	response := httptest.NewRecorder()
+	NewRouter(api).ServeHTTP(response, request)
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "/Users/") {
+		t.Fatalf("文章列表响应不正确: code=%d body=%s", response.Code, response.Body.String())
+	}
+	if api.cursor != "cursor" || api.limit != 20 || !strings.Contains(response.Body.String(), `"next_cursor":"next"`) {
+		t.Fatalf("Cursor 未透传: api=%+v body=%s", api, response.Body.String())
+	}
+}
+
+func TestRouterRequiresSameOriginForWritesAndReturnsJobID(t *testing.T) {
+	t.Parallel()
+
+	api := &fakeAPI{jobID: "job_1"}
+	body := []byte(`{"article_id":"a1","provider_instance_id":"hugo_1","channel":"hugo","content_hash":"hash"}`)
+	blocked := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/v1/publications", bytes.NewReader(body))
+	blocked.Header.Set("Content-Type", "application/json")
+	blocked.Header.Set("Origin", "https://evil.example")
+	blockedResponse := httptest.NewRecorder()
+	NewRouter(api).ServeHTTP(blockedResponse, blocked)
+	if blockedResponse.Code != http.StatusForbidden {
+		t.Fatalf("跨源写请求未拒绝: %d", blockedResponse.Code)
+	}
+	schemeMismatch := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/v1/publications", bytes.NewReader(body))
+	schemeMismatch.Header.Set("Content-Type", "application/json")
+	schemeMismatch.Header.Set("Origin", "https://127.0.0.1")
+	schemeResponse := httptest.NewRecorder()
+	NewRouter(api).ServeHTTP(schemeResponse, schemeMismatch)
+	if schemeResponse.Code != http.StatusForbidden {
+		t.Fatalf("不同 scheme 的 Origin 未拒绝: %d", schemeResponse.Code)
+	}
+
+	allowed := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/api/v1/publications", bytes.NewReader(body))
+	allowed.Header.Set("Content-Type", "application/json")
+	allowed.Header.Set("Origin", "http://127.0.0.1")
+	allowedResponse := httptest.NewRecorder()
+	NewRouter(api).ServeHTTP(allowedResponse, allowed)
+	if allowedResponse.Code != http.StatusAccepted || !strings.Contains(allowedResponse.Body.String(), `"job_id":"job_1"`) {
+		t.Fatalf("发布入队响应不正确: code=%d body=%s", allowedResponse.Code, allowedResponse.Body.String())
+	}
+}
+
+func TestRouterMapsValidationAndStaleErrorsToStableCodes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		body   string
+		api    *fakeAPI
+		code   int
+		stable string
+	}{
+		{name: "未知字段", body: `{"article_id":"a1","unknown":true}`, api: &fakeAPI{}, code: 400, stable: "request.invalid"},
+		{name: "内容过期", body: `{"article_id":"a1","provider_instance_id":"hugo_1","channel":"hugo","content_hash":"old"}`, api: &fakeAPI{err: ErrStaleContent}, code: 409, stable: "content.stale"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/publications", strings.NewReader(test.body))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", "http://localhost")
+			response := httptest.NewRecorder()
+			NewRouter(test.api).ServeHTTP(response, request)
+			if response.Code != test.code || !strings.Contains(response.Body.String(), test.stable) {
+				t.Fatalf("错误映射不正确: code=%d body=%s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+type fakeAPI struct {
+	page   ArticlePage
+	cursor string
+	limit  int
+	jobID  string
+	err    error
+}
+
+func (a *fakeAPI) ListArticles(_ context.Context, cursor string, limit int) (ArticlePage, error) {
+	a.cursor, a.limit = cursor, limit
+	return a.page, a.err
+}
+
+func (a *fakeAPI) QueuePublication(context.Context, PublicationCommand) (string, error) {
+	return a.jobID, a.err
+}
+
+func (a *fakeAPI) ConfirmWeChat(context.Context, ConfirmCommand) error { return a.err }
+
+func decodeBody(t *testing.T, response *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var value map[string]any
+	_ = json.Unmarshal(response.Body.Bytes(), &value)
+	return value
+}

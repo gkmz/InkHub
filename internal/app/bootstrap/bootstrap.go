@@ -9,12 +9,16 @@ import (
 	"os"
 
 	"github.com/gkmz/InkHub/internal/buildinfo"
+	transportcli "github.com/gkmz/InkHub/internal/transport/cli"
 )
 
 // Run 解析命令行参数并运行 InkHub 应用。
 func Run(ctx context.Context, args []string) error {
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if len(args) > 1 && (args[1] == "--help" || args[1] == "-h" || args[1] == "help") {
+		return transportcli.Run(ctx, args, nil, os.Stdout)
 	}
 
 	flags := flag.NewFlagSet("inkhub", flag.ContinueOnError)

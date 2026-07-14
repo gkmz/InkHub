@@ -447,24 +447,24 @@ Default、Minimal 和第三方 Fixture 使用同一标准预览。断言最终 H
 **接口：**
 - 产出：带版本的 `/api/v1` JSON API，以及 `init`、`doctor`、`scan`、`db backup`、`template init`、`template validate` CLI 命令。
 
-- [ ] **步骤 1：编写失败的 HTTP 边界测试**
+- [x] **步骤 1：编写失败的 HTTP 边界测试**
 
 测试同源写请求、本机默认监听、输入校验、设置/诊断之外不返回绝对路径、稳定错误码、Cursor 分页、长任务 Job ID、过期内容冲突和脱敏。
 
-- [ ] **步骤 2：确认测试失败**
+- [x] **步骤 2：确认测试失败**
 
 运行: `go test ./internal/transport/... ./internal/app/publication`
 预期：失败，因为路由和发布编排尚不存在。
 
-- [ ] **步骤 3：实现用例编排**
+- [x] **步骤 3：实现用例编排**
 
 只允许审核当前 content hash；长任务进入队列；持有文章/Provider 锁；Provider 返回后提交 Publication/Event；微信复制和确认保持为独立命令。
 
-- [ ] **步骤 4：实现薄 HTTP 与 CLI Adapter**
+- [x] **步骤 4：实现薄 HTTP 与 CLI Adapter**
 
 Handler 只负责解码、校验、调用一个用例和映射类型化错误。CLI 调用相同用例，并提供面向用户的非 JSON 输出。
 
-- [ ] **步骤 5：验证 API 与 CLI**
+- [x] **步骤 5：验证 API 与 CLI**
 
 运行: `go test -race ./internal/transport/... ./internal/app/publication && go run ./cmd/inkhub --help`
 预期：测试通过，帮助信息列出全部 MVP 命令。
