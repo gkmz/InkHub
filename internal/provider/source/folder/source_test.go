@@ -36,6 +36,32 @@ func TestMarkdownPathsReturnsStablePathsAndHonorsExclusions(t *testing.T) {
 	}
 }
 
+func TestMarkdownPathsOnlyReturnsConfiguredContentScope(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	for _, relative := range []string{"Areas/文章.md", "Areas/私人/日记.md", "Resources/资料.md"} {
+		full := filepath.Join(root, relative)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("content"), 0o640); err != nil {
+			t.Fatal(err)
+		}
+	}
+	source, err := New(Config{Root: root, ContentRoots: []string{"Areas"}, IgnoredFolders: []string{"Areas/私人"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := source.MarkdownPaths(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Areas/文章.md"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("MarkdownPaths() = %#v, want %#v", got, want)
+	}
+}
+
 func TestSnapshotDetectsSameSizeContentChangeWithUnchangedMTime(t *testing.T) {
 	t.Parallel()
 

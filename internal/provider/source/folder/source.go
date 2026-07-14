@@ -18,16 +18,19 @@ import (
 
 // Config 定义文件夹 Source 的共享配置。
 type Config struct {
-	Root         string
-	SourceID     string
-	PollInterval time.Duration
-	ExcludedDirs map[string]bool
+	Root           string
+	SourceID       string
+	PollInterval   time.Duration
+	ExcludedDirs   map[string]bool
+	ContentRoots   []string
+	IgnoredFolders []string
 }
 
 // Source 提供路径授权、Markdown 遍历和变化监听。
 type Source struct {
 	config Config
 	fs     *filesystem.AuthorizedFS
+	scope  *Scope
 }
 
 // New 创建文件夹 Source 共享组件。
@@ -44,11 +47,19 @@ func New(config Config) (*Source, error) {
 	if err != nil {
 		return nil, err
 	}
+	var scope *Scope
+	if config.ContentRoots != nil || config.IgnoredFolders != nil {
+		value, err := NewScope(config.ContentRoots, config.IgnoredFolders)
+		if err != nil {
+			return nil, err
+		}
+		scope = &value
+	}
 	config.Root = root
 	if config.PollInterval <= 0 {
 		config.PollInterval = 2 * time.Second
 	}
-	return &Source{config: config, fs: authorized}, nil
+	return &Source{config: config, fs: authorized, scope: scope}, nil
 }
 
 // Root 返回规范化后的内容根目录。
@@ -80,7 +91,10 @@ func (s *Source) MarkdownPaths(ctx context.Context) ([]string, error) {
 			if err != nil {
 				return err
 			}
-			paths = append(paths, filepath.ToSlash(relative))
+			relative = filepath.ToSlash(relative)
+			if s.scope == nil || s.scope.Includes(relative) {
+				paths = append(paths, relative)
+			}
 		}
 		return nil
 	})

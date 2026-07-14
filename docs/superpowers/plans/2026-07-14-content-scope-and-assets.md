@@ -88,20 +88,20 @@ git commit -m "fix(index): support notes without stable IDs"
 - Produces: `folder.NewScope(contentRoots, ignoredFolders []string) (Scope, error)`。
 - Produces: `Scope.Includes(relativePath string) bool`。
 - Produces: `POST /api/v1/directories/inspect` 返回一级目录和 Markdown 数量。
-- Produces: `PUT /api/v1/settings/content-scope` 保存当前 Source 规则并触发重扫。
+- Produces: `PUT /api/v1/settings/content-scope` 保存当前 Source 规则并触发重扫；精确新增/移出预览由 Task 3 补齐。
 - Extends: `WorkspaceDraft` 增加 `content_roots: string[]`、`ignored_folders: string[]`。
 
-- [ ] **Step 1: 写范围规则和 UI 失败测试**
+- [x] **Step 1: 写范围规则和 UI 失败测试**
 
-覆盖多根目录、递归、忽略优先、父目录去重、系统目录、绝对路径、`.`、`..`、忽略目录不属于内容根；初始化 UI 覆盖默认不勾选、至少选择一个内容目录、添加忽略目录和摘要；设置页覆盖读取已有规则、预览新增/移出数量、确认保存和取消。
+覆盖多根目录、递归、忽略优先、父目录去重、系统目录、绝对路径、`.`、`..`、忽略目录不属于内容根；初始化 UI 覆盖默认不勾选、至少选择一个内容目录、添加忽略目录和摘要；设置页覆盖读取已有规则、保存并显示重扫结果。
 
-- [ ] **Step 2: 运行测试并确认 RED**
+- [x] **Step 2: 运行测试并确认 RED**
 
 Run: `go test ./internal/provider/source/folder ./internal/transport/http -count=1 && npm --prefix web/app test -- --run src/components/ContentScopePicker.test.tsx`
 
 Expected: `Scope`、inspect API 和组件尚不存在。
 
-- [ ] **Step 3: 实现纯规则、检查接口和组件**
+- [x] **Step 3: 实现纯规则、检查接口和组件**
 
 `Scope` 构造时规范化、排序并去重路径；`MarkdownPaths` 只返回 `Scope.Includes` 的文档。inspect API 采用受同源保护的 POST，只接受已校验 Vault，返回相对目录与数量，不返回文章名或正文。创建工作区和设置页保存时严格校验并保存：
 
@@ -111,13 +111,13 @@ Expected: `Scope`、inspect API 和组件尚不存在。
 
 前端只展示“管理这些目录”和“其中不管理这些目录”，附件目录不作为必选项。旧工作区的空配置明确显示“尚未选择内容目录”，不得隐式扫描整个 Vault；用户保存范围后立即执行 Task 3 定义的重扫。
 
-- [ ] **Step 4: reflection 与验证**
+- [x] **Step 4: reflection 与验证**
 
 Run: `go test ./internal/provider/source/folder ./internal/provider/source/obsidian ./internal/transport/http -count=1 && npm --prefix web/app test -- --run && npm --prefix web/app run typecheck`
 
 检查默认隐私、路径越界、嵌套规则和移动 Vault 后配置可用性。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git commit -m "feat(setup): configure managed content folders"
@@ -139,6 +139,7 @@ git commit -m "feat(setup): configure managed content folders"
 **Interfaces:**
 - Extends: `ArticleStore` 增加 `MarkMissing(ctx, workspaceID, sourceID string, seenIDs []string) error`。
 - Produces: `RescanRecentWorkspace(ctx context.Context, db *sql.DB) (workspace.ScanReport, error)`。
+- Produces: 范围保存前返回精确的新增和移出数量，并要求用户确认后执行。
 
 - [ ] **Step 1: 写软删除、恢复和幂等失败测试**
 

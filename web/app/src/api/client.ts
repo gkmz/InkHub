@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, JobStatus, SessionResponse, SettingsView, TaxonomyOverview, WorkspaceDraft } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, DirectoryCandidate, JobStatus, SessionResponse, SettingsView, TaxonomyOverview, WorkspaceDraft } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -47,6 +47,11 @@ export function createWorkspace(draft: WorkspaceDraft, idempotencyKey: string) {
 /** pickDirectory 按固定用途请求本机进程打开系统目录选择器。 */
 export function pickDirectory(purpose: "vault" | "hugo") {
   return request<{ path: string }>("/directories/pick", { method: "POST", body: JSON.stringify({ purpose }) });
+}
+
+/** inspectDirectories 只读取 Vault 目录级 Markdown 数量。 */
+export function inspectDirectories(vaultPath: string) {
+  return request<{ directories: DirectoryCandidate[] }>("/directories/inspect", { method: "POST", body: JSON.stringify({ vault_path: vaultPath }) });
 }
 
 /** getJob 恢复页面刷新前已经提交的扫描任务。 */
@@ -102,4 +107,9 @@ export function approveTaxonomyTerm(issueID: string) {
 /** getSettings 读取不含 Secret 明文的设置视图。 */
 export function getSettings(signal?: AbortSignal) {
   return request<SettingsView>("/settings", { signal });
+}
+
+/** saveContentScope 保存当前 Source 的目录规则并返回重扫结果。 */
+export function saveContentScope(contentRoots: string[], ignoredFolders: string[]) {
+  return request<{ indexed: number; failed: number }>("/settings/content-scope", { method: "PUT", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders }) });
 }

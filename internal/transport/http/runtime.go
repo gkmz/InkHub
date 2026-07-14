@@ -16,6 +16,7 @@ import (
 	workspaceapp "github.com/gkmz/InkHub/internal/app/workspace"
 	"github.com/gkmz/InkHub/internal/platform/dialog"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
+	"github.com/gkmz/InkHub/internal/provider/source/folder"
 	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
 	"github.com/yuin/goldmark"
@@ -61,6 +62,10 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.pickDirectory(response, request)
 		}
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/directories/inspect":
+		if validateWriteRequest(response, request) {
+			h.inspectDirectories(response, request)
+		}
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/jobs/"):
 		h.job(response, request)
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/dashboard":
@@ -68,7 +73,11 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/taxonomy":
 		writeJSON(response, http.StatusOK, map[string]any{"source": "尚未配置", "loaded_at": "-", "readonly": true, "issues": []any{}})
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/settings":
-		writeJSON(response, http.StatusOK, defaultSettings())
+		h.settings(response, request)
+	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/content-scope":
+		if validateWriteRequest(response, request) {
+			h.saveContentScope(response, request)
+		}
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/wechat/content/"):
 		h.wechatContent(response, request)
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/articles/"):
@@ -311,17 +320,19 @@ func (h *runtimeHandler) session(response http.ResponseWriter, request *http.Req
 }
 
 type createWorkspaceRequest struct {
-	Name           string `json:"name"`
-	VaultPath      string `json:"vault_path"`
-	HugoPath       string `json:"hugo_path"`
-	WeChatTemplate string `json:"wechat_template"`
-	AIEnabled      bool   `json:"ai_enabled"`
+	Name           string   `json:"name"`
+	VaultPath      string   `json:"vault_path"`
+	ContentRoots   []string `json:"content_roots"`
+	IgnoredFolders []string `json:"ignored_folders"`
+	HugoPath       string   `json:"hugo_path"`
+	WeChatTemplate string   `json:"wechat_template"`
+	AIEnabled      bool     `json:"ai_enabled"`
 }
 
 func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *http.Request) {
 	var input createWorkspaceRequest
 	key := request.Header.Get("Idempotency-Key")
-	if decodeJSON(request, &input) != nil || key == "" || input.Name == "" || input.VaultPath == "" {
+	if decodeJSON(request, &input) != nil || key == "" || input.Name == "" || input.VaultPath == "" || len(input.ContentRoots) == 0 {
 		writeError(response, http.StatusBadRequest, "request.invalid", "工作区请求无效")
 		return
 	}
@@ -332,6 +343,11 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 	}
 	if info, err := os.Stat(filepath.Join(vault, ".obsidian")); err != nil || !info.IsDir() {
 		writeError(response, http.StatusBadRequest, "workspace.not_obsidian", "所选目录不是 Obsidian Vault")
+		return
+	}
+	scope, err := folder.NewScope(input.ContentRoots, input.IgnoredFolders)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, "workspace.scope_invalid", "内容目录规则无效")
 		return
 	}
 	workspaceID := stableRuntimeID("workspace", key)
@@ -348,7 +364,8 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 	defer tx.Rollback()
 	_, err = tx.ExecContext(request.Context(), `INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,last_used_at=excluded.last_used_at,updated_at=excluded.updated_at`, workspaceID, input.Name, h.dataDir, now, now, now)
 	if err == nil {
-		_, err = tx.ExecContext(request.Context(), `INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES(?,?,'obsidian',?,?,?) ON CONFLICT(id) DO NOTHING`, sourceID, workspaceID, vault, now, now)
+		sourceConfig, _ := json.Marshal(map[string][]string{"content_roots": scope.ContentRoots(), "ignored_folders": scope.IgnoredFolders()})
+		_, err = tx.ExecContext(request.Context(), `INSERT INTO sources(id,workspace_id,provider_type,root_path,config_json,created_at,updated_at) VALUES(?,?,'obsidian',?,?,?,?) ON CONFLICT(id) DO NOTHING`, sourceID, workspaceID, vault, string(sourceConfig), now, now)
 	}
 	if err == nil {
 		wechatConfig, _ := json.Marshal(map[string]string{"template": "default", "staging_root": filepath.Join(h.dataDir, "staging", "wechat", workspaceID)})
@@ -369,7 +386,7 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 		mapError(response, err)
 		return
 	}
-	report, scanErr := scanInitialWorkspace(request, sourceID, workspaceID, vault, h.db)
+	report, scanErr := scanInitialWorkspace(request, sourceID, workspaceID, vault, scope.ContentRoots(), scope.IgnoredFolders(), h.db)
 	state := "succeeded"
 	progress := 100
 	if scanErr != nil {
@@ -380,8 +397,8 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 	writeJSON(response, http.StatusCreated, map[string]any{"workspace": map[string]string{"id": workspaceID, "name": input.Name}, "job_id": jobID})
 }
 
-func scanInitialWorkspace(request *http.Request, sourceID, workspaceID, vault string, db *sql.DB) (workspaceapp.ScanReport, error) {
-	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: vault})
+func scanInitialWorkspace(request *http.Request, sourceID, workspaceID, vault string, contentRoots, ignoredFolders []string, db *sql.DB) (workspaceapp.ScanReport, error) {
+	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: vault, ContentRoots: contentRoots, IgnoredFolders: ignoredFolders})
 	if err != nil {
 		return workspaceapp.ScanReport{}, err
 	}

@@ -100,6 +100,23 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .path-field button { border: 1px solid var(--line); border-left: 0; border-radius: 0 4px 4px 0; background: #f5f7f5; color: var(--action); cursor: pointer; }
 .inline-status { display: flex; align-items: center; gap: 7px; margin: -10px 0 24px; color: var(--action); font-size: 12px; }
 .field-error { margin: -10px 0 20px; color: var(--danger); font-size: 12px; }
+.inspect-directories { margin: -10px 0 20px; }
+.content-scope-picker { margin: 4px 0 22px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 18px 0; }
+.content-scope-picker > header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+.content-scope-picker h2, .content-scope-picker h3 { margin: 0; font-size: 14px; }
+.content-scope-picker header p, .scope-empty { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+.scope-directory-list { display: grid; max-height: 220px; overflow: auto; border: 1px solid var(--line); }
+.scope-directory-list label { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px; margin: 0; padding: 9px 10px; border-bottom: 1px solid var(--line); font-weight: 500; }
+.scope-directory-list label:last-child { border-bottom: 0; }
+.scope-directory-list input { margin: 0; }
+.scope-directory-list small { color: var(--muted); font-weight: 400; }
+.scope-empty { padding: 10px 0 0; }
+.scope-ignore { margin-top: 16px; }
+.scope-ignore-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 8px; }
+.scope-ignore-add select { min-width: 0; }
+.scope-ignore ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.scope-ignore li { display: flex; align-items: center; justify-content: space-between; padding: 7px 9px; background: #f5f7f5; font-size: 12px; }
+.scope-ignore li button { border: 0; background: transparent; color: var(--danger); cursor: pointer; }
 .primary { min-height: 44px; border: 1px solid var(--action); border-radius: 4px; background: var(--action); color: white; padding: 0 20px; cursor: pointer; font-weight: 650; }
 .primary:disabled { opacity: .45; cursor: not-allowed; }
 .button-row { display: flex; justify-content: space-between; gap: 12px; }

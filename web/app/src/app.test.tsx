@@ -12,6 +12,7 @@ function mockAPI(hasWorkspace = true) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url.includes("/session")) return Response.json({ has_workspace: hasWorkspace, workspace: hasWorkspace ? { id: "w1", name: "我的文章" } : null });
+    if (url.includes("/directories/inspect")) return Response.json({ directories: [{ path: "Areas", markdown_count: 12 }, { path: "Areas/私人记录", markdown_count: 3 }] });
     if (url.includes("/dashboard")) return Response.json({ items: articles });
     if (url.includes("/articles")) return Response.json({ items: articles, next_cursor: "" });
     return Response.json({ error: { code: "not_found", message: "接口不存在" } }, { status: 404 });
@@ -25,6 +26,8 @@ test("首次运行显示四步初始化并允许跳过可选渠道", async () =>
   expect(screen.getByText("1 / 4")).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText("工作区名称"), "写作空间");
   await userEvent.type(screen.getByLabelText("Obsidian Vault 路径"), "/Users/me/Vault");
+  await userEvent.click(screen.getByRole("button", { name: "读取目录" }));
+  await userEvent.click(await screen.findByRole("checkbox", { name: "Areas（12 篇）" }));
   await userEvent.click(screen.getByRole("button", { name: "继续" }));
   expect(screen.getByRole("heading", { name: "确认博客" })).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "暂不配置博客" }));
@@ -41,11 +44,14 @@ test("初始化时可以通过原生选择器填写 Hugo 根目录", async () =>
       expect(init?.body).toBe(JSON.stringify({ purpose: "hugo" }));
       return Response.json({ path: "/Users/me/Sites/blog" });
     }
+    if (url.includes("/directories/inspect")) return Response.json({ directories: [{ path: "Areas", markdown_count: 12 }] });
     return Response.json({ error: { code: "not_found", message: "接口不存在" } }, { status: 404 });
   });
   render(<App />);
   await userEvent.type(await screen.findByLabelText("工作区名称"), "写作空间");
   await userEvent.type(screen.getByLabelText("Obsidian Vault 路径"), "/Users/me/Vault");
+  await userEvent.click(screen.getByRole("button", { name: "读取目录" }));
+  await userEvent.click(await screen.findByRole("checkbox", { name: "Areas（12 篇）" }));
   await userEvent.click(screen.getByRole("button", { name: "继续" }));
 
   await userEvent.click(screen.getByRole("button", { name: "选择 Hugo 目录" }));

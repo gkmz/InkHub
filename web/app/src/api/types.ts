@@ -32,6 +32,13 @@ export interface WorkspaceDraft {
   hugo_path?: string;
   wechat_template: string;
   ai_enabled: boolean;
+  content_roots: string[];
+  ignored_folders: string[];
+}
+
+export interface DirectoryCandidate {
+  path: string;
+  markdown_count: number;
 }
 
 export interface JobStatus {
@@ -111,6 +118,11 @@ export interface TaxonomyOverview {
 }
 
 export interface SettingsView {
+  workspace_name: string;
+  vault_path: string;
+  content_roots: string[];
+  ignored_folders: string[];
+  directories: DirectoryCandidate[];
   ai_enabled: boolean;
   ai_secret_saved: boolean;
   hugo_enabled: boolean;

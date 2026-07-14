@@ -24,7 +24,10 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 		t.Fatal(err)
 	}
 	article := "---\nid: article_01JTEST\ntitle: 真实扫描文章\ndescription: 测试首次扫描\ntags: [Go]\nkeywords: [InkHub]\n---\n正文"
-	if err := os.WriteFile(filepath.Join(vault, "文章.md"), []byte(article), 0o600); err != nil {
+	if err := os.MkdirAll(filepath.Join(vault, "Areas"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vault, "Areas", "文章.md"), []byte(article), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}))
@@ -35,7 +38,7 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 		t.Fatalf("初始会话错误: %s", session.Body.String())
 	}
 
-	body := []byte(`{"name":"写作空间","vault_path":"` + filepath.ToSlash(vault) + `","wechat_template":"default","ai_enabled":false}`)
+	body := []byte(`{"name":"写作空间","vault_path":"` + filepath.ToSlash(vault) + `","content_roots":["Areas"],"ignored_folders":[],"wechat_template":"default","ai_enabled":false}`)
 	for range 2 {
 		request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/workspaces", bytes.NewReader(body))
 		request.Header.Set("Content-Type", "application/json")
@@ -69,9 +72,44 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	metadataRequest.Header.Set("Origin", "http://localhost")
 	metadataResponse := httptest.NewRecorder()
 	handler.ServeHTTP(metadataResponse, metadataRequest)
-	updated, readErr := os.ReadFile(filepath.Join(vault, "文章.md"))
+	updated, readErr := os.ReadFile(filepath.Join(vault, "Areas", "文章.md"))
 	if metadataResponse.Code != http.StatusOK || readErr != nil || !strings.Contains(string(updated), "写回后的标题") {
 		t.Fatalf("元数据未原子写回: code=%d body=%s file=%s err=%v", metadataResponse.Code, metadataResponse.Body.String(), updated, readErr)
+	}
+}
+
+func TestRuntimeHandlerInspectsVaultDirectoriesWithoutExposingFileNames(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	vault := t.TempDir()
+	if err := os.Mkdir(filepath.Join(vault, ".obsidian"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{"Areas/写作/秘密标题.md", "Areas/另一篇.md", "Resources/资料.md"} {
+		full := filepath.Join(vault, relative)
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("private body"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}))
+	body := `{"vault_path":"` + filepath.ToSlash(vault) + `"}`
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/directories/inspect", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://localhost")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"path":"Areas"`) || !strings.Contains(response.Body.String(), `"markdown_count":2`) {
+		t.Fatalf("目录检查响应错误: code=%d body=%s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "秘密标题") || strings.Contains(response.Body.String(), "private body") {
+		t.Fatalf("目录检查泄露文章信息: %s", response.Body.String())
 	}
 }
 

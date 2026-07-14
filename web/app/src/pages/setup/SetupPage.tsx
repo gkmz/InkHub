@@ -1,7 +1,8 @@
 import { Check, ChevronLeft, FolderOpen, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { WorkspaceDraft } from "../../api/types";
-import { pickDirectory } from "../../api/client";
+import type { DirectoryCandidate, WorkspaceDraft } from "../../api/types";
+import { inspectDirectories, pickDirectory } from "../../api/client";
+import { ContentScopePicker } from "../../components/ContentScopePicker";
 
 const steps = ["选择内容库", "确认博客", "配置微信", "AI 与扫描"];
 
@@ -9,11 +10,24 @@ const steps = ["选择内容库", "确认博客", "配置微信", "AI 与扫描"
 export function SetupPage({ onComplete }: { onComplete: (draft: WorkspaceDraft) => Promise<void> }) {
   const saved = sessionStorage.getItem("inkhub.setup");
   const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState<WorkspaceDraft>(() => saved ? JSON.parse(saved) as WorkspaceDraft : { name: "", vault_path: "", wechat_template: "default", ai_enabled: false });
+  const [draft, setDraft] = useState<WorkspaceDraft>(() => {
+    const restored = saved ? JSON.parse(saved) as Partial<WorkspaceDraft> : {};
+    return {
+      name: restored.name ?? "",
+      vault_path: restored.vault_path ?? "",
+      hugo_path: restored.hugo_path,
+      wechat_template: restored.wechat_template ?? "default",
+      ai_enabled: restored.ai_enabled ?? false,
+      content_roots: restored.content_roots ?? [],
+      ignored_folders: restored.ignored_folders ?? [],
+    };
+  });
   const [submitting, setSubmitting] = useState(false);
   const [pathError, setPathError] = useState("");
   const [hugoPathError, setHugoPathError] = useState("");
-  const valid = draft.name.trim() !== "" && draft.vault_path.trim() !== "";
+  const [directories, setDirectories] = useState<DirectoryCandidate[]>([]);
+  const [inspecting, setInspecting] = useState(false);
+  const valid = draft.name.trim() !== "" && draft.vault_path.trim() !== "" && draft.content_roots.length > 0;
   useEffect(() => {
     if (!draft.name && !draft.vault_path) return;
     const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
@@ -27,6 +41,18 @@ export function SetupPage({ onComplete }: { onComplete: (draft: WorkspaceDraft) 
   };
   const heading = useMemo(() => steps[step], [step]);
   const next = () => setStep((current) => Math.min(3, current + 1));
+  const loadDirectories = async (vaultPath: string) => {
+    setInspecting(true);
+    setPathError("");
+    try {
+      const result = await inspectDirectories(vaultPath);
+      setDirectories(result.directories);
+    } catch (reason) {
+      setPathError(reason instanceof Error ? reason.message : "无法读取目录");
+    } finally {
+      setInspecting(false);
+    }
+  };
 
   return (
     <main className="setup-page">
@@ -42,9 +68,10 @@ export function SetupPage({ onComplete }: { onComplete: (draft: WorkspaceDraft) 
           {step === 0 && <>
             <p className="lead">先告诉 InkHub 你的文章放在哪里。内容不会被搬走或上传。</p>
             <label>工作区名称<input value={draft.name} onChange={(event) => update({ name: event.target.value })} placeholder="例如：我的文章" /></label>
-            <label>Obsidian Vault 路径<div className="path-field"><input value={draft.vault_path} onChange={(event) => { setPathError(""); update({ vault_path: event.target.value }); }} placeholder="/Users/you/Documents/Vault" /><button type="button" aria-label="选择目录" onClick={() => { setPathError(""); pickDirectory("vault").then(({ path }) => update({ vault_path: path })).catch((reason: Error) => setPathError(reason.message)); }}><FolderOpen size={18} /></button></div></label>
+            <label>Obsidian Vault 路径<div className="path-field"><input value={draft.vault_path} onChange={(event) => { setPathError(""); setDirectories([]); update({ vault_path: event.target.value, content_roots: [], ignored_folders: [] }); }} placeholder="/Users/you/Documents/Vault" /><button type="button" aria-label="选择目录" onClick={() => { setPathError(""); pickDirectory("vault").then(({ path }) => { update({ vault_path: path, content_roots: [], ignored_folders: [] }); return loadDirectories(path); }).catch((reason: Error) => setPathError(reason.message)); }}><FolderOpen size={18} /></button></div></label>
             {pathError && <p className="field-error" role="alert">{pathError}，你仍可手工输入路径。</p>}
-            {draft.vault_path && <p className="inline-status"><Check size={16} />路径已填写，创建时会再次校验</p>}
+            {draft.vault_path && directories.length === 0 && <button className="secondary inspect-directories" type="button" disabled={inspecting} onClick={() => loadDirectories(draft.vault_path)}>{inspecting ? "正在读取…" : "读取目录"}</button>}
+            {directories.length > 0 && <ContentScopePicker directories={directories} contentRoots={draft.content_roots} ignoredFolders={draft.ignored_folders} onChange={(content_roots, ignored_folders) => update({ content_roots, ignored_folders })} />}
             <button className="primary" type="button" disabled={!valid} onClick={next}>继续</button>
           </>}
           {step === 1 && <>
