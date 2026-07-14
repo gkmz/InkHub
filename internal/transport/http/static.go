@@ -19,6 +19,14 @@ func NewApplicationHandler(api http.Handler, assets fs.FS) http.Handler {
 	})
 }
 
+// NewRecoveryHandler 创建数据库不可写时的稳定只读 API 边界。
+func NewRecoveryHandler() http.Handler {
+	return localOnly(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "application/json; charset=utf-8")
+		writeError(response, http.StatusServiceUnavailable, "recovery.read_only", "数据库需要修复，当前仅可读取恢复信息")
+	}))
+}
+
 func serveAsset(response http.ResponseWriter, request *http.Request, assets fs.FS) {
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		http.Error(response, "方法不允许", http.StatusMethodNotAllowed)

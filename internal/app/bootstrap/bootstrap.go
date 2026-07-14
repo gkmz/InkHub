@@ -3,7 +3,6 @@ package bootstrap
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"flag"
 	"fmt"
@@ -86,17 +85,34 @@ func serve(ctx context.Context, config Config) error {
 		return err
 	}
 	defer unlock()
-	db, err := sqlite.Open(ctx, filepath.Join(config.DataDir, "inkhub.db"))
-	if err != nil {
-		return fmt.Errorf("打开 InkHub 数据库: %w", err)
-	}
-	defer db.Close()
 	assets, err := fs.Sub(webassets.Assets, "dist")
 	if err != nil {
 		return fmt.Errorf("读取嵌入 UI: %w", err)
 	}
-	api := httptransport.NewRuntimeHandler(db, httptransport.NewRouter(databaseAPI{db: db}))
-	server := &http.Server{Handler: httptransport.NewApplicationHandler(api, assets), ReadHeaderTimeout: 5 * time.Second}
+	db, err := sqlite.Open(ctx, filepath.Join(config.DataDir, "inkhub.db"))
+	if err != nil {
+		// migration 或完整性检查失败时仍提供 UI，但所有 API 都进入只读恢复边界。
+		return runHTTPServer(ctx, config, httptransport.NewApplicationHandler(httptransport.NewRecoveryHandler(), assets))
+	}
+	defer db.Close()
+	runner := newPublicationRunner(db)
+	if err := runner.Recover(ctx, time.Now().UTC().Add(-time.Minute)); err != nil {
+		return fmt.Errorf("恢复后台任务: %w", err)
+	}
+	if err := runner.Start(ctx); err != nil {
+		return fmt.Errorf("启动后台任务: %w", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = runner.Shutdown(shutdownCtx)
+	}()
+	api := httptransport.NewRuntimeHandler(db, httptransport.NewRouter(newDatabaseAPI(db)), httptransport.RuntimeOptions{DataDir: config.DataDir})
+	return runHTTPServer(ctx, config, httptransport.NewApplicationHandler(api, assets))
+}
+
+func runHTTPServer(ctx context.Context, config Config, handler http.Handler) error {
+	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	listener, err := net.Listen("tcp", net.JoinHostPort(config.Host, fmt.Sprint(config.Port)))
 	if err != nil {
 		return fmt.Errorf("监听 InkHub 地址: %w", err)
@@ -138,38 +154,4 @@ func acquireInstanceLock(dataDir string) (func(), error) {
 	_, _ = fmt.Fprintf(file, "%d\n", os.Getpid())
 	_ = file.Close()
 	return func() { _ = os.Remove(path) }, nil
-}
-
-type databaseAPI struct{ db *sql.DB }
-
-func (api databaseAPI) ListArticles(ctx context.Context, _ string, limit int) (httptransport.ArticlePage, error) {
-	rows, err := api.db.QueryContext(ctx, `SELECT articles.id,articles.title,articles.relative_path,articles.category,
-COALESCE(articles.source_mtime,articles.updated_at),COALESCE(editorial_reviews.state,'pending_review')
-FROM articles LEFT JOIN editorial_reviews ON editorial_reviews.article_id=articles.id
-WHERE articles.deleted_at IS NULL ORDER BY COALESCE(articles.source_mtime,articles.updated_at) DESC,articles.id LIMIT ?`, limit)
-	if err != nil {
-		return httptransport.ArticlePage{}, err
-	}
-	defer rows.Close()
-	page := httptransport.ArticlePage{Items: []httptransport.ArticleSummary{}}
-	for rows.Next() {
-		var item httptransport.ArticleSummary
-		var relative string
-		if err := rows.Scan(&item.ID, &item.Title, &relative, &item.Category, &item.ModifiedAt, &item.State); err != nil {
-			return httptransport.ArticlePage{}, err
-		}
-		item.Directory = filepath.ToSlash(filepath.Dir(relative))
-		if item.Directory == "." {
-			item.Directory = ""
-		}
-		item.HugoState, item.WeChatState = "尚未同步", "尚未准备"
-		page.Items = append(page.Items, item)
-	}
-	return page, rows.Err()
-}
-func (databaseAPI) QueuePublication(context.Context, httptransport.PublicationCommand) (string, error) {
-	return "", httptransport.ErrNotFound
-}
-func (databaseAPI) ConfirmWeChat(context.Context, httptransport.ConfirmCommand) error {
-	return httptransport.ErrNotFound
 }

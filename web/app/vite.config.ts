@@ -38,6 +38,8 @@ const demoAPI = {
       else if (/^\/articles\/[^/]+\/review$/.test(url.pathname)) body = { state: "approved" };
       else if (url.pathname === "/publications") body = { job_id: "demo-publication" };
       else if (url.pathname === "/wechat/confirm") body = { state: "confirmed" };
+      else if (url.pathname === "/wechat/copied") body = { state: "copied" };
+      else if (url.pathname.startsWith("/wechat/content/")) body = { html: demoArticle.preview_html };
       else if (url.pathname === "/taxonomy") body = { source: "data/taxonomy.yaml", loaded_at: "刚刚", readonly: false, issues: [{ id: "t1", kind: "alias", term: "local-first", similar: ["本地优先"], affected: ["内容工作流.md", "架构设计.md"] }, { id: "t2", kind: "low_frequency", term: "desktop-app", similar: [], affected: ["SQLite 取舍.md"] }] };
       else if (/^\/taxonomy\/issues\/[^/]+\/approve$/.test(url.pathname)) body = { state: "approved" };
       else if (url.pathname === "/settings") body = { ai_enabled: true, ai_secret_saved: true, hugo_enabled: true, wechat_enabled: true, wechat_secret_saved: false, default_template: "default", templates: [{ id: "default", name: "InkHub Default", version: "1.0.0", compatible: true }, { id: "minimal", name: "InkHub Minimal", version: "1.0.0", compatible: true }], diagnostics: [{ name: "Obsidian Vault", state: "正常", message: "路径可读，已建立索引" }, { name: "Hugo CLI", state: "正常", message: "0.163.3 extended" }, { name: "图片托管", state: "未启用", message: "含本地图片的微信内容将无法准备" }] };

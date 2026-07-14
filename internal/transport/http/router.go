@@ -58,6 +58,7 @@ type ConfirmCommand struct {
 type API interface {
 	ListArticles(ctx context.Context, cursor string, limit int) (ArticlePage, error)
 	QueuePublication(ctx context.Context, command PublicationCommand) (string, error)
+	MarkWeChatCopied(ctx context.Context, command ConfirmCommand) error
 	ConfirmWeChat(ctx context.Context, command ConfirmCommand) error
 }
 
@@ -85,9 +86,27 @@ func (r *router) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 			return
 		}
 		r.confirmWeChat(response, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/wechat/copied":
+		if !validateWriteRequest(response, request) {
+			return
+		}
+		r.markWeChatCopied(response, request)
 	default:
 		writeError(response, http.StatusNotFound, "route.not_found", "接口不存在")
 	}
+}
+
+func (r *router) markWeChatCopied(response http.ResponseWriter, request *http.Request) {
+	var command ConfirmCommand
+	if err := decodeJSON(request, &command); err != nil || command.ArticleID == "" || command.ProviderInstanceID == "" || command.ContentHash == "" {
+		writeError(response, http.StatusBadRequest, "request.invalid", "微信复制请求无效")
+		return
+	}
+	if err := r.api.MarkWeChatCopied(request.Context(), command); err != nil {
+		mapError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]string{"state": "copied"})
 }
 
 func (r *router) listArticles(response http.ResponseWriter, request *http.Request) {

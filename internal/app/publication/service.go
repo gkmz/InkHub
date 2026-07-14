@@ -105,6 +105,28 @@ type ConfirmRequest struct {
 	CurrentContentHash string
 }
 
+// MarkWeChatCopied 将当前已准备内容记录为用户已复制。
+func (s *Service) MarkWeChatCopied(ctx context.Context, request ConfirmRequest) error {
+	if s == nil || s.store == nil {
+		return fmt.Errorf("发布 Store 为空")
+	}
+	record, err := s.store.Find(ctx, request.ArticleID, request.ProviderInstanceID)
+	if err != nil {
+		return fmt.Errorf("查询微信渠道状态: %w", err)
+	}
+	if record.ContentHash != request.CurrentContentHash {
+		return ErrContentChanged
+	}
+	if record.State != domainpublication.StatePrepared {
+		return ErrConfirmationInvalid
+	}
+	record.State = domainpublication.StateCopied
+	if err := s.store.SaveWithEvent(ctx, record, "copied"); err != nil {
+		return fmt.Errorf("保存微信复制状态: %w", err)
+	}
+	return nil
+}
+
 // ConfirmWeChatDraft 将当前内容版本的 copied 投影确认为草稿已保存。
 func (s *Service) ConfirmWeChatDraft(ctx context.Context, request ConfirmRequest) error {
 	if s == nil || s.store == nil {

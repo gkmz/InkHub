@@ -42,4 +42,4 @@ go.work.sum
 # Binary executables
 preview
 markdown-preview
-wechat-preview
+/wechat-preview

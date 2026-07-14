@@ -46,3 +46,21 @@ func TestParseServerConfigDefaultsToLoopback(t *testing.T) {
 		t.Fatalf("默认启动配置不安全: %+v", config)
 	}
 }
+
+func TestRunKeepsRecoveryServerAvailableForInvalidDatabase(t *testing.T) {
+	dataDir := t.TempDir()
+	databasePath := filepath.Join(dataDir, "inkhub.db")
+	original := []byte("not-a-sqlite-database")
+	if err := os.WriteFile(databasePath, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Millisecond)
+	defer cancel()
+	if err := Run(ctx, []string{"inkhub", "--host", "127.0.0.1", "--port", "0", "--data-dir", dataDir}); err != nil {
+		t.Fatalf("恢复 Server 启动失败: %v", err)
+	}
+	after, err := os.ReadFile(databasePath)
+	if err != nil || string(after) != string(original) {
+		t.Fatalf("恢复模式修改了损坏数据库: content=%q err=%v", after, err)
+	}
+}

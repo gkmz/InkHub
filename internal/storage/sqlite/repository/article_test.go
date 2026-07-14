@@ -52,3 +52,25 @@ VALUES ('a1','w1','s1','article_ONE','one.md','invalid','2026-01-01T00:00:00Z','
 		t.Fatal("FindByStableID() must reject an invalid stored timestamp")
 	}
 }
+
+func TestArticleRepositoryMarksApprovedReviewChangedWithContentHash(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	seedWorkspace(t, db)
+	repo := NewArticleRepository(db)
+	value := article.Article{ID: "a1", WorkspaceID: "w1", SourceID: "s1", StableID: "article_ONE", RelativePath: "one.md", Title: "标题", Tags: []string{}, Keywords: []string{}, ContentHash: "hash-v1", FrontmatterHash: "front-v1"}
+	if err := repo.Upsert(context.Background(), value); err != nil {
+		t.Fatal(err)
+	}
+	_, err := db.Exec(`INSERT INTO editorial_reviews(article_id,state,approved_content_hash,approved_frontmatter_hash,updated_at) VALUES('a1','approved','hash-v1','front-v1','2026-01-01')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value.ContentHash = "hash-v2"
+	if err := repo.Upsert(context.Background(), value); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	if err := db.QueryRow(`SELECT state FROM editorial_reviews WHERE article_id='a1'`).Scan(&state); err != nil || state != "changed" {
+		t.Fatalf("审核未失效: state=%s err=%v", state, err)
+	}
+}

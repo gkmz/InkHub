@@ -35,7 +35,13 @@ func (r *ArticleRepository) Upsert(ctx context.Context, value article.Article) e
 	if value.IndexedAt.IsZero() {
 		indexedAt = now
 	}
-	_, err = r.db.ExecContext(ctx, `INSERT INTO articles(
+	// 索引快照和审核失效属于同一个内容变化事实，必须在同一事务提交。
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("开始文章索引事务: %w", err)
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `INSERT INTO articles(
 id,workspace_id,source_id,stable_id,relative_path,title,description,category,series,tags_json,keywords_json,
 slug,cover,source_mtime,source_size,source_fingerprint,content_hash,frontmatter_hash,indexed_at,deleted_at,created_at,updated_at)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -49,6 +55,12 @@ indexed_at=excluded.indexed_at,deleted_at=excluded.deleted_at,updated_at=exclude
 		value.SourceSize, value.SourceFingerprint, value.ContentHash, value.FrontmatterHash, indexedAt, formatTime(value.DeletedAt), now, now)
 	if err != nil {
 		return fmt.Errorf("保存文章索引: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE editorial_reviews SET state='changed',updated_at=? WHERE article_id=? AND state='approved' AND approved_content_hash<>?`, now, value.ID, value.ContentHash); err != nil {
+		return fmt.Errorf("使旧审核失效: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交文章索引事务: %w", err)
 	}
 	return nil
 }

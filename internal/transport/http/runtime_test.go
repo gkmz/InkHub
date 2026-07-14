@@ -63,6 +63,16 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), "真实扫描文章") || !strings.Contains(detail.Body.String(), "正文") {
 		t.Fatalf("文章详情错误: %d %s", detail.Code, detail.Body.String())
 	}
+	metadataBody := `{"metadata":{"title":"写回后的标题","description":"新摘要","category":"工程","series":"InkHub","tags":["Go"],"keywords":["本地"],"slug":"updated-title","cover":""}}`
+	metadataRequest := httptest.NewRequest(http.MethodPut, "http://localhost/api/v1/articles/"+articleID+"/metadata", strings.NewReader(metadataBody))
+	metadataRequest.Header.Set("Content-Type", "application/json")
+	metadataRequest.Header.Set("Origin", "http://localhost")
+	metadataResponse := httptest.NewRecorder()
+	handler.ServeHTTP(metadataResponse, metadataRequest)
+	updated, readErr := os.ReadFile(filepath.Join(vault, "文章.md"))
+	if metadataResponse.Code != http.StatusOK || readErr != nil || !strings.Contains(string(updated), "写回后的标题") {
+		t.Fatalf("元数据未原子写回: code=%d body=%s file=%s err=%v", metadataResponse.Code, metadataResponse.Body.String(), updated, readErr)
+	}
 }
 
 type emptyRuntimeAPI struct{}
@@ -73,4 +83,5 @@ func (emptyRuntimeAPI) ListArticles(context.Context, string, int) (ArticlePage, 
 func (emptyRuntimeAPI) QueuePublication(context.Context, PublicationCommand) (string, error) {
 	return "", ErrNotFound
 }
-func (emptyRuntimeAPI) ConfirmWeChat(context.Context, ConfirmCommand) error { return ErrNotFound }
+func (emptyRuntimeAPI) ConfirmWeChat(context.Context, ConfirmCommand) error    { return ErrNotFound }
+func (emptyRuntimeAPI) MarkWeChatCopied(context.Context, ConfirmCommand) error { return ErrNotFound }

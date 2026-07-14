@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,15 +20,23 @@ import (
 	"github.com/yuin/goldmark"
 )
 
+// RuntimeOptions 提供运行期持久化目录。
+type RuntimeOptions struct{ DataDir string }
+
 // NewRuntimeHandler 提供首次初始化和页面查询端点，并把领域命令交给核心 API。
-func NewRuntimeHandler(db *sql.DB, core http.Handler) http.Handler {
-	handler := &runtimeHandler{db: db, core: core}
+func NewRuntimeHandler(db *sql.DB, core http.Handler, options ...RuntimeOptions) http.Handler {
+	dataDir := os.TempDir()
+	if len(options) > 0 && options[0].DataDir != "" {
+		dataDir = options[0].DataDir
+	}
+	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir}
 	return localOnly(handler)
 }
 
 type runtimeHandler struct {
-	db   *sql.DB
-	core http.Handler
+	db      *sql.DB
+	core    http.Handler
+	dataDir string
 }
 
 func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -47,8 +56,14 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		writeJSON(response, http.StatusOK, map[string]any{"source": "尚未配置", "loaded_at": "-", "readonly": true, "issues": []any{}})
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/settings":
 		writeJSON(response, http.StatusOK, defaultSettings())
+	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/wechat/content/"):
+		h.wechatContent(response, request)
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/articles/"):
 		h.articleDetail(response, request)
+	case request.Method == http.MethodPut && strings.HasSuffix(request.URL.Path, "/metadata"):
+		if validateWriteRequest(response, request) {
+			h.writeMetadata(response, request)
+		}
 	case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/review"):
 		if validateWriteRequest(response, request) {
 			h.reviewArticle(response, request)
@@ -56,6 +71,77 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	default:
 		h.core.ServeHTTP(response, request)
 	}
+}
+
+type metadataRequest struct {
+	Metadata struct {
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Category    string   `json:"category"`
+		Series      string   `json:"series"`
+		Tags        []string `json:"tags"`
+		Keywords    []string `json:"keywords"`
+		Slug        string   `json:"slug"`
+		Cover       string   `json:"cover"`
+	} `json:"metadata"`
+}
+
+func (h *runtimeHandler) writeMetadata(response http.ResponseWriter, request *http.Request) {
+	articleID := strings.TrimSuffix(strings.TrimPrefix(request.URL.Path, "/api/v1/articles/"), "/metadata")
+	var input metadataRequest
+	if decodeJSON(request, &input) != nil || input.Metadata.Title == "" {
+		writeError(response, http.StatusBadRequest, "request.invalid", "元数据请求无效")
+		return
+	}
+	var workspaceID, sourceID, stableID, relative, fingerprint, root string
+	err := h.db.QueryRowContext(request.Context(), `SELECT articles.workspace_id,articles.source_id,articles.stable_id,articles.relative_path,articles.source_fingerprint,sources.root_path FROM articles JOIN sources ON sources.id=articles.source_id WHERE articles.id=?`, articleID).Scan(&workspaceID, &sourceID, &stableID, &relative, &fingerprint, &root)
+	if err != nil {
+		mapError(response, ErrNotFound)
+		return
+	}
+	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: root})
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	_, err = source.WriteMetadata(request.Context(), contracts.MetadataWriteCommand{Ref: contracts.SourceRef{SourceID: sourceID, RelativePath: relative, StableID: stableID}, ExpectedFingerprint: fingerprint, Patch: contracts.MetadataPatch{Title: &input.Metadata.Title, Description: &input.Metadata.Description, Category: &input.Metadata.Category, Series: &input.Metadata.Series, Tags: &input.Metadata.Tags, Keywords: &input.Metadata.Keywords, Slug: &input.Metadata.Slug, Cover: &input.Metadata.Cover}})
+	if errors.Is(err, obsidian.ErrSourceChanged) {
+		mapError(response, ErrStaleContent)
+		return
+	}
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	if _, err := workspaceapp.ScanWorkspace(request.Context(), source, repository.NewArticleRepository(h.db), workspaceapp.ScanOptions{WorkspaceID: workspaceID}, contracts.ScanCursor{}); err != nil {
+		mapError(response, err)
+		return
+	}
+	request.URL.Path = "/api/v1/articles/" + articleID
+	h.articleDetail(response, request)
+}
+
+func (h *runtimeHandler) wechatContent(response http.ResponseWriter, request *http.Request) {
+	articleID := strings.TrimPrefix(request.URL.Path, "/api/v1/wechat/content/")
+	var resultJSON string
+	err := h.db.QueryRowContext(request.Context(), `SELECT jobs.result_json FROM jobs WHERE jobs.kind='wechat_prepare' AND jobs.state='succeeded' AND json_extract(jobs.payload_json,'$.article_id')=? ORDER BY jobs.finished_at DESC LIMIT 1`, articleID).Scan(&resultJSON)
+	if err != nil {
+		mapError(response, ErrNotFound)
+		return
+	}
+	var result struct {
+		Location string `json:"location"`
+	}
+	if json.Unmarshal([]byte(resultJSON), &result) != nil || result.Location == "" {
+		mapError(response, ErrNotFound)
+		return
+	}
+	content, err := os.ReadFile(result.Location)
+	if err != nil {
+		mapError(response, ErrNotFound)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]string{"html": string(content)})
 }
 
 func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *http.Request) {
@@ -102,8 +188,47 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 			}
 		}
 	}
+	hugoState, wechatState, wechatCopied := "尚未同步", "尚未准备", false
+	for channel, providerID := range providers {
+		if providerID == "" {
+			continue
+		}
+		var stored string
+		if h.db.QueryRowContext(request.Context(), `SELECT CASE WHEN content_hash<>? THEN 'outdated' ELSE state END FROM publications WHERE article_id=? AND provider_instance_id=?`, contentHash, id, providerID).Scan(&stored) == nil {
+			label := runtimePublicationLabel(stored, channel)
+			if channel == "hugo" {
+				hugoState = label
+			} else {
+				wechatState, wechatCopied = label, stored == "copied" || stored == "confirmed"
+			}
+		}
+	}
 	metadata := map[string]any{"title": title, "description": description, "category": category, "series": series, "tags": tags, "keywords": keywords, "slug": slug, "cover": cover}
-	writeJSON(response, http.StatusOK, map[string]any{"id": id, "content_version": contentHash, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered.String(), "source_changed": false, "review_state": reviewState, "hugo_state": "尚未同步", "wechat_state": "尚未准备", "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": false, "suggestions": []any{}, "suggestions_stale": false, "wechat_copied": false})
+	writeJSON(response, http.StatusOK, map[string]any{"id": id, "content_version": contentHash, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered.String(), "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": false, "suggestions": []any{}, "suggestions_stale": false, "wechat_copied": wechatCopied})
+}
+
+func runtimePublicationLabel(state, channel string) string {
+	switch state {
+	case "published":
+		return "已同步"
+	case "prepared":
+		return "已准备"
+	case "copied":
+		return "已复制"
+	case "confirmed":
+		return "已确认草稿"
+	case "failed":
+		return "处理失败"
+	case "outdated":
+		if channel == "hugo" {
+			return "需要同步"
+		}
+		return "草稿可能过期"
+	}
+	if channel == "hugo" {
+		return "尚未同步"
+	}
+	return "尚未准备"
 }
 
 func (h *runtimeHandler) reviewArticle(response http.ResponseWriter, request *http.Request) {
@@ -172,15 +297,16 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 		return
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(request.Context(), `INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,last_used_at=excluded.last_used_at,updated_at=excluded.updated_at`, workspaceID, input.Name, filepath.Dir(vault), now, now, now)
+	_, err = tx.ExecContext(request.Context(), `INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,last_used_at=excluded.last_used_at,updated_at=excluded.updated_at`, workspaceID, input.Name, h.dataDir, now, now, now)
 	if err == nil {
 		_, err = tx.ExecContext(request.Context(), `INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES(?,?,'obsidian',?,?,?) ON CONFLICT(id) DO NOTHING`, sourceID, workspaceID, vault, now, now)
 	}
 	if err == nil {
-		_, err = tx.ExecContext(request.Context(), `INSERT INTO provider_instances(id,workspace_id,provider_type,name,config_json,created_at,updated_at) VALUES(?,?,'wechat','微信公众号','{"template":"default"}',?,?) ON CONFLICT(id) DO NOTHING`, wechatID, workspaceID, now, now)
+		wechatConfig, _ := json.Marshal(map[string]string{"template": "default", "staging_root": filepath.Join(h.dataDir, "staging", "wechat", workspaceID)})
+		_, err = tx.ExecContext(request.Context(), `INSERT INTO provider_instances(id,workspace_id,provider_type,name,config_json,created_at,updated_at) VALUES(?,?,'wechat','微信公众号',?,?,?) ON CONFLICT(id) DO NOTHING`, wechatID, workspaceID, string(wechatConfig), now, now)
 	}
 	if err == nil && input.HugoPath != "" {
-		config, _ := json.Marshal(map[string]string{"root": input.HugoPath})
+		config, _ := json.Marshal(map[string]string{"root": input.HugoPath, "staging_root": filepath.Join(h.dataDir, "staging", "hugo", workspaceID), "section": "posts"})
 		_, err = tx.ExecContext(request.Context(), `INSERT INTO provider_instances(id,workspace_id,provider_type,name,config_json,created_at,updated_at) VALUES(?,?,'hugo','Hugo',?,?,?) ON CONFLICT(id) DO NOTHING`, hugoID, workspaceID, string(config), now, now)
 	}
 	if err == nil {

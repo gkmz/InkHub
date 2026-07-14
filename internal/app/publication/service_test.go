@@ -61,6 +61,17 @@ func TestConfirmWeChatDraftRequiresCopiedCurrentHash(t *testing.T) {
 	}
 }
 
+func TestMarkWeChatCopiedRequiresPreparedCurrentHash(t *testing.T) {
+	store := &capturingPublicationStore{record: Record{ID: "publication_1", ArticleID: "article_1", ProviderInstanceID: "wechat_1", State: domainpublication.StatePrepared, ContentHash: "hash-v1"}}
+	service := NewService(&capturingQueue{}, store)
+	if err := service.MarkWeChatCopied(context.Background(), ConfirmRequest{ArticleID: "article_1", ProviderInstanceID: "wechat_1", CurrentContentHash: "hash-v1"}); err != nil {
+		t.Fatalf("记录微信复制: %v", err)
+	}
+	if store.saved.State != domainpublication.StateCopied || store.eventType != "copied" {
+		t.Fatalf("复制状态未持久化: %+v event=%s", store.saved, store.eventType)
+	}
+}
+
 type capturingQueue struct{ last JobIntent }
 
 func (q *capturingQueue) Enqueue(_ context.Context, intent JobIntent) (string, error) {

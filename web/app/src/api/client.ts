@@ -79,6 +79,16 @@ export function confirmWeChatDraft(article: Pick<ArticleDetail, "id" | "content_
   return request<{ state: string }>("/wechat/confirm", { method: "POST", body: JSON.stringify({ article_id: article.id, provider_instance_id: article.wechat_provider_id, content_hash: article.content_version }) });
 }
 
+/** markWeChatCopied 仅在浏览器成功写入当前模板 HTML 后记录复制状态。 */
+export function markWeChatCopied(article: Pick<ArticleDetail, "id" | "content_version" | "wechat_provider_id">) {
+  return request<{ state: string }>("/wechat/copied", { method: "POST", body: JSON.stringify({ article_id: article.id, provider_instance_id: article.wechat_provider_id, content_hash: article.content_version }) });
+}
+
+/** getPreparedWeChatHTML 读取当前文章已经准备完成的安全模板 HTML。 */
+export function getPreparedWeChatHTML(articleID: string) {
+  return request<{ html: string }>(`/wechat/content/${encodeURIComponent(articleID)}`);
+}
+
 /** getTaxonomyOverview 读取权威 taxonomy 状态及待治理问题。 */
 export function getTaxonomyOverview(signal?: AbortSignal) {
   return request<TaxonomyOverview>("/taxonomy", { signal });

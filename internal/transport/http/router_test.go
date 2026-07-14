@@ -102,7 +102,8 @@ func (a *fakeAPI) QueuePublication(context.Context, PublicationCommand) (string,
 	return a.jobID, a.err
 }
 
-func (a *fakeAPI) ConfirmWeChat(context.Context, ConfirmCommand) error { return a.err }
+func (a *fakeAPI) ConfirmWeChat(context.Context, ConfirmCommand) error    { return a.err }
+func (a *fakeAPI) MarkWeChatCopied(context.Context, ConfirmCommand) error { return a.err }
 
 func decodeBody(t *testing.T, response *httptest.ResponseRecorder) map[string]any {
 	t.Helper()

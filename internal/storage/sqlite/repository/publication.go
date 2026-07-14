@@ -39,6 +39,16 @@ func NewPublicationRepository(db *sql.DB) *PublicationRepository {
 	return &PublicationRepository{db: db}
 }
 
+// Find 查询文章在指定 Provider 的当前渠道投影。
+func (r *PublicationRepository) Find(ctx context.Context, articleID, providerInstanceID string) (PublicationRecord, error) {
+	var value PublicationRecord
+	err := r.db.QueryRowContext(ctx, `SELECT id,article_id,provider_instance_id,workspace_id,state,content_hash,provider_revision FROM publications WHERE article_id=? AND provider_instance_id=?`, articleID, providerInstanceID).Scan(&value.ID, &value.ArticleID, &value.ProviderInstanceID, &value.WorkspaceID, &value.State, &value.ContentHash, &value.ProviderRevision)
+	if err != nil {
+		return PublicationRecord{}, fmt.Errorf("查询发布投影: %w", err)
+	}
+	return value, nil
+}
+
 // SaveWithEvent 在同一事务保存渠道投影和对应事件。
 func (r *PublicationRepository) SaveWithEvent(ctx context.Context, record PublicationRecord, event PublicationEvent) error {
 	payload, err := json.Marshal(event.Payload)

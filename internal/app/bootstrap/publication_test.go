@@ -1,0 +1,40 @@
+package bootstrap
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+
+	inksqlite "github.com/gkmz/InkHub/internal/storage/sqlite"
+	httptransport "github.com/gkmz/InkHub/internal/transport/http"
+)
+
+func TestDatabaseAPIQueuesOnlyCurrentApprovedPublication(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','test','/tmp','2026-01-01','2026-01-01','2026-01-01');
+INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES('s1','w1','obsidian','/tmp','2026-01-01','2026-01-01');
+INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,content_hash,frontmatter_hash,indexed_at,created_at,updated_at) VALUES('a1','w1','s1','article_TEST','a.md','hash-current','front','2026-01-01','2026-01-01','2026-01-01');
+INSERT INTO editorial_reviews(article_id,state,approved_content_hash,approved_frontmatter_hash,updated_at) VALUES('a1','approved','hash-current','front','2026-01-01');
+INSERT INTO provider_instances(id,workspace_id,provider_type,name,created_at,updated_at) VALUES('h1','w1','hugo','Hugo','2026-01-01','2026-01-01')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := newDatabaseAPI(db)
+	command := httptransport.PublicationCommand{ArticleID: "a1", ProviderInstanceID: "h1", Channel: "hugo", ContentHash: "hash-current"}
+	first, err := api.QueuePublication(context.Background(), command)
+	if err != nil || first == "" {
+		t.Fatalf("当前审核版本未入队: id=%s err=%v", first, err)
+	}
+	second, err := api.QueuePublication(context.Background(), command)
+	if err != nil || second != first {
+		t.Fatalf("重复请求未去重: first=%s second=%s err=%v", first, second, err)
+	}
+	command.ContentHash = "hash-old"
+	if _, err := api.QueuePublication(context.Background(), command); err == nil {
+		t.Fatal("旧内容版本不应进入队列")
+	}
+}
