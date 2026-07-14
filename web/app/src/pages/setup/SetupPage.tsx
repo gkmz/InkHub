@@ -1,0 +1,72 @@
+import { Check, ChevronLeft, FolderOpen, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import type { WorkspaceDraft } from "../../api/types";
+import { pickDirectory } from "../../api/client";
+
+const steps = ["选择内容库", "确认博客", "配置微信", "AI 与扫描"];
+
+/** SetupPage 将首次初始化限制为四个连续、可恢复的决定。 */
+export function SetupPage({ onComplete }: { onComplete: (draft: WorkspaceDraft) => Promise<void> }) {
+  const saved = sessionStorage.getItem("inkhub.setup");
+  const [step, setStep] = useState(0);
+  const [draft, setDraft] = useState<WorkspaceDraft>(() => saved ? JSON.parse(saved) as WorkspaceDraft : { name: "", vault_path: "", wechat_template: "default", ai_enabled: false });
+  const [submitting, setSubmitting] = useState(false);
+  const [pathError, setPathError] = useState("");
+  const valid = draft.name.trim() !== "" && draft.vault_path.trim() !== "";
+  useEffect(() => {
+    if (!draft.name && !draft.vault_path) return;
+    const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [draft.name, draft.vault_path]);
+  const update = (next: Partial<WorkspaceDraft>) => {
+    const value = { ...draft, ...next };
+    setDraft(value);
+    sessionStorage.setItem("inkhub.setup", JSON.stringify(value));
+  };
+  const heading = useMemo(() => steps[step], [step]);
+  const next = () => setStep((current) => Math.min(3, current + 1));
+
+  return (
+    <main className="setup-page">
+      <aside className="setup-rail">
+        <div className="brand setup-brand"><span className="brand-mark">I</span><strong>InkHub</strong></div>
+        <ol>{steps.map((label, index) => <li key={label} className={index === step ? "active" : index < step ? "done" : ""}><span>{index < step ? <Check size={14} /> : index + 1}</span>{label}</li>)}</ol>
+        <p>文章留在你的电脑上<br />InkHub 只建立本地索引</p>
+      </aside>
+      <section className="setup-content">
+        <div className="setup-step"><span>{step + 1} / 4</span><p>{steps.join(" · ")}</p></div>
+        <div className="setup-form">
+          <p className="eyebrow">首次设置</p><h1>{heading}</h1>
+          {step === 0 && <>
+            <p className="lead">先告诉 InkHub 你的文章放在哪里。内容不会被搬走或上传。</p>
+            <label>工作区名称<input value={draft.name} onChange={(event) => update({ name: event.target.value })} placeholder="例如：我的文章" /></label>
+            <label>Obsidian Vault 路径<div className="path-field"><input value={draft.vault_path} onChange={(event) => { setPathError(""); update({ vault_path: event.target.value }); }} placeholder="/Users/you/Documents/Vault" /><button type="button" aria-label="选择目录" onClick={() => { setPathError(""); pickDirectory().then(({ path }) => update({ vault_path: path })).catch((reason: Error) => setPathError(reason.message)); }}><FolderOpen size={18} /></button></div></label>
+            {pathError && <p className="field-error" role="alert">{pathError}，你仍可手工输入路径。</p>}
+            {draft.vault_path && <p className="inline-status"><Check size={16} />路径已填写，创建时会再次校验</p>}
+            <button className="primary" type="button" disabled={!valid} onClick={next}>继续</button>
+          </>}
+          {step === 1 && <>
+            <p className="lead">连接 Hugo 后可以把审核完成的文章同步到博客。这一步可以稍后完成。</p>
+            <label>Hugo 根目录<input value={draft.hugo_path ?? ""} onChange={(event) => update({ hugo_path: event.target.value })} placeholder="可选" /></label>
+            <div className="button-row"><button className="secondary" type="button" onClick={next}>暂不配置博客</button><button className="primary" type="button" onClick={next}>继续</button></div>
+          </>}
+          {step === 2 && <>
+            <p className="lead">选择微信公众号排版模板。图片托管可以稍后在设置中配置。</p>
+            <div className="template-options">
+              {["default", "minimal"].map((value) => <button key={value} type="button" className={draft.wechat_template === value ? "selected" : ""} onClick={() => update({ wechat_template: value })}><span className={`template-preview ${value}`}><i /><i /><i /></span><b>InkHub {value === "default" ? "Default" : "Minimal"}</b><small>{value === "default" ? "清晰层级，适合技术文章" : "轻量留白，适合短文"}</small></button>)}
+            </div>
+            <button className="primary" type="button" onClick={next}>继续</button>
+          </>}
+          {step === 3 && <>
+            <p className="lead">AI 默认关闭。不开启也能完整审核和发布文章。</p>
+            <label className="toggle-row"><span><Sparkles size={18} /><b>启用 AI 建议</b><small>仅在你主动请求时发送内容</small></span><input type="checkbox" checked={draft.ai_enabled} onChange={(event) => update({ ai_enabled: event.target.checked })} /></label>
+            <div className="setup-summary"><Check size={18} /><span><b>准备扫描 {draft.name}</b><small>{draft.vault_path}</small></span></div>
+            <button className="primary" type="button" disabled={submitting} onClick={async () => { setSubmitting(true); await onComplete(draft); setSubmitting(false); }}>{submitting ? "正在创建…" : "创建工作区"}</button>
+          </>}
+          {step > 0 && <button className="back" type="button" onClick={() => setStep((current) => current - 1)}><ChevronLeft size={16} />返回上一步</button>}
+        </div>
+      </section>
+    </main>
+  );
+}

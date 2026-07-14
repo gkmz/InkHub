@@ -25,6 +25,13 @@ jobs:
           hugo-version: "0.163.3"
           extended: true
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/app/package-lock.json
+
       - name: Check formatting
         run: test -z "$(gofmt -l .)"
 
@@ -33,3 +40,12 @@ jobs:
 
       - name: Run tests
         run: go test -race ./...
+
+      - name: Verify web app
+        working-directory: web/app
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm test -- --run
+          npm run build
