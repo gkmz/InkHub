@@ -23,9 +23,14 @@ var (
 
 // ArticleSummary 是内容库列表使用的脱敏 DTO。
 type ArticleSummary struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	State string `json:"state"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Directory   string `json:"directory"`
+	Category    string `json:"category"`
+	ModifiedAt  string `json:"modified_at"`
+	State       string `json:"state"`
+	HugoState   string `json:"hugo_state"`
+	WeChatState string `json:"wechat_state"`
 }
 
 // ArticlePage 是基于不透明 Cursor 的文章分页结果。

@@ -1,0 +1,76 @@
+package httptransport
+
+import (
+	"bytes"
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	inksqlite "github.com/gkmz/InkHub/internal/storage/sqlite"
+)
+
+func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	vault := t.TempDir()
+	if err := os.Mkdir(filepath.Join(vault, ".obsidian"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	article := "---\nid: article_01JTEST\ntitle: 真实扫描文章\ndescription: 测试首次扫描\ntags: [Go]\nkeywords: [InkHub]\n---\n正文"
+	if err := os.WriteFile(filepath.Join(vault, "文章.md"), []byte(article), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}))
+
+	session := httptest.NewRecorder()
+	handler.ServeHTTP(session, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/session", nil))
+	if !strings.Contains(session.Body.String(), `"has_workspace":false`) {
+		t.Fatalf("初始会话错误: %s", session.Body.String())
+	}
+
+	body := []byte(`{"name":"写作空间","vault_path":"` + filepath.ToSlash(vault) + `","wechat_template":"default","ai_enabled":false}`)
+	for range 2 {
+		request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/workspaces", bytes.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Origin", "http://localhost")
+		request.Header.Set("Idempotency-Key", "same-request")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusCreated {
+			t.Fatalf("创建工作区失败: %d %s", response.Code, response.Body.String())
+		}
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM workspaces`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("工作区未幂等创建: count=%d err=%v", count, err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM articles WHERE title='真实扫描文章'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("首次扫描未写入文章: count=%d err=%v", count, err)
+	}
+	var articleID string
+	if err := db.QueryRow(`SELECT id FROM articles LIMIT 1`).Scan(&articleID); err != nil {
+		t.Fatal(err)
+	}
+	detail := httptest.NewRecorder()
+	handler.ServeHTTP(detail, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/articles/"+articleID, nil))
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), "真实扫描文章") || !strings.Contains(detail.Body.String(), "正文") {
+		t.Fatalf("文章详情错误: %d %s", detail.Code, detail.Body.String())
+	}
+}
+
+type emptyRuntimeAPI struct{}
+
+func (emptyRuntimeAPI) ListArticles(context.Context, string, int) (ArticlePage, error) {
+	return ArticlePage{}, nil
+}
+func (emptyRuntimeAPI) QueuePublication(context.Context, PublicationCommand) (string, error) {
+	return "", ErrNotFound
+}
+func (emptyRuntimeAPI) ConfirmWeChat(context.Context, ConfirmCommand) error { return ErrNotFound }

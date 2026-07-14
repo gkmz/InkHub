@@ -1,40 +1,86 @@
 # InkHub
 
-InkHub 是面向 Markdown 内容创作者的本地优先内容工作台，用于文章审核、AI 辅助元数据治理、SEO 检查，以及 Hugo 和微信公众号发布准备。
-
-## 代码边界
+InkHub 是面向 Markdown 内容创作者的本地优先内容工作台：从 Obsidian Vault 建立索引，在本机完成元数据审核、AI 建议、SEO 检查和标签治理，并将确认后的内容交付到 Hugo 与微信公众号。
 
 ```text
-cmd/inkhub/   新产品 CLI 入口
-internal/     新产品后端实现
-docs/         产品、架构和实施文档
-testdata/     新产品测试样例
-old/          旧 markdown-preview 项目，只作为迁移参考
+Obsidian Vault → InkHub 审核与治理 → Hugo / 微信公众号草稿
 ```
 
-新功能只能进入 `cmd/inkhub`、`internal` 和后续的 `web/app`。禁止继续修改 `old/` 中的业务行为；需要迁移旧能力时，先补黄金测试，再在新架构中重新实现。
+正文始终保存在 Vault。SQLite 只保存可重建索引、配置、审核历史、发布状态和后台任务；AI 建议不会自动覆盖文章，微信公众号也不会被误报为自动发布。
 
-## 当前开发状态
+## 快速开始
 
-当前处于 MVP Release 1 开发阶段。实施顺序和验证要求见 `docs/plans/mvp-implementation-plan.md`。
+要求：Go 1.24。只有修改前端时才需要 Node.js 22；运行发布二进制不依赖 Node.js。
+
+```bash
+go build -o ./bin/inkhub ./cmd/inkhub
+./bin/inkhub
+```
+
+默认访问地址为 `http://127.0.0.1:8080`。首次打开后依次选择 Obsidian Vault、可选 Hugo、微信模板和 AI 配置。服务默认只监听本机回环地址。
+
+常用启动参数：
+
+```bash
+./bin/inkhub --host 127.0.0.1 --port 8080
+./bin/inkhub --data-dir /path/to/inkhub-data
+./bin/inkhub --version
+./bin/inkhub doctor
+```
+
+## 数据与隐私
+
+- 默认数据目录：macOS 为 `~/Library/Application Support/InkHub`，其他系统使用各自用户配置目录。
+- 主数据库：`inkhub.db`；migration 前会在 `backups/` 创建一致性备份。
+- Secret 由平台 Secret Store 管理，不进入 SQLite、普通日志、API 响应或诊断包。
+- 前端、SQLite migration 和内置微信模板均嵌入最终二进制。
+- 写请求要求同源 JSON，HTTP 服务拒绝非本机 Host。
+
+## 内容与渠道
+
+标准 frontmatter 字段：`id`、`title`、`description`、`tags`、`keywords`、`publish.category`、`publish.series`、`publish.slug` 和 `publish.cover`。
+
+Hugo 使用 staging、真实构建和原子替换，同一文章会稳定更新同一 page bundle。Taxonomy 以 Hugo `data/taxonomy.yaml` 为权威来源。
+
+微信公众号提供 `InkHub Default` 和 `InkHub Minimal` 两个同规格模板。流程严格区分准备内容、复制格式化 HTML 和人工确认草稿；含本地图片的文章需要先配置图片托管。
+
+## 开发与验证
+
+后端：
 
 ```bash
 go test -race ./...
+go vet ./...
 go build ./cmd/inkhub
 ```
 
-## 功能质量门禁
-
-每完成一个功能，必须在进入下一功能前完成：
-
-1. 审查领域边界、错误路径、并发、事务和安全行为。
-2. 检查所有公开 Go 方法都有中文文档注释，关键事务、补偿、原子写入和安全逻辑有简短中文注释。
-3. 为审查发现的问题先补失败测试，再修复实现。
-4. 运行相关聚焦测试、`go test -race ./...`、`go vet ./...`、新旧入口构建和 `git diff --check`。
-5. 未通过审查或验证时，不得将该功能标记为完成。
-
-旧应用仍可独立构建，用于迁移期间对照行为：
+前端：
 
 ```bash
-go build -o /tmp/inkhub-old ./old
+cd web/app
+npm ci
+npm run dev
+npm run typecheck
+npm run lint
+npm test -- --run
+npx playwright test
+npm run build
 ```
+
+Vite 构建输出到已跟踪的 `web/dist`。修改前端后必须重新构建并提交产物，确保干净检出的 Go 项目可以直接嵌入 UI。
+
+## 项目结构
+
+```text
+cmd/inkhub/       应用入口
+internal/app/     用例与任务编排
+internal/domain/  领域模型和规则
+internal/provider Provider 实现
+internal/storage/ SQLite 与 Repository
+internal/transport HTTP 和 CLI Adapter
+web/app/          React + TypeScript 源码
+web/dist/         已跟踪的生产资源
+docs/             PRD、架构、交互和实施计划
+```
+
+更完整的产品范围与设计约束见 `docs/PRD.md`、`docs/design/architecture.md` 和 `docs/design/interactions.md`。
