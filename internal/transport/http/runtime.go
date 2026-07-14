@@ -88,7 +88,23 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 
 // pickDirectory 通过本机原生对话框选择目录，并只向同源页面返回规范化路径。
 func (h *runtimeHandler) pickDirectory(response http.ResponseWriter, request *http.Request) {
-	selected, err := h.directoryPicker.Pick(request.Context(), "选择 Obsidian Vault")
+	var input struct {
+		Purpose string `json:"purpose"`
+	}
+	if decodeJSON(request, &input) != nil {
+		writeError(response, http.StatusBadRequest, "request.invalid", "目录选择请求无效")
+		return
+	}
+	titles := map[string]string{
+		"vault": "选择 Obsidian Vault",
+		"hugo":  "选择 Hugo 项目根目录",
+	}
+	title, supported := titles[input.Purpose]
+	if !supported {
+		writeError(response, http.StatusBadRequest, "request.invalid", "目录选择用途无效")
+		return
+	}
+	selected, err := h.directoryPicker.Pick(request.Context(), title)
 	if err != nil {
 		writeError(response, http.StatusUnprocessableEntity, "directory.pick_failed", "未能选择目录")
 		return

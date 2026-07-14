@@ -12,6 +12,7 @@ export function SetupPage({ onComplete }: { onComplete: (draft: WorkspaceDraft) 
   const [draft, setDraft] = useState<WorkspaceDraft>(() => saved ? JSON.parse(saved) as WorkspaceDraft : { name: "", vault_path: "", wechat_template: "default", ai_enabled: false });
   const [submitting, setSubmitting] = useState(false);
   const [pathError, setPathError] = useState("");
+  const [hugoPathError, setHugoPathError] = useState("");
   const valid = draft.name.trim() !== "" && draft.vault_path.trim() !== "";
   useEffect(() => {
     if (!draft.name && !draft.vault_path) return;
@@ -41,14 +42,15 @@ export function SetupPage({ onComplete }: { onComplete: (draft: WorkspaceDraft) 
           {step === 0 && <>
             <p className="lead">先告诉 InkHub 你的文章放在哪里。内容不会被搬走或上传。</p>
             <label>工作区名称<input value={draft.name} onChange={(event) => update({ name: event.target.value })} placeholder="例如：我的文章" /></label>
-            <label>Obsidian Vault 路径<div className="path-field"><input value={draft.vault_path} onChange={(event) => { setPathError(""); update({ vault_path: event.target.value }); }} placeholder="/Users/you/Documents/Vault" /><button type="button" aria-label="选择目录" onClick={() => { setPathError(""); pickDirectory().then(({ path }) => update({ vault_path: path })).catch((reason: Error) => setPathError(reason.message)); }}><FolderOpen size={18} /></button></div></label>
+            <label>Obsidian Vault 路径<div className="path-field"><input value={draft.vault_path} onChange={(event) => { setPathError(""); update({ vault_path: event.target.value }); }} placeholder="/Users/you/Documents/Vault" /><button type="button" aria-label="选择目录" onClick={() => { setPathError(""); pickDirectory("vault").then(({ path }) => update({ vault_path: path })).catch((reason: Error) => setPathError(reason.message)); }}><FolderOpen size={18} /></button></div></label>
             {pathError && <p className="field-error" role="alert">{pathError}，你仍可手工输入路径。</p>}
             {draft.vault_path && <p className="inline-status"><Check size={16} />路径已填写，创建时会再次校验</p>}
             <button className="primary" type="button" disabled={!valid} onClick={next}>继续</button>
           </>}
           {step === 1 && <>
             <p className="lead">连接 Hugo 后可以把审核完成的文章同步到博客。这一步可以稍后完成。</p>
-            <label>Hugo 根目录<input value={draft.hugo_path ?? ""} onChange={(event) => update({ hugo_path: event.target.value })} placeholder="可选" /></label>
+            <label>Hugo 根目录<div className="path-field"><input value={draft.hugo_path ?? ""} onChange={(event) => { setHugoPathError(""); update({ hugo_path: event.target.value }); }} placeholder="可选" /><button type="button" aria-label="选择 Hugo 目录" onClick={() => { setHugoPathError(""); pickDirectory("hugo").then(({ path }) => update({ hugo_path: path })).catch((reason: Error) => setHugoPathError(reason.message)); }}><FolderOpen size={18} /></button></div></label>
+            {hugoPathError && <p className="field-error" role="alert">{hugoPathError}，你仍可手工输入路径。</p>}
             <div className="button-row"><button className="secondary" type="button" onClick={next}>暂不配置博客</button><button className="primary" type="button" onClick={next}>继续</button></div>
           </>}
           {step === 2 && <>

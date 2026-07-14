@@ -44,9 +44,9 @@ export function createWorkspace(draft: WorkspaceDraft, idempotencyKey: string) {
   });
 }
 
-/** pickDirectory 请求本机进程打开系统目录选择器。 */
-export function pickDirectory() {
-  return request<{ path: string }>("/directories/pick", { method: "POST", body: "{}" });
+/** pickDirectory 按固定用途请求本机进程打开系统目录选择器。 */
+export function pickDirectory(purpose: "vault" | "hugo") {
+  return request<{ path: string }>("/directories/pick", { method: "POST", body: JSON.stringify({ purpose }) });
 }
 
 /** getJob 恢复页面刷新前已经提交的扫描任务。 */

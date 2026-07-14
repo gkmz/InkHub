@@ -84,7 +84,7 @@ func TestRuntimeHandlerPicksDirectoryThroughInjectedNativeAdapter(t *testing.T) 
 	picker := &fakeDirectoryPicker{path: "/Users/test/Documents/Vault"}
 	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{DirectoryPicker: picker})
 
-	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/directories/pick", strings.NewReader(`{}`))
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/directories/pick", strings.NewReader(`{"purpose":"hugo"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Origin", "http://localhost")
 	response := httptest.NewRecorder()
@@ -93,8 +93,17 @@ func TestRuntimeHandlerPicksDirectoryThroughInjectedNativeAdapter(t *testing.T) 
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"path":"/Users/test/Documents/Vault"`) {
 		t.Fatalf("目录选择接口响应错误: code=%d body=%s", response.Code, response.Body.String())
 	}
-	if picker.title != "选择 Obsidian Vault" {
+	if picker.title != "选择 Hugo 项目根目录" {
 		t.Fatalf("目录选择器标题错误: %q", picker.title)
+	}
+
+	invalid := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/directories/pick", strings.NewReader(`{"purpose":"unknown"}`))
+	invalid.Header.Set("Content-Type", "application/json")
+	invalid.Header.Set("Origin", "http://localhost")
+	invalidResponse := httptest.NewRecorder()
+	handler.ServeHTTP(invalidResponse, invalid)
+	if invalidResponse.Code != http.StatusBadRequest || !strings.Contains(invalidResponse.Body.String(), "request.invalid") {
+		t.Fatalf("未知目录用途未拒绝: code=%d body=%s", invalidResponse.Code, invalidResponse.Body.String())
 	}
 
 	blocked := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/directories/pick", strings.NewReader(`{}`))

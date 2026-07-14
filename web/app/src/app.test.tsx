@@ -31,6 +31,28 @@ test("首次运行显示四步初始化并允许跳过可选渠道", async () =>
   expect(screen.getByRole("heading", { name: "配置微信" })).toBeInTheDocument();
 });
 
+test("初始化时可以通过原生选择器填写 Hugo 根目录", async () => {
+  sessionStorage.clear();
+  mockAPI(false);
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.includes("/session")) return Response.json({ has_workspace: false, workspace: null });
+    if (url.includes("/directories/pick")) {
+      expect(init?.body).toBe(JSON.stringify({ purpose: "hugo" }));
+      return Response.json({ path: "/Users/me/Sites/blog" });
+    }
+    return Response.json({ error: { code: "not_found", message: "接口不存在" } }, { status: 404 });
+  });
+  render(<App />);
+  await userEvent.type(await screen.findByLabelText("工作区名称"), "写作空间");
+  await userEvent.type(screen.getByLabelText("Obsidian Vault 路径"), "/Users/me/Vault");
+  await userEvent.click(screen.getByRole("button", { name: "继续" }));
+
+  await userEvent.click(screen.getByRole("button", { name: "选择 Hugo 目录" }));
+
+  expect(await screen.findByLabelText("Hugo 根目录")).toHaveValue("/Users/me/Sites/blog");
+});
+
 test("工作台按失败、更新和待审核的优先级排列", async () => {
   mockAPI();
   render(<App />);
