@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 
 const demoArticles = [
@@ -19,9 +19,9 @@ const demoArticle = {
 };
 
 // 开发服务器只提供可重复的页面验收数据；生产构建不会包含这段中间件。
-const demoAPI = {
+const demoAPI: Plugin = {
   name: "inkhub-demo-api",
-  configureServer(server: { middlewares: { use: (path: string, handler: (request: { url?: string; headers: { referer?: string } }, response: { statusCode: number; setHeader: (name: string, value: string) => void; end: (body: string) => void }) => void) => void } }) {
+  configureServer(server) {
     server.middlewares.use("/api/v1", (request, response) => {
       const url = new URL(request.url ?? "/", "http://localhost");
       const setupMode = request.headers.referer?.includes("demo=setup") ?? false;
