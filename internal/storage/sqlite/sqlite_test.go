@@ -2,7 +2,9 @@ package sqlite
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"path/filepath"
 	"testing"
 )
@@ -27,8 +29,8 @@ func TestOpenMigratesEmptyDatabaseAndIsRepeatable(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatalf("query migration version: %v", err)
 	}
-	if version != 1 {
-		t.Fatalf("migration version = %d, want 1", version)
+	if version != 2 {
+		t.Fatalf("migration version = %d, want 2", version)
 	}
 }
 
@@ -106,6 +108,73 @@ VALUES ('j1','w1','scan','scan:w1','queued','2026-01-01','2026-01-01','2026-01-0
 VALUES ('j2','w1','scan','scan:w1','running','2026-01-01','2026-01-01','2026-01-01')`)
 	if err == nil {
 		t.Fatal("duplicate active dedupe key must fail")
+	}
+}
+
+func TestSchemaAllowsMultipleArticlesWithoutStableID(t *testing.T) {
+	t.Parallel()
+
+	db := openTestDB(t)
+	insertWorkspaceAndSource(t, db)
+	for _, values := range []string{
+		`('a1','w1','s1','','one.md','2026-01-01','2026-01-01','2026-01-01')`,
+		`('a2','w1','s1','','two.md','2026-01-01','2026-01-01','2026-01-01')`,
+	} {
+		if _, err := db.Exec(`INSERT INTO articles
+(id,workspace_id,source_id,stable_id,relative_path,indexed_at,created_at,updated_at) VALUES ` + values); err != nil {
+			t.Fatalf("无稳定 ID文章应按路径共存: %v", err)
+		}
+	}
+}
+
+func TestOptionalStableIDMigrationPreservesArticleRelations(t *testing.T) {
+	t.Parallel()
+
+	dbPath := filepath.Join(t.TempDir(), "inkhub.db")
+	legacy, err := sql.Open("sqlite", "file:"+filepath.ToSlash(dbPath)+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(`CREATE TABLE schema_migrations (
+version INTEGER PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at TEXT NOT NULL
+)`); err != nil {
+		t.Fatal(err)
+	}
+	initial, err := migrationFiles.ReadFile("migrations/0001_init.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(string(initial)); err != nil {
+		t.Fatal(err)
+	}
+	checksum := sha256.Sum256(initial)
+	if _, err := legacy.Exec(`INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES(1,'0001_init.sql',?,'2026-01-01')`, hex.EncodeToString(checksum[:])); err != nil {
+		t.Fatal(err)
+	}
+	insertWorkspaceAndSource(t, legacy)
+	if _, err := legacy.Exec(`INSERT INTO articles
+(id,workspace_id,source_id,stable_id,relative_path,indexed_at,created_at,updated_at)
+VALUES('a1','w1','s1','','one.md','2026-01-01','2026-01-01','2026-01-01')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(`INSERT INTO editorial_reviews(article_id,state,updated_at) VALUES('a1','draft','2026-01-01')`); err != nil {
+		t.Fatal(err)
+	}
+	legacy.Close()
+
+	migrated, err := Open(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("迁移 v1 数据库: %v", err)
+	}
+	defer migrated.Close()
+	var reviews int
+	if err := migrated.QueryRow(`SELECT COUNT(*) FROM editorial_reviews WHERE article_id='a1'`).Scan(&reviews); err != nil || reviews != 1 {
+		t.Fatalf("迁移丢失文章关系: count=%d err=%v", reviews, err)
+	}
+	if _, err := migrated.Exec(`INSERT INTO articles
+(id,workspace_id,source_id,stable_id,relative_path,indexed_at,created_at,updated_at)
+VALUES('a2','w1','s1','','two.md','2026-01-01','2026-01-01','2026-01-01')`); err != nil {
+		t.Fatalf("迁移后空稳定 ID仍冲突: %v", err)
 	}
 }
 

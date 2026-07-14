@@ -16,13 +16,16 @@ func parseDocument(content []byte) (contracts.SourceDocument, error) {
 	if err != nil {
 		return contracts.SourceDocument{}, err
 	}
-	var root yaml.Node
-	if err := yaml.Unmarshal([]byte(frontmatter), &root); err != nil {
-		return contracts.SourceDocument{}, fmt.Errorf("解析 frontmatter: %w", err)
-	}
-	mapping, err := mappingRoot(&root)
-	if err != nil {
-		return contracts.SourceDocument{}, err
+	mapping := &yaml.Node{Kind: yaml.MappingNode}
+	if frontmatter != "" {
+		var root yaml.Node
+		if err := yaml.Unmarshal([]byte(frontmatter), &root); err != nil {
+			return contracts.SourceDocument{}, fmt.Errorf("解析 frontmatter: %w", err)
+		}
+		mapping, err = mappingRoot(&root)
+		if err != nil {
+			return contracts.SourceDocument{}, err
+		}
 	}
 	if err := validateFrontmatter(mapping); err != nil {
 		return contracts.SourceDocument{}, err
@@ -59,6 +62,9 @@ func validateFrontmatter(mapping *yaml.Node) error {
 		if value == nil {
 			continue
 		}
+		if value.Kind == yaml.ScalarNode && value.Tag == "!!str" {
+			continue
+		}
 		if value.Kind != yaml.SequenceNode {
 			return fmt.Errorf("字段 %s 必须是字符串数组", key)
 		}
@@ -84,7 +90,7 @@ func validateFrontmatter(mapping *yaml.Node) error {
 
 func validateStringField(mapping *yaml.Node, key string) error {
 	value := mappingValue(mapping, key)
-	if value != nil && (value.Kind != yaml.ScalarNode || value.Tag != "!!str") {
+	if value != nil && (value.Kind != yaml.ScalarNode || (value.Tag != "!!str" && value.Tag != "!!null")) {
 		return fmt.Errorf("字段 %s 必须是字符串", key)
 	}
 	return nil
@@ -93,7 +99,7 @@ func validateStringField(mapping *yaml.Node, key string) error {
 func splitDocument(content string) (string, string, error) {
 	normalized := strings.TrimPrefix(content, "\ufeff")
 	if !strings.HasPrefix(normalized, "---\n") && !strings.HasPrefix(normalized, "---\r\n") {
-		return "", "", fmt.Errorf("缺少 frontmatter")
+		return "", normalized, nil
 	}
 	start := strings.Index(normalized, "\n") + 1
 	remaining := normalized[start:]
@@ -150,6 +156,9 @@ func scalarValue(mapping *yaml.Node, key string) string {
 
 func stringSequence(mapping *yaml.Node, key string) []string {
 	value := mappingValue(mapping, key)
+	if value != nil && value.Kind == yaml.ScalarNode && value.Tag == "!!str" {
+		return []string{value.Value}
+	}
 	if value == nil || value.Kind != yaml.SequenceNode {
 		return nil
 	}

@@ -91,8 +91,14 @@ func applyMigration(ctx context.Context, db *sql.DB, name string) error {
 	sum := sha256.Sum256(content)
 	checksum := hex.EncodeToString(sum[:])
 
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("获取 migration 数据库连接: %w", err)
+	}
+	defer conn.Close()
+
 	var existing string
-	err = db.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE version = ?`, version).Scan(&existing)
+	err = conn.QueryRowContext(ctx, `SELECT checksum FROM schema_migrations WHERE version = ?`, version).Scan(&existing)
 	if err == nil {
 		if existing != checksum {
 			return fmt.Errorf("migration %s checksum 已变化", name)
@@ -103,8 +109,17 @@ func applyMigration(ctx context.Context, db *sql.DB, name string) error {
 		return fmt.Errorf("查询 migration %s: %w", name, err)
 	}
 
+	foreignKeysOff := strings.Contains(string(content), "-- inkhub: foreign_keys_off")
+	if foreignKeysOff {
+		// SQLite 重建被外键引用的表时，必须在同一连接、事务开始前暂停外键检查。
+		if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+			return fmt.Errorf("暂停 migration 外键检查: %w", err)
+		}
+		defer conn.ExecContext(context.Background(), `PRAGMA foreign_keys = ON`)
+	}
+
 	// 每个 migration 单独使用事务，DDL 和版本记录必须同时成功或同时回滚。
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("开始 migration %s: %w", name, err)
 	}
@@ -118,6 +133,19 @@ func applyMigration(ctx context.Context, db *sql.DB, name string) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("提交 migration %s: %w", name, err)
+	}
+	if foreignKeysOff {
+		if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
+			return fmt.Errorf("恢复 migration 外键检查: %w", err)
+		}
+		var table, rowID, parent string
+		var foreignKeyID int
+		if err := conn.QueryRowContext(ctx, `PRAGMA foreign_key_check`).Scan(&table, &rowID, &parent, &foreignKeyID); err != sql.ErrNoRows {
+			if err == nil {
+				return fmt.Errorf("migration %s 产生无效外键: table=%s row=%s parent=%s key=%d", name, table, rowID, parent, foreignKeyID)
+			}
+			return fmt.Errorf("检查 migration 外键: %w", err)
+		}
 	}
 	return nil
 }

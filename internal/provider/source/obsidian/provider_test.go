@@ -91,20 +91,44 @@ func TestProviderRejectsConflictingPathAndStableID(t *testing.T) {
 	}
 }
 
-func TestProviderRejectsInvalidStandardFieldType(t *testing.T) {
+func TestProviderReadsPlainMarkdownWithFilenameTitle(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, ".obsidian"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	content := "---\ntitle: valid\ntags: go\n---\nbody\n"
-	if err := os.WriteFile(filepath.Join(root, "invalid.md"), []byte(content), 0o640); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "普通笔记.md"), []byte("# 正文标题\n\n正文"), 0o640); err != nil {
 		t.Fatal(err)
 	}
 	provider, _ := New(Config{Root: root})
-	if _, err := provider.Read(context.Background(), contracts.SourceRef{RelativePath: "invalid.md"}); err == nil || !strings.Contains(err.Error(), "tags") {
-		t.Fatalf("Read() error = %v, want tags type error", err)
+	document, err := provider.Read(context.Background(), contracts.SourceRef{RelativePath: "普通笔记.md"})
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if document.Article.Title != "普通笔记" || document.Body != "# 正文标题\n\n正文" || document.RawFrontmatter != "" {
+		t.Fatalf("普通 Markdown 解析错误: %#v", document)
+	}
+}
+
+func TestProviderNormalizesSingleTagAndFallsBackEmptyTitle(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".obsidian"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\ntitle: \ntags: go\n---\nbody\n"
+	if err := os.WriteFile(filepath.Join(root, "草稿.md"), []byte(content), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	provider, _ := New(Config{Root: root})
+	document, err := provider.Read(context.Background(), contracts.SourceRef{RelativePath: "草稿.md"})
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if document.Article.Title != "草稿" || len(document.Article.Tags) != 1 || document.Article.Tags[0] != "go" {
+		t.Fatalf("单值标签或标题回退错误: %#v", document.Article)
 	}
 }
 

@@ -32,17 +32,17 @@
 - Produces: `parseDocument(content []byte) (contracts.SourceDocument, error)` 接受无 frontmatter 文档。
 - Produces: `Provider.Read` 在标题为空时使用文件名回退，但不修改原始 frontmatter。
 
-- [ ] **Step 1: 写数据库与解析失败测试**
+- [x] **Step 1: 写数据库与解析失败测试**
 
 新增测试断言同工作区可插入两篇 `stable_id=''` 的不同路径文章，重复 `article_ONE` 仍失败；无 frontmatter 文档可读取，空标题回退为文件名，单字符串 tags 变为单元素数组，损坏 YAML 仍失败。
 
-- [ ] **Step 2: 运行测试并确认 RED**
+- [x] **Step 2: 运行测试并确认 RED**
 
 Run: `go test ./internal/storage/sqlite ./internal/provider/source/obsidian -count=1`
 
 Expected: 空稳定 ID触发唯一键冲突，无 frontmatter 返回“缺少 frontmatter”。
 
-- [ ] **Step 3: 实现迁移和最小兼容**
+- [x] **Step 3: 实现迁移和最小兼容**
 
 迁移重建 `articles` 表以移除表级稳定 ID 唯一约束，并创建：
 
@@ -53,13 +53,13 @@ ON articles(workspace_id, stable_id) WHERE stable_id <> '';
 
 `parseDocument` 将无 frontmatter 解释为空 mapping；`Provider.Read` 在标准标题为空时使用 `strings.TrimSuffix(filepath.Base(relativePath), filepath.Ext(relativePath))`；tags 标量仅接受字符串并规范成数组。
 
-- [ ] **Step 4: reflection 与验证**
+- [x] **Step 4: reflection 与验证**
 
 Run: `go test ./internal/storage/sqlite ./internal/provider/source/obsidian ./internal/app/workspace -count=1 && go test -race ./internal/storage/sqlite ./internal/provider/source/obsidian`
 
 检查旧数据库迁移保留外键、索引、数据和 schema comments；检查回退标题不被写回文件。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git commit -m "fix(index): support notes without stable IDs"

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gkmz/InkHub/internal/platform/filesystem"
@@ -83,6 +84,11 @@ func (p *Provider) Read(ctx context.Context, ref contracts.SourceRef) (contracts
 	}
 	document.Article.SourceID = p.config.SourceID
 	document.Article.RelativePath = filepath.ToSlash(ref.RelativePath)
+	if strings.TrimSpace(document.Article.Title) == "" {
+		// 普通 Obsidian 笔记通常没有 title 属性，展示时使用文件名但不写回源文件。
+		base := filepath.Base(ref.RelativePath)
+		document.Article.Title = strings.TrimSuffix(base, filepath.Ext(base))
+	}
 	return document, nil
 }
 
