@@ -109,6 +109,9 @@ func TestProviderReadsPlainMarkdownWithFilenameTitle(t *testing.T) {
 	if document.Article.Title != "普通笔记" || document.Body != "# 正文标题\n\n正文" || document.RawFrontmatter != "" {
 		t.Fatalf("普通 Markdown 解析错误: %#v", document)
 	}
+	if document.Article.Tags == nil || document.Article.Keywords == nil {
+		t.Fatalf("标准列表字段不得为 nil: tags=%#v keywords=%#v", document.Article.Tags, document.Article.Keywords)
+	}
 }
 
 func TestProviderNormalizesSingleTagAndFallsBackEmptyTitle(t *testing.T) {

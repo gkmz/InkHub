@@ -160,7 +160,7 @@ func stringSequence(mapping *yaml.Node, key string) []string {
 		return []string{value.Value}
 	}
 	if value == nil || value.Kind != yaml.SequenceNode {
-		return nil
+		return []string{}
 	}
 	result := make([]string, 0, len(value.Content))
 	for _, item := range value.Content {

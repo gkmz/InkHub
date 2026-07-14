@@ -1,7 +1,6 @@
 package httptransport
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -19,13 +18,13 @@ import (
 	"github.com/gkmz/InkHub/internal/provider/source/folder"
 	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
-	"github.com/yuin/goldmark"
 )
 
 // RuntimeOptions 提供运行期持久化目录和操作系统能力。
 type RuntimeOptions struct {
 	DataDir         string
 	DirectoryPicker dialog.DirectoryPicker
+	AssetTokenKey   []byte
 }
 
 // NewRuntimeHandler 提供首次初始化和页面查询端点，并把领域命令交给核心 API。
@@ -38,7 +37,11 @@ func NewRuntimeHandler(db *sql.DB, core http.Handler, options ...RuntimeOptions)
 	if len(options) > 0 && options[0].DirectoryPicker != nil {
 		directoryPicker = options[0].DirectoryPicker
 	}
-	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker}
+	assetTokenKey := newAssetTokenKey()
+	if len(options) > 0 && len(options[0].AssetTokenKey) >= 32 {
+		assetTokenKey = append([]byte(nil), options[0].AssetTokenKey...)
+	}
+	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey}
 	return localOnly(handler)
 }
 
@@ -47,6 +50,7 @@ type runtimeHandler struct {
 	core            http.Handler
 	dataDir         string
 	directoryPicker dialog.DirectoryPicker
+	assetTokenKey   []byte
 }
 
 func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -84,6 +88,8 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		}
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/wechat/content/"):
 		h.wechatContent(response, request)
+	case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/assets/") && strings.HasPrefix(request.URL.Path, "/api/v1/articles/"):
+		h.articleAsset(response, request)
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/articles/"):
 		h.articleDetail(response, request)
 	case request.Method == http.MethodPut && strings.HasSuffix(request.URL.Path, "/metadata"):
@@ -229,14 +235,20 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 		mapError(response, err)
 		return
 	}
-	var rendered bytes.Buffer
-	if err := goldmark.Convert([]byte(document.Body), &rendered); err != nil {
+	rendered, err := h.renderArticlePreview(request.Context(), source, document, id)
+	if err != nil {
 		mapError(response, err)
 		return
 	}
 	var tags, keywords []string
 	_ = json.Unmarshal([]byte(tagsJSON), &tags)
 	_ = json.Unmarshal([]byte(keywordsJSON), &keywords)
+	if tags == nil {
+		tags = []string{}
+	}
+	if keywords == nil {
+		keywords = []string{}
+	}
 	reviewState := "等待审核"
 	_ = h.db.QueryRowContext(request.Context(), `SELECT CASE state WHEN 'approved' THEN '已通过' WHEN 'changed' THEN '内容已更新' WHEN 'blocked' THEN '处理失败' ELSE '等待审核' END FROM editorial_reviews WHERE article_id=?`, id).Scan(&reviewState)
 	providers := map[string]string{"hugo": "", "wechat": ""}
@@ -266,7 +278,7 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 		}
 	}
 	metadata := map[string]any{"title": title, "description": description, "category": category, "series": series, "tags": tags, "keywords": keywords, "slug": slug, "cover": cover}
-	writeJSON(response, http.StatusOK, map[string]any{"id": id, "content_version": contentHash, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered.String(), "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": false, "suggestions": []any{}, "suggestions_stale": false, "wechat_copied": wechatCopied})
+	writeJSON(response, http.StatusOK, map[string]any{"id": id, "content_version": contentHash, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": false, "suggestions": []any{}, "suggestions_stale": false, "wechat_copied": wechatCopied})
 }
 
 func runtimePublicationLabel(state, channel string) string {

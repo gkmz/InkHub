@@ -183,27 +183,27 @@ git commit -m "feat(index): rescan configured workspace safely"
 - Produces: `Provider.ResolveAssets(ctx context.Context, ref contracts.SourceRef, body string) ([]ResolvedAsset, error)`。
 - Produces: `GET /api/v1/articles/{articleID}/assets/{assetToken}`。
 
-- [ ] **Step 1: 写附件解析和 HTTP 安全失败测试**
+- [x] **Step 1: 写附件解析和 HTTP 安全失败测试**
 
 覆盖 Markdown 相对图、Wiki 嵌入、尺寸、`attachmentFolderPath`、唯一文件名、同名歧义、远程 URL、绝对路径、`..` 越界、符号链接逃逸、未引用资源、错误文章 token、非图片 MIME 和 `nosniff`。
 
-- [ ] **Step 2: 运行测试并确认 RED**
+- [x] **Step 2: 运行测试并确认 RED**
 
 Run: `go test ./internal/provider/source/obsidian ./internal/transport/http -run 'Asset|Image' -count=1`
 
 Expected: 附件解析器和资源路由尚不存在。
 
-- [ ] **Step 3: 实现解析、token 和受控响应**
+- [x] **Step 3: 实现解析、token 和受控响应**
 
 解析器只输出 Vault 内规范路径或已校验 `http/https` URL；本地图片在 Goldmark 输出后重写为文章级资源 URL。token 使用服务进程密钥进行 HMAC，绑定文章 ID、引用路径和源指纹；响应只允许 PNG、JPEG、GIF、WebP 和 AVIF，并设置 `X-Content-Type-Options: nosniff`。
 
-- [ ] **Step 4: reflection、浏览器验证和全量回归**
+- [x] **Step 4: reflection、浏览器验证和全量回归**
 
 Run: `go test ./... && go test -race ./... && go vet ./... && npm --prefix web/app test -- --run && npm --prefix web/app run lint && npm --prefix web/app run typecheck && npm --prefix web/app run build`
 
 启动临时 Vault 和本地服务，用浏览器验证桌面与手机宽度下的目录配置、普通笔记列表、Markdown 图片、Wiki 图片、远程图片、缺失图片状态；复查 `git diff` 和 `git status`。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git commit -m "feat(preview): render Obsidian vault images safely"
