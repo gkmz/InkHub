@@ -1,4 +1,4 @@
-import type { ArticlePage, JobStatus, SessionResponse, WorkspaceDraft } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, JobStatus, SessionResponse, SettingsView, TaxonomyOverview, WorkspaceDraft } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -52,4 +52,44 @@ export function pickDirectory() {
 /** getJob 恢复页面刷新前已经提交的扫描任务。 */
 export function getJob(jobID: string, signal?: AbortSignal) {
   return request<JobStatus>(`/jobs/${encodeURIComponent(jobID)}`, { signal });
+}
+
+/** getArticle 读取文章详情和当前审核、渠道状态。 */
+export function getArticle(articleID: string, signal?: AbortSignal) {
+  return request<ArticleDetail>(`/articles/${encodeURIComponent(articleID)}`, { signal });
+}
+
+/** saveMetadata 使用源文件指纹约束写回，冲突由服务端拒绝。 */
+export function saveMetadata(articleID: string, metadata: ArticleMetadata) {
+  return request<ArticleDetail>(`/articles/${encodeURIComponent(articleID)}/metadata`, { method: "PUT", body: JSON.stringify({ metadata }) });
+}
+
+/** reviewArticle 审核当前内容版本。 */
+export function reviewArticle(articleID: string) {
+  return request<{ state: string }>(`/articles/${encodeURIComponent(articleID)}/review`, { method: "POST", body: "{}" });
+}
+
+/** startPublication 创建指定渠道任务。 */
+export function startPublication(article: Pick<ArticleDetail, "id" | "content_version" | "hugo_provider_id" | "wechat_provider_id">, channel: "hugo" | "wechat") {
+  return request<{ job_id: string }>("/publications", { method: "POST", body: JSON.stringify({ article_id: article.id, channel, provider_instance_id: channel === "hugo" ? article.hugo_provider_id : article.wechat_provider_id, content_hash: article.content_version }) });
+}
+
+/** confirmWeChatDraft 记录当前内容已人工保存到公众号草稿。 */
+export function confirmWeChatDraft(article: Pick<ArticleDetail, "id" | "content_version" | "wechat_provider_id">) {
+  return request<{ state: string }>("/wechat/confirm", { method: "POST", body: JSON.stringify({ article_id: article.id, provider_instance_id: article.wechat_provider_id, content_hash: article.content_version }) });
+}
+
+/** getTaxonomyOverview 读取权威 taxonomy 状态及待治理问题。 */
+export function getTaxonomyOverview(signal?: AbortSignal) {
+  return request<TaxonomyOverview>("/taxonomy", { signal });
+}
+
+/** approveTaxonomyTerm 批准新词并请求更新明确的受影响文章。 */
+export function approveTaxonomyTerm(issueID: string) {
+  return request<{ state: string }>(`/taxonomy/issues/${encodeURIComponent(issueID)}/approve`, { method: "POST", body: "{}" });
+}
+
+/** getSettings 读取不含 Secret 明文的设置视图。 */
+export function getSettings(signal?: AbortSignal) {
+  return request<SettingsView>("/settings", { signal });
 }

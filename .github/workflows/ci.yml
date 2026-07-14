@@ -49,3 +49,9 @@ jobs:
           npm run lint
           npm test -- --run
           npm run build
+
+      - name: Verify web journeys
+        working-directory: web/app
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e

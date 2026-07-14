@@ -44,7 +44,7 @@ function Navigation({ path, onNavigate }: { path: string; onNavigate: (path: str
     <nav aria-label="主导航">
       {links.map(({ path: target, label, icon: Icon }) => {
         const active = path === target;
-        return <a key={target} href={target} aria-current={active ? "page" : undefined} onClick={(event) => { event.preventDefault(); onNavigate(target); }}><Icon aria-hidden="true" size={19} /><span>{label}</span></a>;
+        return <a key={target} href={target} aria-label={label} aria-current={active ? "page" : undefined} onClick={(event) => { event.preventDefault(); onNavigate(target); }}><Icon aria-hidden="true" size={19} /><span>{label}</span></a>;
       })}
     </nav>
   );

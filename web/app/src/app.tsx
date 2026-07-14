@@ -6,6 +6,10 @@ import { LibraryPage } from "./pages/library/LibraryPage";
 import { SetupPage } from "./pages/setup/SetupPage";
 import { ScanPage } from "./pages/setup/ScanPage";
 import { DashboardPage } from "./pages/workspace/DashboardPage";
+import { ArticlePage } from "./pages/article/ArticlePage";
+import { WeChatPreviewPage } from "./pages/wechat-preview/WeChatPreviewPage";
+import { TaxonomyPage } from "./pages/taxonomy/TaxonomyPage";
+import { SettingsPage } from "./pages/settings/SettingsPage";
 
 /** App 根据最近工作区状态选择初始化或日常工作界面。 */
 export function App() {
@@ -20,6 +24,8 @@ export function App() {
   if (!session) return <main className="boot-state"><span className="brand-mark">I</span><p>正在打开 InkHub…</p></main>;
   if (!session.has_workspace) return <SetupPage onComplete={async (draft: WorkspaceDraft) => { const result = await createWorkspace(draft, crypto.randomUUID()); sessionStorage.removeItem("inkhub.setup"); sessionStorage.setItem("inkhub.scan-job", result.job_id); setScanJob(result.job_id); setSession({ has_workspace: true, workspace: result.workspace }); navigate("/"); }} />;
   if (scanJob && session.workspace) return <ScanPage workspace={session.workspace} jobID={scanJob} onDone={() => { sessionStorage.removeItem("inkhub.scan-job"); setScanJob(""); }} />;
+  const articleMatch = path.match(/^\/articles\/([^/]+)(\/wechat)?$/);
+  if (articleMatch?.[2]) return <WeChatPreviewPage articleID={articleMatch[1]} onNavigate={navigate} />;
   const title = path === "/library" ? "内容库" : path === "/taxonomy" ? "标签治理" : path === "/settings" ? "设置" : "工作台";
-  return <AppShell path={path} title={title} workspaceName={session.workspace?.name ?? "InkHub"} onNavigate={navigate}>{path === "/library" ? <LibraryPage /> : path === "/taxonomy" || path === "/settings" ? <div className="empty-state"><h2>{title}将在下一阶段开放</h2><p>主导航位置已保留，当前阶段专注于初始化和内容浏览。</p></div> : <DashboardPage onNavigate={navigate} />}</AppShell>;
+  return <AppShell path={path} title={articleMatch ? "文章审核" : title} workspaceName={session.workspace?.name ?? "InkHub"} onNavigate={navigate}>{articleMatch ? <ArticlePage articleID={articleMatch[1]} onNavigate={navigate} /> : path === "/library" ? <LibraryPage onNavigate={navigate} /> : path === "/taxonomy" ? <TaxonomyPage /> : path === "/settings" ? <SettingsPage /> : <DashboardPage onNavigate={navigate} />}</AppShell>;
 }

@@ -17,6 +17,8 @@ coverage.*
 *.coverprofile
 profile.cov
 .cache/
+web/app/test-results/
+web/app/playwright-report/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/

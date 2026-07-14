@@ -9,6 +9,15 @@ const demoArticles = [
   { id: "a5", title: "内容哈希与幂等发布", directory: "notes/architecture", category: "工程实践", modified_at: "2026-07-10T16:20:00Z", state: "approved", hugo_state: "已同步", wechat_state: "已确认草稿" },
 ];
 
+const demoArticle = {
+  id: "a4", content_version: "demo-current-version", hugo_provider_id: "demo-hugo", wechat_provider_id: "demo-wechat", relative_path: "writing/design/wechat-template.md", modified_at: "2026-07-12T11:05:00Z",
+  metadata: { title: "公众号排版模板设计记录", description: "从安全约束、模板变量和复制流程出发，记录一套可分享的公众号排版方案。", category: "设计", series: "InkHub 构建记录", tags: ["微信", "模板", "前端"], keywords: ["公众号排版", "内容工作流"], slug: "wechat-template-design", cover: "" },
+  preview_html: "<h2>为什么需要模板标准</h2><p>排版不是把 CSS 塞进 HTML，而是建立一条可验证、可恢复的内容交付链路。</p><blockquote>模板只负责呈现，不应掌握文章状态。</blockquote><h2>三个明确阶段</h2><p>准备内容、复制格式化内容、人工确认草稿，三个动作必须彼此独立。</p><pre><code>Obsidian → 审核 → 微信预览</code></pre>",
+  source_changed: false, review_state: "等待审核", hugo_state: "尚未同步", wechat_state: "尚未准备",
+  checks: [{ id: "c1", level: "recommended", title: "Description 可以更具体", detail: "补充读者能获得的结果。", channel: "Hugo · 微信" }, { id: "c2", level: "passed", title: "Slug 格式正确", detail: "可以用于 Hugo 页面路径。", channel: "Hugo" }],
+  ai_configured: true, suggestions: [{ field: "description", original: "从安全约束、模板变量和复制流程出发，记录一套可分享的公众号排版方案。", suggested: "拆解安全模板、CSS 内联与人工确认，构建可靠的公众号内容交付流程。", reason: "突出文章覆盖的工程环节" }], suggestions_stale: false, wechat_copied: false,
+};
+
 // 开发服务器只提供可重复的页面验收数据；生产构建不会包含这段中间件。
 const demoAPI = {
   name: "inkhub-demo-api",
@@ -24,6 +33,14 @@ const demoAPI = {
         const state = url.searchParams.get("state") ?? "";
         body = { items: demoArticles.filter((item) => (!query || item.title.toLowerCase().includes(query)) && (!state || item.state === state)) };
       } else if (url.pathname === "/workspaces") body = { workspace: { id: "demo", name: "我的写作空间" }, job_id: "demo-scan" };
+      else if (/^\/articles\/[^/]+$/.test(url.pathname)) body = demoArticle;
+      else if (/^\/articles\/[^/]+\/metadata$/.test(url.pathname)) body = demoArticle;
+      else if (/^\/articles\/[^/]+\/review$/.test(url.pathname)) body = { state: "approved" };
+      else if (url.pathname === "/publications") body = { job_id: "demo-publication" };
+      else if (url.pathname === "/wechat/confirm") body = { state: "confirmed" };
+      else if (url.pathname === "/taxonomy") body = { source: "data/taxonomy.yaml", loaded_at: "刚刚", readonly: false, issues: [{ id: "t1", kind: "alias", term: "local-first", similar: ["本地优先"], affected: ["内容工作流.md", "架构设计.md"] }, { id: "t2", kind: "low_frequency", term: "desktop-app", similar: [], affected: ["SQLite 取舍.md"] }] };
+      else if (/^\/taxonomy\/issues\/[^/]+\/approve$/.test(url.pathname)) body = { state: "approved" };
+      else if (url.pathname === "/settings") body = { ai_enabled: true, ai_secret_saved: true, hugo_enabled: true, wechat_enabled: true, wechat_secret_saved: false, default_template: "default", templates: [{ id: "default", name: "InkHub Default", version: "1.0.0", compatible: true }, { id: "minimal", name: "InkHub Minimal", version: "1.0.0", compatible: true }], diagnostics: [{ name: "Obsidian Vault", state: "正常", message: "路径可读，已建立索引" }, { name: "Hugo CLI", state: "正常", message: "0.163.3 extended" }, { name: "图片托管", state: "未启用", message: "含本地图片的微信内容将无法准备" }] };
       else if (url.pathname === "/directories/pick") body = { path: "/Users/you/Documents/Vault" };
       else if (url.pathname.startsWith("/jobs/")) body = { id: "demo-scan", state: "succeeded", progress: 100, indexed: 42, failed: 1 };
       else { response.statusCode = 404; body = { error: { code: "route.not_found", message: "接口不存在" } }; }
@@ -43,5 +60,6 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
     css: true,
+    exclude: ["e2e/**", "node_modules/**"],
   },
 });

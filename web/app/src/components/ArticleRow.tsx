@@ -5,7 +5,7 @@ const stateText = { blocked: "处理失败", changed: "内容已更新", incompl
 const actionText = { blocked: "重试", changed: "查看更新", incomplete: "补充信息", pending_review: "继续审核", approved: "查看" };
 
 /** ArticleRow 用自然语言展示文章状态，不泄露内部 hash 或任务标识。 */
-export function ArticleRow({ article, dashboard = false }: { article: ArticleSummary; dashboard?: boolean }) {
+export function ArticleRow({ article, dashboard = false, onOpen }: { article: ArticleSummary; dashboard?: boolean; onOpen?: (id: string) => void }) {
   const ActionIcon = article.state === "blocked" ? RotateCcw : article.state === "incomplete" ? FilePenLine : ArrowRight;
   return (
     <article className={`article-row state-${article.state}`} data-testid={dashboard ? "dashboard-row" : "library-row"}>
@@ -17,7 +17,7 @@ export function ArticleRow({ article, dashboard = false }: { article: ArticleSum
       <span className="status-label">{stateText[article.state]}</span>
       <span className="channel-state"><b>H</b>{article.hugo_state}</span>
       <span className="channel-state"><b>微</b>{article.wechat_state}</span>
-      <button className="row-action" type="button">{actionText[article.state]}<ActionIcon size={16} aria-hidden="true" /></button>
+      <button className="row-action" type="button" onClick={() => onOpen?.(article.id)}>{actionText[article.state]}<ActionIcon size={16} aria-hidden="true" /></button>
     </article>
   );
 }

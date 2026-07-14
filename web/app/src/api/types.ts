@@ -41,3 +41,82 @@ export interface JobStatus {
   indexed?: number;
   failed?: number;
 }
+
+export interface ArticleMetadata {
+  title: string;
+  description: string;
+  category: string;
+  series: string;
+  tags: string[];
+  keywords: string[];
+  slug: string;
+  cover: string;
+}
+
+export interface CheckResult {
+  id: string;
+  level: "blocking" | "recommended" | "optional" | "passed";
+  title: string;
+  detail: string;
+  channel: string;
+}
+
+export interface AISuggestion {
+  field: keyof ArticleMetadata;
+  original: string;
+  suggested: string;
+  reason: string;
+}
+
+export interface ArticleDetail {
+  id: string;
+  content_version: string;
+  hugo_provider_id: string;
+  wechat_provider_id: string;
+  relative_path: string;
+  modified_at: string;
+  metadata: ArticleMetadata;
+  preview_html: string;
+  source_changed: boolean;
+  review_state: string;
+  hugo_state: string;
+  wechat_state: string;
+  checks: CheckResult[];
+  ai_configured: boolean;
+  suggestions: AISuggestion[];
+  suggestions_stale: boolean;
+  wechat_copied: boolean;
+}
+
+export interface TemplateSummary {
+  id: string;
+  name: string;
+  version: string;
+  compatible: boolean;
+}
+
+export interface TaxonomyIssue {
+  id: string;
+  kind: "alias" | "unknown" | "low_frequency" | "too_many";
+  term: string;
+  similar: string[];
+  affected: string[];
+}
+
+export interface TaxonomyOverview {
+  source: string;
+  loaded_at: string;
+  readonly: boolean;
+  issues: TaxonomyIssue[];
+}
+
+export interface SettingsView {
+  ai_enabled: boolean;
+  ai_secret_saved: boolean;
+  hugo_enabled: boolean;
+  wechat_enabled: boolean;
+  wechat_secret_saved: boolean;
+  default_template: string;
+  templates: TemplateSummary[];
+  diagnostics: { name: string; state: "正常" | "需要处理" | "未启用"; message: string }[];
+}
