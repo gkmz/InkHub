@@ -75,6 +75,48 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	}
 }
 
+func TestRuntimeHandlerPicksDirectoryThroughInjectedNativeAdapter(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	picker := &fakeDirectoryPicker{path: "/Users/test/Documents/Vault"}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{DirectoryPicker: picker})
+
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/directories/pick", strings.NewReader(`{}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://localhost")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"path":"/Users/test/Documents/Vault"`) {
+		t.Fatalf("目录选择接口响应错误: code=%d body=%s", response.Code, response.Body.String())
+	}
+	if picker.title != "选择 Obsidian Vault" {
+		t.Fatalf("目录选择器标题错误: %q", picker.title)
+	}
+
+	blocked := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/directories/pick", strings.NewReader(`{}`))
+	blocked.Header.Set("Content-Type", "application/json")
+	blocked.Header.Set("Origin", "https://evil.example")
+	blockedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(blockedResponse, blocked)
+	if blockedResponse.Code != http.StatusForbidden {
+		t.Fatalf("跨源目录选择请求未拒绝: %d", blockedResponse.Code)
+	}
+}
+
+type fakeDirectoryPicker struct {
+	path  string
+	title string
+}
+
+func (p *fakeDirectoryPicker) Pick(_ context.Context, title string) (string, error) {
+	p.title = title
+	return p.path, nil
+}
+
 type emptyRuntimeAPI struct{}
 
 func (emptyRuntimeAPI) ListArticles(context.Context, string, int) (ArticlePage, error) {

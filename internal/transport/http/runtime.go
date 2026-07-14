@@ -14,14 +14,18 @@ import (
 	"time"
 
 	workspaceapp "github.com/gkmz/InkHub/internal/app/workspace"
+	"github.com/gkmz/InkHub/internal/platform/dialog"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
 	"github.com/yuin/goldmark"
 )
 
-// RuntimeOptions 提供运行期持久化目录。
-type RuntimeOptions struct{ DataDir string }
+// RuntimeOptions 提供运行期持久化目录和操作系统能力。
+type RuntimeOptions struct {
+	DataDir         string
+	DirectoryPicker dialog.DirectoryPicker
+}
 
 // NewRuntimeHandler 提供首次初始化和页面查询端点，并把领域命令交给核心 API。
 func NewRuntimeHandler(db *sql.DB, core http.Handler, options ...RuntimeOptions) http.Handler {
@@ -29,14 +33,19 @@ func NewRuntimeHandler(db *sql.DB, core http.Handler, options ...RuntimeOptions)
 	if len(options) > 0 && options[0].DataDir != "" {
 		dataDir = options[0].DataDir
 	}
-	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir}
+	var directoryPicker dialog.DirectoryPicker = dialog.NativePicker{}
+	if len(options) > 0 && options[0].DirectoryPicker != nil {
+		directoryPicker = options[0].DirectoryPicker
+	}
+	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker}
 	return localOnly(handler)
 }
 
 type runtimeHandler struct {
-	db      *sql.DB
-	core    http.Handler
-	dataDir string
+	db              *sql.DB
+	core            http.Handler
+	dataDir         string
+	directoryPicker dialog.DirectoryPicker
 }
 
 func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -47,6 +56,10 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/workspaces":
 		if validateWriteRequest(response, request) {
 			h.createWorkspace(response, request)
+		}
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/directories/pick":
+		if validateWriteRequest(response, request) {
+			h.pickDirectory(response, request)
 		}
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/jobs/"):
 		h.job(response, request)
@@ -71,6 +84,26 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	default:
 		h.core.ServeHTTP(response, request)
 	}
+}
+
+// pickDirectory 通过本机原生对话框选择目录，并只向同源页面返回规范化路径。
+func (h *runtimeHandler) pickDirectory(response http.ResponseWriter, request *http.Request) {
+	selected, err := h.directoryPicker.Pick(request.Context(), "选择 Obsidian Vault")
+	if err != nil {
+		writeError(response, http.StatusUnprocessableEntity, "directory.pick_failed", "未能选择目录")
+		return
+	}
+	selected = strings.TrimSpace(selected)
+	if selected == "" {
+		writeError(response, http.StatusUnprocessableEntity, "directory.not_selected", "未选择目录")
+		return
+	}
+	absolute, err := filepath.Abs(selected)
+	if err != nil {
+		writeError(response, http.StatusUnprocessableEntity, "directory.path_invalid", "所选目录路径无效")
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]string{"path": filepath.Clean(absolute)})
 }
 
 type metadataRequest struct {
