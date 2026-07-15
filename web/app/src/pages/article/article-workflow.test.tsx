@@ -1,11 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { AISuggestions } from "../../components/AISuggestions";
 import { MetadataForm } from "../../components/MetadataForm";
 import { PublicationTrack } from "../../components/PublicationTrack";
 import { WeChatActions } from "../../components/WeChatActions";
 import { JobStatus } from "../../components/JobStatus";
+import { ToastProvider } from "../../components/ToastProvider";
+import { ArticlePage } from "./ArticlePage";
 
 const metadata = {
   title: "本地优先的内容工作流",
@@ -17,6 +19,19 @@ const metadata = {
   slug: "local-first-content",
   cover: "",
 };
+
+const article = {
+  id: "article-1", content_version: "hash-1", hugo_provider_id: "h1", wechat_provider_id: "w1", relative_path: "Areas/article.md", modified_at: "2026-07-15",
+  metadata, preview_html: "<p>正文</p>", source_changed: false, review_state: "待审核", hugo_state: "尚未同步", wechat_state: "尚未准备",
+  checks: [], ai_configured: false, suggestions: [], suggestions_stale: false, wechat_copied: false,
+};
+
+const taxonomy = {
+  source: "Hugo", provider_id: "h1", provider_type: "hugo", state: "ready", revision: "revision-1", loaded_at: "2026-07-15", readonly: false,
+  terms: [{ kind: "category", key: "engineering", name: "工程实践", usage_count: 3, metadata: {} }, { kind: "category", key: "product", name: "产品", usage_count: 2, metadata: {} }], issues: [],
+};
+
+afterEach(() => vi.restoreAllMocks());
 
 test("源文件变化后元数据表单禁止覆盖并提供重新加载", async () => {
   const save = vi.fn();
@@ -34,6 +49,68 @@ test("保存元数据前展示字段级变更摘要", async () => {
   await userEvent.clear(screen.getByLabelText("Description"));
   await userEvent.type(screen.getByLabelText("Description"), "新摘要");
   expect(screen.getByText("Description：旧摘要 → 新摘要")).toBeInTheDocument();
+});
+
+test("Category 从 Hugo 快照选择并进入文章草稿", async () => {
+  render(<MetadataForm value={metadata} sourceChanged={false} categoryState="ready" categoryOptions={[{ key: "engineering", name: "工程实践" }, { key: "product", name: "产品" }]} onSave={vi.fn()} />);
+  await userEvent.selectOptions(screen.getByRole("combobox", { name: "Category" }), "产品");
+  expect(screen.getByText("Category：工程实践 → 产品")).toBeInTheDocument();
+});
+
+test("Category 快照保留博客中未发现的文章旧值", () => {
+  render(<MetadataForm value={{ ...metadata, category: "旧分类" }} sourceChanged={false} categoryState="ready" categoryOptions={[{ key: "engineering", name: "工程实践" }]} onSave={vi.fn()} />);
+  expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("旧分类");
+  expect(screen.getByRole("option", { name: "旧分类（博客中未发现）" })).toBeInTheDocument();
+});
+
+test("新建 Category 只回填草稿而不提前保存文章", async () => {
+  const save = vi.fn();
+  render(<MetadataForm value={metadata} sourceChanged={false} categoryState="ready" categoryOptions={[]} canCreateCategory onCreateCategory={(select) => select("AI")} onSave={save} />);
+  await userEvent.click(screen.getByRole("button", { name: "新建类目" }));
+  expect(screen.getByText("Category：工程实践 → AI")).toBeInTheDocument();
+  expect(save).not.toHaveBeenCalled();
+});
+
+test("文章页读取 Hugo Category 且 taxonomy 失败不阻止审核", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy") ? Response.json(taxonomy) : Response.json(article));
+  const view = render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  expect(await screen.findByRole("combobox", { name: "Category" })).toHaveValue("工程实践");
+  expect(screen.getByRole("option", { name: "产品" })).toBeInTheDocument();
+  view.unmount();
+
+  vi.restoreAllMocks();
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy") ? Response.json({ error: { message: "类目读取失败" } }, { status: 500 }) : Response.json(article));
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  expect(await screen.findByText("本地优先的内容工作流")).toBeInTheDocument();
+  expect(screen.getByText("博客类目暂不可用")).toBeInTheDocument();
+});
+
+test("文章页未连接博客时给出明确 Category 引导", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy") ? Response.json({ source: "尚未配置", state: "not_enabled", loaded_at: "-", readonly: true, terms: [], issues: [] }) : Response.json(article));
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  expect(await screen.findByText("尚未连接博客类目")).toBeInTheDocument();
+});
+
+test("文章页创建 Category 后回填草稿并等待用户保存", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/taxonomy/terms/preview")) return Response.json({ provider_id: "h1", expected_revision: "revision-1", files: [{ relative_path: "content/categories/ai/_index.md", before: "", after: "---\ntitle: AI\n---\n" }] });
+    if (url.endsWith("/taxonomy/terms/apply")) return Response.json({ ...taxonomy, revision: "revision-2", terms: [...taxonomy.terms, { kind: "category", key: "ai", name: "AI", usage_count: 0, metadata: {} }] });
+    if (url.endsWith("/taxonomy")) return Response.json(taxonomy);
+    if (init?.method === "PUT") return Response.json({ ...article, metadata: { ...metadata, category: "AI" } });
+    return Response.json(article);
+  });
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  await screen.findByRole("combobox", { name: "Category" });
+  await userEvent.click(screen.getByRole("button", { name: "新建类目" }));
+  await userEvent.type(screen.getByLabelText("类目名称"), "AI");
+  await userEvent.click(screen.getByRole("button", { name: "预览变更" }));
+  await screen.findByText("content/categories/ai/_index.md");
+  await userEvent.click(screen.getByRole("button", { name: "确认创建类目" }));
+  expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("AI");
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
+  await userEvent.click(screen.getByRole("button", { name: "保存到文章" }));
+  expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(true);
 });
 
 test("AI 建议只能逐字段采用并写入表单草稿", async () => {

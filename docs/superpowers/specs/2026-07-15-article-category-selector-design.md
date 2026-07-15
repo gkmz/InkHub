@@ -44,7 +44,7 @@ interface CategoryOption {
 
 interface MetadataFormProps {
   categoryOptions?: CategoryOption[];
-  categoryState?: "loading" | "ready" | "unavailable";
+  categoryState?: "loading" | "ready" | "unavailable" | "not_enabled";
   canCreateCategory?: boolean;
   onCreateCategory?: (select: (name: string) => void) => void;
 }

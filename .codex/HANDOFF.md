@@ -46,7 +46,7 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 
 ## Next
 
-Provider 抽象和类目管理闭环已经完成。下一步把文章元数据中的 Category 从自由文本改为 Taxonomy Provider 快照选择器，并定义新 category 从文章审核页进入同一预览、确认流程的交互。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁；每个阶段完成后立即提交。
+Provider 抽象、类目管理闭环和文章 Category 选择器已经完成。下一步在 Series 选择器与 Tags 多选/准入治理之间确定优先级并先完成专项设计；两者交互复杂度不同，不应直接复制 Category 控件。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁；每个阶段完成后立即提交。
 
 ## Important Decisions
 
@@ -62,6 +62,7 @@ Provider 抽象和类目管理闭环已经完成。下一步把文章元数据�
 - Application 和 Transport 的文章运行链路通过 Provider Runtime 构建 Source/Publish/Taxonomy；具体工厂只在 bootstrap 注册。
 - `markdown-folder` 只读 Source 用于验证扩展契约，MVP UI 暂不开放配置入口。
 - 类目管理页面从 SQLite 快照即时展示 categories/tags；手工刷新调用 Taxonomy Service，新建 category 必须先预览 Hugo 原生 term page，再按 revision 确认应用。
+- 文章审核页 Category 从 Taxonomy Provider 快照选择；快照外旧值明确保留，同页创建 category 后只回填草稿，仍需用户保存文章。
 
 ## Files
 
@@ -71,7 +72,7 @@ Provider 抽象和类目管理闭环已经完成。下一步把文章元数据�
 
 ## Verification
 
-- Provider Runtime、Hugo 标准 taxonomy、SQLite 快照、类目查询/刷新/预览/应用 API、类目管理页面、模板 target 和第二 Source 均有单元测试。
+- Provider Runtime、Hugo 标准 taxonomy、SQLite 快照、类目查询/刷新/预览/应用 API、类目管理页面、文章 Category 选择与同页创建、模板 target 和第二 Source 均有单元测试。
 - 每阶段已运行全量 `go test ./...`、`go vet ./...` 和相关 race 测试。
 - 当前项目实际路径：`/Users/hank/workspace/mine/InkHub`。
 
@@ -83,4 +84,4 @@ Provider 抽象和类目管理闭环已经完成。下一步把文章元数据�
 
 ## Fresh Session Prompt
 
-请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计、`docs/plans/provider-runtime-taxonomy-plan.md` 和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象和类目管理闭环已完成，从文章 Category 选择器设计开始。
+请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计、`docs/plans/provider-runtime-taxonomy-plan.md` 和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象、类目管理和文章 Category 选择器已完成，下一步先讨论 Series 与 Tags 的实现优先级。

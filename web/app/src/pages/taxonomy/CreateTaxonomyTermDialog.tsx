@@ -8,10 +8,11 @@ interface CreateTaxonomyTermDialogProps {
   overview: TaxonomyOverview;
   onClose: () => void;
   onApplied: (overview: TaxonomyOverview) => void;
+  onCreated?: (name: string) => void;
 }
 
 /** CreateTaxonomyTermDialog 在写入 Hugo 前强制展示 Provider 生成的原生文件变更。 */
-export function CreateTaxonomyTermDialog({ overview, onClose, onApplied }: CreateTaxonomyTermDialogProps) {
+export function CreateTaxonomyTermDialog({ overview, onClose, onApplied, onCreated }: CreateTaxonomyTermDialogProps) {
   const toast = useToast();
   const nameInput = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
@@ -48,6 +49,7 @@ export function CreateTaxonomyTermDialog({ overview, onClose, onApplied }: Creat
     try {
       const next = await applyTaxonomyTerm(command());
       onApplied(next);
+      onCreated?.(name.trim());
       toast.show({ kind: "success", message: "类目已创建" });
       onClose();
     } catch (error) { showError(error); } finally { setBusy(null); }
