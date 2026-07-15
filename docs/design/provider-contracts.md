@@ -346,7 +346,16 @@ type PublishProvider interface {
 
 type PublishDescriptor struct {
     Descriptor
+    DeliveryMode DeliveryMode
 }
+
+type DeliveryMode string
+
+const (
+    DeliveryAutomatic          DeliveryMode = "automatic"
+    DeliveryManualConfirmation DeliveryMode = "manual_confirmation"
+    DeliveryPrepareOnly        DeliveryMode = "prepare_only"
+)
 
 type PublishInput struct {
     OperationID      string
@@ -364,6 +373,7 @@ type TemplateRef struct {
     ID      string
     Version string
     Digest  string
+    Target  string
 }
 
 type PreflightResult struct {
@@ -455,7 +465,24 @@ Provider 不更新 `publications`。Application 在 `Prepare`、`Deliver` 返回
 
 能力声明包含 `preview`、`images` 和 `manual_confirmation`，不包含 `direct_publish`。`Deliver` 只执行剪贴板交付并返回 `copied`；用户确认草稿由 Application 单独记录为 `confirmed`，复制成功不等于发布成功。
 
-## 7. Provider Registry
+## 7. Taxonomy Provider
+
+Taxonomy 与发布具有不同的扫描、缓存和冲突生命周期，因此使用独立 Provider：
+
+```go
+type TaxonomyProvider interface {
+    Descriptor() TaxonomyDescriptor
+    Validate(ctx context.Context) error
+    Discover(ctx context.Context, cursor TaxonomyCursor) (TaxonomySnapshot, error)
+    PlanChange(ctx context.Context, command TaxonomyCommand) (TaxonomyChangeSet, error)
+    ApplyChange(ctx context.Context, change TaxonomyChangeSet) (TaxonomySnapshot, error)
+    Watch(ctx context.Context, changes chan<- TaxonomyChange) error
+}
+```
+
+Hugo 实现读取 Hugo 配置、文章 frontmatter 和 taxonomy term 页面。SQLite 保存最近成功的完整快照和同步状态；Provider 不直接访问 SQLite。变更必须先生成可审阅的 `TaxonomyChangeSet`，应用时校验期望 revision。
+
+## 8. Provider Registry
 
 ```go
 // ProviderRegistry 管理编译期注册的类型化 Provider 工厂。
@@ -463,10 +490,12 @@ type ProviderRegistry interface {
     RegisterSource(factory SourceProviderFactory) error
     RegisterAI(factory AIProviderFactory) error
     RegisterPublish(factory PublishProviderFactory) error
+    RegisterTaxonomy(factory TaxonomyProviderFactory) error
     Descriptor(providerType ProviderType) (Descriptor, error)
     BuildSource(ctx context.Context, ref ProviderRef, config ConfigView) (SourceProvider, error)
     BuildAI(ctx context.Context, ref ProviderRef, config ConfigView) (AIProvider, error)
     BuildPublish(ctx context.Context, ref ProviderRef, config ConfigView) (PublishProvider, error)
+    BuildTaxonomy(ctx context.Context, ref ProviderRef, config ConfigView) (TaxonomyProvider, error)
 }
 
 type SourceProviderFactory interface {

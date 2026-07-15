@@ -8,7 +8,7 @@
 | --- | --- |
 | 产品名称 | InkHub |
 | 文档类型 | 产品需求文档（PRD） |
-| 文档版本 | 1.4 |
+| 文档版本 | 1.5 |
 | 当前阶段 | 产品定义与 MVP 规划 |
 | 目标读者 | 产品维护者、设计者、开发者、开源贡献者、早期使用者 |
 | 产品形态 | 本地优先的开源桌面式 Web 工作台与 CLI |
@@ -26,6 +26,7 @@
 | 1.2 | 2026-07-13 | 收敛 MVP 范围、文章模型、Taxonomy 权威来源和模板标准 |
 | 1.3 | 2026-07-13 | 将 keywords 纳入标准文章 frontmatter 和内容版本 |
 | 1.4 | 2026-07-13 | 明确微信模板规范 1.0 仅使用安全字体 token，不携带远程字体文件 |
+| 1.5 | 2026-07-15 | 改为 Hugo 标准 taxonomy 权威来源，并补充 Taxonomy Provider 与模板目标抽象 |
 
 ## 2. 产品背景
 
@@ -246,11 +247,12 @@ InkHub 从内容源识别出的可管理 Markdown 文件。文章正文不存入
 
 ### 9.6 Provider
 
-Provider 是 InkHub 的标准能力扩展边界，分为三类：
+Provider 是 InkHub 的标准能力扩展边界，分为四类：
 
 - **Source Provider**：读取内容源并将其转换成 InkHub 标准文章模型。
 - **AI Provider**：提供摘要、标签、SEO 等智能分析能力。
 - **Publish Provider**：将标准文章模型转换并交付到目标渠道。
+- **Taxonomy Provider**：发现并受控修改发布平台的标准分类体系。
 
 MVP 内建 Obsidian Source Provider、OpenAI-compatible AI Provider、Hugo Publish Provider 和 WeChat Publish Provider。Provider 是内部标准模块，不等同于外部脚本或松散的命令调用。
 
@@ -565,14 +567,14 @@ Publish Provider 负责将标准文章模型转换成渠道所需格式，不要
 
 ### 16.2 Taxonomy 来源
 
-MVP 只支持外部文件管理模式：Hugo 项目的 `data/taxonomy.yaml` 是 Category、Series、Tag alias 和治理规则的唯一权威来源，SQLite 只保存可重建缓存和统计。
+MVP 只支持发布平台权威模式：Hugo 配置中的 `taxonomies`、文章 frontmatter 和 taxonomy term 页面共同构成权威来源。SQLite 持久化最近成功快照、同步状态和使用统计，但不取代 Hugo 标准资源。
 
-- InkHub 启动和文件变化时重新加载该文件。
-- AI 和人工新增 tag 必须经过准入确认后受控写回该文件。
-- 写回前展示 YAML 差异并执行格式和规则校验。
+- InkHub 首次关联 Hugo 时完成全量发现，后续通过 revision 和文件变化增量刷新。
+- AI 和人工新增 term 必须经过准入确认后，由 Taxonomy Provider 生成并应用 Hugo 原生资源变更。
+- 写回前展示 Provider 原生变更，并校验期望 revision、格式和规则。
 - 写回失败时不更新数据库缓存，也不修改文章。
-- Hugo Publish Provider 未配置或 taxonomy 文件不可用时，允许浏览和微信发布，但禁用 taxonomy 修改与 Hugo 发布。
-- InkHub 自主管理 taxonomy 和从其他 Provider 导入 taxonomy 均属于 Release 1 之后的能力。
+- Hugo Provider 未配置或标准 taxonomy 资源不可解析时，允许浏览和微信发布；界面继续展示最近成功缓存，并禁用 taxonomy 修改与 Hugo 发布。
+- InkHub 自主管理 taxonomy 和跨 Provider 合并 taxonomy 均属于 Release 1 之后的能力。
 
 ### 16.3 Tag 索引
 
@@ -778,7 +780,7 @@ InkHub 基于历史文章标题、摘要和 tags 推荐 3 至 5 篇相关文章�
 
 ### 19.1 标准职责
 
-三类 Provider 都必须遵循小而稳定的职责边界：
+四类 Provider 都必须遵循小而稳定的职责边界：
 
 - Source Provider 只负责发现、读取、监听和写回源内容。
 - AI Provider 只负责执行结构化智能任务，不管理文章状态。
@@ -1448,7 +1450,7 @@ PRD 确认后，应依次产出：
 1. InkHub 技术架构设计。
 2. SQLite 数据模型与迁移设计。
 3. 工作区、文章审核和发布流程交互设计。
-4. 三类 Provider 接口设计。
+4. 四类 Provider 接口设计。
 5. AI 元数据与 Taxonomy 治理详细设计。
 6. MVP 分阶段实施计划。
 7. 微信公众号模板标准与作者指南。

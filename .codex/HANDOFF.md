@@ -12,11 +12,11 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 
 - 产品名：`InkHub`，CLI 和仓库命名使用 `inkhub`。
 - MVP 只实现：Obsidian + Hugo + 微信公众号。
-- 架构必须提供三类标准 Provider：Source、AI、Publish。
+- 架构必须提供四类标准 Provider：Source、AI、Publish、Taxonomy。
 - MVP Provider：Obsidian Source、OpenAI-compatible AI、Hugo Publish、WeChat Publish。
 - 微信公众号只能做模板渲染、图片处理、HTML 复制和人工草稿确认，不依赖不可用的自动发布接口。
 - Hugo 内容转换、page bundle、图片复制、路径重写、taxonomy 校验和构建必须内建，不依赖旧脚本。
-- Hugo `data/taxonomy.yaml` 是 MVP taxonomy 唯一权威来源，SQLite 只存缓存和统计。
+- Hugo 标准配置、文章 frontmatter 和 taxonomy term 页面是权威来源；SQLite 持久化最近成功快照、同步状态和统计。
 - 稳定文章 ID 在 MVP 中写入 Obsidian Markdown frontmatter，不使用 sidecar 或仅数据库身份。
 - 正文始终保存在 Obsidian Vault，SQLite 只保存索引、配置、状态、历史和任务。
 - 设计目标是简单、精美、易用，避免 CMS 化、复杂大屏、动态插件市场和多余设置。
@@ -36,7 +36,7 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 - 架构设计包含：
   - 模块化单体和分层依赖。
   - Core、Application、Domain、Infrastructure、Transport 边界。
-  - 三类 Provider Port 和 MVP 实现。
+  - Source、AI、Publish Provider Port 和 MVP 实现；Taxonomy Provider 是当前重构阶段。
   - SQLite、任务、文件监听、原子写入和 Hugo staging。
   - AI、Hugo、微信完整数据流。
   - 微信模板安全、版本和仓库分发原则。

@@ -101,7 +101,8 @@ hash 使用 SHA-256，小写十六进制保存。相同规范化输入必须产�
 | `publications` | 文章到渠道的当前处理投影 | 不可完全重建 |
 | `publication_events` | 渠道处理事件 | 不可完全重建 |
 | `ai_suggestions` | AI 建议及采纳结果 | 不可完全重建 |
-| `templates` | 微信模板安装和版本 | 可从模板包重建部分信息 |
+| `taxonomy_snapshots` | Provider taxonomy 同步状态和最近成功 revision | 可从 Provider 重建 |
+| `templates` | 目标明确的模板安装和版本 | 可从模板包重建部分信息 |
 | `jobs` | 持久化后台任务 | 运行中任务需恢复 |
 | `settings` | 非敏感本机设置 | 可重建 |
 
@@ -189,16 +190,32 @@ CREATE TABLE editorial_reviews (
 CREATE TABLE taxonomy_terms (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id),
-  kind TEXT NOT NULL CHECK (kind IN ('category','series','tag','alias')),
+  provider_instance_id TEXT NOT NULL REFERENCES provider_instances(id),
+  kind TEXT NOT NULL,
+  external_key TEXT NOT NULL,
   name TEXT NOT NULL,
   canonical_name TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
   usage_count INTEGER NOT NULL DEFAULT 0,
-  is_core INTEGER NOT NULL DEFAULT 0,
-  allow_low_frequency INTEGER NOT NULL DEFAULT 0,
   source_revision TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL,
-  UNIQUE (workspace_id, kind, canonical_name),
-  UNIQUE (id, workspace_id)
+  UNIQUE (provider_instance_id, kind, external_key),
+  UNIQUE (id, workspace_id),
+  FOREIGN KEY (provider_instance_id, workspace_id) REFERENCES provider_instances(id, workspace_id)
+);
+
+CREATE TABLE taxonomy_snapshots (
+  provider_instance_id TEXT PRIMARY KEY REFERENCES provider_instances(id),
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+  revision TEXT NOT NULL DEFAULT '',
+  state TEXT NOT NULL CHECK (state IN ('ready','refreshing','failed')),
+  complete INTEGER NOT NULL DEFAULT 0,
+  last_error_code TEXT,
+  last_error_message TEXT,
+  last_attempt_at TEXT NOT NULL,
+  last_success_at TEXT,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (provider_instance_id, workspace_id) REFERENCES provider_instances(id, workspace_id)
 );
 
 CREATE TABLE article_taxonomies (
@@ -429,21 +446,8 @@ Application 只依赖以下 Repository：`WorkspaceRepository`、`ArticleReposit
 - 备份恢复后审核记录、发布历史、微信确认和 Provider 配置仍存在。
 - 重新扫描可以重建文章、taxonomy 和 tag 统计，但不能伪造人工审核和发布确认。
 
-## 12. Taxonomy 权威文件
+## 12. Taxonomy 权威来源与投影
 
-MVP 的 Hugo `data/taxonomy.yaml` 使用版本化固定结构：
+Hugo 配置中的 `taxonomies` 定义 singular/plural 映射，文章 frontmatter 提供实际使用关系，`content/<plural>/<term>/_index.md` 提供可选 term 元数据。这些 Hugo 标准资源共同构成权威来源。
 
-```yaml
-version: 1
-categories:
-  - AI应用开发
-series:
-  - 内容工作台
-tags:
-  - name: go
-    aliases: [golang]
-    core: true
-    allowLowFrequency: false
-```
-
-`categories`、`series` 和 `tags[].name` 在各自范围内唯一；alias 不能与任何规范 Tag 或其他 alias 冲突。未知字段、重复名称和错误类型校验失败。MVP 不支持层级分类和可执行规则表达式。
+`taxonomy_snapshots` 和 `taxonomy_terms` 是按 Provider instance 隔离的持久化投影。刷新成功时在单个事务中替换完整 term 集合并更新 revision；刷新失败只记录同步错误，不删除最近成功数据。`kind` 不使用封闭枚举，以保留 Hugo 自定义 taxonomy 以及未来发布平台的原生分类名称。

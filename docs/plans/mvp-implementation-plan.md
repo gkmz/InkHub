@@ -12,7 +12,7 @@
 
 - 产品名称使用 `InkHub`；CLI、对外命令、配置键和目录使用 `inkhub`。
 - 新代码放在 `cmd/inkhub`、`internal` 和 `web/app` 下；旧应用统一位于 `old/`，禁止向其中增加 InkHub 行为。
-- Markdown 正文不得进入 SQLite；Hugo `data/taxonomy.yaml` 是 MVP 唯一 taxonomy 权威来源。
+- Markdown 正文不得进入 SQLite；Hugo 标准配置、文章 frontmatter 和 taxonomy term 页面是权威来源，SQLite 保存可重建投影。
 - 稳定文章 ID 和包括 `keywords` 在内的标准元数据，只能在用户确认后写入 Obsidian frontmatter。
 - 图片和附件不参与 MVP 内容 hash。
 - Secret 不得进入 SQLite、API 响应、普通日志或诊断包。

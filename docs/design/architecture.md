@@ -6,8 +6,8 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | 1.1 |
-| 对应 PRD | `docs/PRD.md` 1.4 |
+| 文档版本 | 1.2 |
+| 对应 PRD | `docs/PRD.md` 1.5 |
 | 目标版本 | InkHub MVP Release 1 |
 | 目标读者 | 核心开发者、架构维护者、Provider 贡献者 |
 | 技术栈 | Go、SQLite、本地 Web UI、嵌入式静态资源 |
@@ -55,7 +55,7 @@ Obsidian 写作
 - AI 采用 OpenAI-compatible API。
 - Hugo CLI 是站点构建的权威实现。
 - 微信以格式化复制和人工草稿确认为终点。
-- Hugo `data/taxonomy.yaml` 是 taxonomy 唯一权威来源。
+- Hugo 标准配置、文章 frontmatter 和 taxonomy term 页面是 taxonomy 权威来源；SQLite 保存持久化投影。
 - Provider 编译进主程序，不实现动态插件。
 - 微信模板是无执行代码的标准资源包。
 
@@ -254,12 +254,13 @@ Article 不包含 Hugo bundle、微信 HTML 或 AI 原始响应。
 
 ### 6.4 Taxonomy
 
-- 解析 Hugo `data/taxonomy.yaml`。
+- 通过 Taxonomy Provider 解析发布平台的标准 taxonomy 资源。
+- Hugo 实现读取站点配置、文章 frontmatter 和 taxonomy term 页面。
 - 管理 category、series、aliases、核心 tag 和低频豁免。
 - 规范化和统计 tags。
 - 生成受控 YAML 变更。
 
-SQLite 中的 taxonomy 数据只是缓存，必须可以重建。
+SQLite 中的 taxonomy 数据是可重建的持久化投影，用于启动展示、同步状态和使用统计；发现失败时保留最近成功快照。
 
 ### 6.5 Content Checker
 
@@ -455,12 +456,12 @@ Load article and taxonomy
 
 ```text
 Build taxonomy change
-  → Show YAML diff
-  → Validate result
-  → Atomically write taxonomy.yaml
-  → Reload authoritative taxonomy
+  → Show provider-native diff
+  → Validate expected revision
+  → Apply through Taxonomy Provider
+  → Rediscover authoritative taxonomy
   → Write article frontmatter
-  → Refresh cache
+  → Persist refreshed snapshot
 ```
 
 Taxonomy 和文章无法组成文件系统事务。先写权威 taxonomy；文章写入失败时保留新词并允许重试。
