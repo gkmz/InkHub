@@ -31,3 +31,9 @@ test("未选择内容目录时明确说明不会扫描", () => {
   render(<ContentScopePicker directories={directories} contentRoots={[]} ignoredFolders={[]} ignoredFileNames={[]} onChange={vi.fn()} />);
   expect(screen.getByText("尚未选择内容目录，InkHub 不会扫描任何笔记。")).toBeInTheDocument();
 });
+
+test("旧配置包含 null 时不会导致设置页白屏", () => {
+  render(<ContentScopePicker directories={directories} contentRoots={["Areas"]} ignoredFolders={null as unknown as string[]} ignoredFileNames={null as unknown as string[]} onChange={vi.fn()} />);
+  expect(screen.getByRole("heading", { name: "管理这些目录" })).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "忽略 Areas/私人记录（3 篇）" })).not.toBeChecked();
+});

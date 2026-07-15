@@ -99,6 +99,12 @@ func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Re
 		writeError(response, http.StatusInternalServerError, "workspace.config_invalid", "工作区目录配置损坏")
 		return
 	}
+	if config.ContentRoots == nil {
+		config.ContentRoots = []string{}
+	}
+	if config.IgnoredFolders == nil {
+		config.IgnoredFolders = []string{}
+	}
 	if config.IgnoredFileNames == nil {
 		config.IgnoredFileNames = folder.DefaultIgnoredFileNames()
 	}

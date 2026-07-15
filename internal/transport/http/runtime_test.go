@@ -125,6 +125,31 @@ func TestRuntimeHandlerInspectsVaultDirectoriesWithoutExposingFileNames(t *testi
 	}
 }
 
+func TestRuntimeSettingsNormalizesLegacyNullScopeArrays(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	vault := t.TempDir()
+	if err := os.Mkdir(filepath.Join(vault, ".obsidian"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	now := "2026-01-01T00:00:00Z"
+	if _, err := db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','旧空间',?,?,?,?)`, t.TempDir(), now, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO sources(id,workspace_id,provider_type,root_path,config_json,created_at,updated_at) VALUES('s1','w1','obsidian',?,'{"content_roots":["Areas"],"ignored_folders":null}',?,?)`, vault, now, now); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/settings", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"ignored_folders":[]`) {
+		t.Fatalf("旧 null 配置未规范化: code=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestRuntimeHandlerPicksDirectoryThroughInjectedNativeAdapter(t *testing.T) {
 	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
 	if err != nil {
