@@ -15,10 +15,11 @@ import (
 	"github.com/gkmz/InkHub/internal/provider/publish/wechat"
 	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
+	"go.uber.org/zap"
 )
 
-func newPublicationRunner(db *sql.DB) *appjob.Runner {
-	runner := appjob.NewRunner(repository.NewJobRepository(db), appjob.Config{Workers: 2, PollInterval: 200 * time.Millisecond})
+func newPublicationRunner(db *sql.DB, logger *zap.Logger) *appjob.Runner {
+	runner := appjob.NewRunner(repository.NewJobRepository(db), appjob.Config{Workers: 2, PollInterval: 200 * time.Millisecond, Logger: logger})
 	handler := publicationJobHandler{db: db, publications: repository.NewPublicationRepository(db)}
 	runner.Register("hugo_sync", appjob.HandlerOptions{Handle: handler.handle, MaxAttempts: 1})
 	runner.Register("wechat_prepare", appjob.HandlerOptions{Handle: handler.handle, MaxAttempts: 3, RetrySafe: true})

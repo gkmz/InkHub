@@ -56,7 +56,7 @@ func TestPublicationRunnerPreparesWeChatArtifact(t *testing.T) {
 	if _, err := provider.Prepare(ctx, input); err != nil {
 		t.Fatalf("准备微信内容: %v", err)
 	}
-	runner := newPublicationRunner(db)
+	runner := newPublicationRunner(db, nil)
 	worked, err := runner.RunOne(ctx)
 	if err != nil || !worked {
 		t.Fatalf("执行微信任务: worked=%v err=%v", worked, err)

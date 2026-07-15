@@ -42,7 +42,7 @@ func TestPublicationRunnerDeliversHugoWithRealBuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := newPublicationRunner(db)
+	runner := newPublicationRunner(db, nil)
 	worked, err := runner.RunOne(ctx)
 	if err != nil || !worked {
 		t.Fatalf("执行 Hugo: worked=%v err=%v", worked, err)

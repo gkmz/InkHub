@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +14,8 @@ import (
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	inksqlite "github.com/gkmz/InkHub/internal/storage/sqlite"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestRunnerCompletesJobAndPersistsProgress(t *testing.T) {
@@ -46,6 +50,40 @@ func TestRunnerCompletesJobAndPersistsProgress(t *testing.T) {
 	}
 	if stored.State != domainjob.StateSucceeded || stored.Progress != 100 || stored.ResultJSON != `{"ok":true}` || stored.FinishedAt == nil {
 		t.Fatalf("成功任务状态不完整: %+v", stored)
+	}
+}
+
+func TestRunnerLogsJobLifecycleWithoutPayload(t *testing.T) {
+	t.Parallel()
+
+	store := openJobStore(t)
+	core, observed := observer.New(zap.InfoLevel)
+	runner := NewRunner(store, Config{Logger: zap.New(core)})
+	runner.Register("publish", HandlerOptions{Handle: func(context.Context, *Execution) (string, error) {
+		return `{}`, nil
+	}})
+	if _, _, err := runner.Enqueue(context.Background(), EnqueueRequest{
+		ID: "job_1", WorkspaceID: "w1", Kind: "publish", ArticleID: "article_1",
+		ProviderInstanceID: "provider_1", PayloadJSON: `{"private":"正文秘密"}`,
+	}); err != nil {
+		t.Fatalf("任务入队: %v", err)
+	}
+	if _, err := runner.RunOne(context.Background()); err != nil {
+		t.Fatalf("执行任务: %v", err)
+	}
+
+	entries := observed.All()
+	if len(entries) < 3 {
+		t.Fatalf("日志数量 = %d, want enqueue/start/success", len(entries))
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Message+fmt.Sprint(entry.ContextMap()), "正文秘密") {
+			t.Fatalf("任务日志泄露 payload: %#v", entry)
+		}
+	}
+	fields := entries[len(entries)-1].ContextMap()
+	if fields["job_id"] != "job_1" || fields["workspace_id"] != "w1" || fields["article_id"] != "article_1" || fields["provider_id"] != "provider_1" {
+		t.Fatalf("任务关联字段 = %#v", fields)
 	}
 }
 

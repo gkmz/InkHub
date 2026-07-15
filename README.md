@@ -28,6 +28,19 @@ go build -o ./bin/inkhub ./cmd/inkhub
 ./bin/inkhub doctor
 ```
 
+## 日志配置
+
+InkHub 启动时读取当前目录的 `.env`，进程环境变量优先于文件值。可以从 `.env.example` 开始配置：
+
+```dotenv
+INKHUB_LOG_LEVEL=info
+INKHUB_LOG_FILE=
+INKHUB_LOG_MAX_SIZE=100
+INKHUB_LOG_CONSOLE=true
+```
+
+日志文件为空时默认写入 `<data-dir>/logs/inkhub.log`。单文件默认最大 100 MiB，保留 5 个备份和 30 天并压缩；文件内容为 JSON，控制台为易读格式。日志记录请求、扫描、数据库和后台任务的稳定 ID、错误码与耗时，不记录文章正文、Secret、完整 AI 请求或微信 HTML。
+
 ## 数据与隐私
 
 - 默认数据目录：macOS 为 `~/Library/Application Support/InkHub`，其他系统使用各自用户配置目录。

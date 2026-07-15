@@ -13,6 +13,7 @@ import (
 
 	domainjob "github.com/gkmz/InkHub/internal/domain/job"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
+	"go.uber.org/zap"
 )
 
 // Store 定义 Runner 所需的短事务持久化操作。
@@ -30,11 +31,12 @@ type Store interface {
 	FailRecovered(ctx context.Context, id string, now time.Time) error
 }
 
-// Config 定义 Runner 的 worker 数量、轮询间隔和时钟。
+// Config 定义 Runner 的 worker 数量、轮询间隔、时钟和结构化日志。
 type Config struct {
 	Workers      int
 	PollInterval time.Duration
 	Now          func() time.Time
+	Logger       *zap.Logger
 }
 
 // EnqueueRequest 描述一个只包含可重建参数的任务意图。
@@ -84,6 +86,7 @@ type Runner struct {
 	wait     sync.WaitGroup
 	activeMu sync.Mutex
 	active   map[string]context.CancelFunc
+	logger   *zap.Logger
 }
 
 // NewRunner 创建尚未启动 worker 的任务 Runner。
@@ -97,9 +100,12 @@ func NewRunner(store Store, config Config) *Runner {
 	if config.Now == nil {
 		config.Now = func() time.Time { return time.Now().UTC() }
 	}
+	if config.Logger == nil {
+		config.Logger = zap.NewNop()
+	}
 	return &Runner{
 		store: store, config: config, handlers: make(map[string]HandlerOptions),
-		locks: newKeyedLocker(), active: make(map[string]context.CancelFunc),
+		locks: newKeyedLocker(), active: make(map[string]context.CancelFunc), logger: config.Logger,
 	}
 }
 
@@ -135,10 +141,16 @@ func (r *Runner) Enqueue(ctx context.Context, request EnqueueRequest) (domainjob
 	if request.DedupeKey == "" {
 		request.DedupeKey = BuildDedupeKey(request.Kind, request.ArticleID, request.ProviderInstanceID, request.ContentHash)
 	}
-	return r.store.Enqueue(ctx, domainjob.Job{
+	value, created, err := r.store.Enqueue(ctx, domainjob.Job{
 		ID: request.ID, WorkspaceID: request.WorkspaceID, Kind: request.Kind,
 		DedupeKey: request.DedupeKey, PayloadJSON: request.PayloadJSON, AvailableAt: r.config.Now(),
 	})
+	if err != nil {
+		r.logger.Error("后台任务入队失败", append(requestLogFields(request), zap.String("error_code", "job_enqueue_failed"), zap.Error(err))...)
+		return domainjob.Job{}, false, err
+	}
+	r.logger.Info("后台任务已入队", append(requestLogFields(request), zap.Bool("created", created))...)
+	return value, created, nil
 }
 
 // BuildDedupeKey 根据任务目标和内容版本生成稳定去重键。
@@ -184,13 +196,21 @@ func mergeTargetMetadata(payloadJSON, articleID, providerInstanceID string) (str
 func (r *Runner) RunOne(ctx context.Context) (bool, error) {
 	value, claimed, err := r.store.ClaimNext(ctx, r.config.Now())
 	if err != nil || !claimed {
+		if err != nil {
+			r.logger.Error("领取后台任务失败", zap.String("error_code", "job_claim_failed"), zap.Error(err))
+		}
 		return claimed, err
 	}
+	start := time.Now()
+	fields := jobLogFields(value)
+	r.logger.Info("后台任务开始执行", fields...)
 	r.mu.RLock()
 	options, exists := r.handlers[value.Kind]
 	r.mu.RUnlock()
 	if !exists || options.Handle == nil {
-		return true, r.store.Fail(ctx, value.ID, "job.handler_missing", "任务处理器未注册", r.config.Now())
+		err := r.store.Fail(ctx, value.ID, "job.handler_missing", "任务处理器未注册", r.config.Now())
+		r.logger.Error("后台任务执行失败", append(fields, zap.String("error_code", "job.handler_missing"), elapsedField(start))...)
+		return true, err
 	}
 
 	taskCtx, cancel := context.WithCancel(ctx)
@@ -223,16 +243,58 @@ func (r *Runner) RunOne(ctx context.Context) (bool, error) {
 			result = "{}"
 		}
 		if !json.Valid([]byte(result)) {
-			return true, r.store.Fail(ctx, value.ID, "job.result_invalid", "任务返回了无效结果", r.config.Now())
+			err := r.store.Fail(ctx, value.ID, "job.result_invalid", "任务返回了无效结果", r.config.Now())
+			r.logger.Error("后台任务执行失败", append(fields, zap.String("error_code", "job.result_invalid"), elapsedField(start))...)
+			return true, err
 		}
-		return true, r.store.Succeed(ctx, value.ID, result, r.config.Now())
+		err := r.store.Succeed(ctx, value.ID, result, r.config.Now())
+		if err != nil {
+			r.logger.Error("保存后台任务结果失败", append(fields, zap.String("error_code", "job_succeed_store_failed"), zap.Error(err), elapsedField(start))...)
+			return true, err
+		}
+		r.logger.Info("后台任务执行成功", append(fields, elapsedField(start))...)
+		return true, nil
 	}
 	code, message, retryable := classifyError(handleErr)
 	if retryable && options.RetrySafe && value.Attempts < options.MaxAttempts {
 		availableAt := r.config.Now().Add(options.Backoff(value.Attempts))
-		return true, r.store.Retry(ctx, value.ID, availableAt, code, message, r.config.Now())
+		err := r.store.Retry(ctx, value.ID, availableAt, code, message, r.config.Now())
+		r.logger.Warn("后台任务等待重试", append(fields, zap.String("error_code", code), zap.Int("attempt", value.Attempts), elapsedField(start))...)
+		return true, err
 	}
-	return true, r.store.Fail(ctx, value.ID, code, message, r.config.Now())
+	err = r.store.Fail(ctx, value.ID, code, message, r.config.Now())
+	r.logger.Error("后台任务执行失败", append(fields, zap.String("error_code", code), zap.Int("attempt", value.Attempts), elapsedField(start))...)
+	return true, err
+}
+
+func requestLogFields(request EnqueueRequest) []zap.Field {
+	return []zap.Field{
+		zap.String("job_id", request.ID),
+		zap.String("workspace_id", request.WorkspaceID),
+		zap.String("job_kind", request.Kind),
+		zap.String("article_id", request.ArticleID),
+		zap.String("provider_id", request.ProviderInstanceID),
+	}
+}
+
+func jobLogFields(value domainjob.Job) []zap.Field {
+	// payload 只解析关联 ID，正文和其他任务参数绝不进入日志字段。
+	var target struct {
+		ArticleID string `json:"article_id"`
+		Provider  string `json:"provider_instance_id"`
+	}
+	_ = json.Unmarshal([]byte(value.PayloadJSON), &target)
+	return []zap.Field{
+		zap.String("job_id", value.ID),
+		zap.String("workspace_id", value.WorkspaceID),
+		zap.String("job_kind", value.Kind),
+		zap.String("article_id", target.ArticleID),
+		zap.String("provider_id", target.Provider),
+	}
+}
+
+func elapsedField(start time.Time) zap.Field {
+	return zap.Int64("duration_ms", time.Since(start).Milliseconds())
 }
 
 // Start 启动有限数量的 worker；重复启动会返回错误。
