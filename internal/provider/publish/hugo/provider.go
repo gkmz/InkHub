@@ -88,7 +88,7 @@ func (p *Provider) Descriptor() contracts.PublishDescriptor {
 		Capabilities: []contracts.Capability{
 			contracts.CapabilityPreview, contracts.CapabilityTaxonomy, contracts.CapabilityCanonical,
 		},
-	}}
+	}, DeliveryMode: contracts.DeliveryAutomatic}
 }
 
 // Validate 检查 Hugo 根目录、taxonomy 和 staging 可用性。

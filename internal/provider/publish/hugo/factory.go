@@ -43,7 +43,7 @@ func (f *Factory) Descriptor() contracts.PublishDescriptor {
 		Capabilities: []contracts.Capability{
 			contracts.CapabilityPreview, contracts.CapabilityTaxonomy, contracts.CapabilityCanonical,
 		},
-	}}
+	}, DeliveryMode: contracts.DeliveryAutomatic}
 }
 
 // Build 严格解码配置并校验 Hugo 与 staging 路径授权。

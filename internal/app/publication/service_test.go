@@ -9,19 +9,19 @@ import (
 	domainpublication "github.com/gkmz/InkHub/internal/domain/publication"
 )
 
-func TestQueueHugoAndWeChatBindCurrentApprovedContentHash(t *testing.T) {
+func TestQueueProvidersBindCurrentApprovedContentHash(t *testing.T) {
 	t.Parallel()
 
 	queue := &capturingQueue{}
 	service := NewService(queue, &capturingPublicationStore{})
 	value := article.Article{ID: "article_1", WorkspaceID: "workspace_1", ContentHash: "hash-v1"}
-	for _, channel := range []Channel{ChannelHugo, ChannelWeChat} {
+	for _, providerID := range []string{"provider_hugo", "provider_wechat"} {
 		jobID, err := service.Queue(context.Background(), QueueRequest{
-			JobID: "job_" + string(channel), ProviderInstanceID: "provider_" + string(channel),
-			Channel: channel, Article: value, ApprovedContentHash: "hash-v1",
+			JobID: "job_" + providerID, ProviderInstanceID: providerID,
+			Article: value, ApprovedContentHash: "hash-v1",
 		})
 		if err != nil {
-			t.Fatalf("%s 入队: %v", channel, err)
+			t.Fatalf("%s 入队: %v", providerID, err)
 		}
 		if jobID == "" || queue.last.ContentHash != "hash-v1" || queue.last.ArticleID != "article_1" {
 			t.Fatalf("任务未绑定当前版本: %+v", queue.last)
@@ -34,12 +34,25 @@ func TestQueueRejectsChangedArticle(t *testing.T) {
 
 	service := NewService(&capturingQueue{}, &capturingPublicationStore{})
 	_, err := service.Queue(context.Background(), QueueRequest{
-		JobID: "job", ProviderInstanceID: "provider", Channel: ChannelHugo,
+		JobID: "job", ProviderInstanceID: "provider",
 		Article:             article.Article{ID: "article_1", WorkspaceID: "workspace_1", ContentHash: "new-hash"},
 		ApprovedContentHash: "old-hash",
 	})
 	if !errors.Is(err, ErrContentChanged) {
 		t.Fatalf("文章变化后仍进入发布队列: %T %v", err, err)
+	}
+}
+
+func TestQueueUsesGenericPublicationJobForAnyProvider(t *testing.T) {
+	t.Parallel()
+	queue := &capturingQueue{}
+	service := NewService(queue, nil)
+	value := article.Article{ID: "article", WorkspaceID: "workspace", ContentHash: "hash"}
+	if _, err := service.Queue(context.Background(), QueueRequest{JobID: "job", ProviderInstanceID: "custom-provider", Article: value, ApprovedContentHash: "hash"}); err != nil {
+		t.Fatalf("通用发布 Provider 应可入队: %v", err)
+	}
+	if queue.last.Kind != "publication" {
+		t.Fatalf("任务类型未抽象: %s", queue.last.Kind)
 	}
 }
 

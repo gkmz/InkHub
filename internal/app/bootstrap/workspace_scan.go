@@ -8,7 +8,6 @@ import (
 
 	workspaceapp "github.com/gkmz/InkHub/internal/app/workspace"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
-	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
 )
 
@@ -19,9 +18,9 @@ type persistedSourceScope struct {
 }
 
 // RescanRecentWorkspace 按最近工作区保存的目录规则恢复文章索引。
-func RescanRecentWorkspace(ctx context.Context, db *sql.DB) (workspaceapp.ScanReport, error) {
-	var workspaceID, sourceID, root, configJSON string
-	err := db.QueryRowContext(ctx, `SELECT workspaces.id,sources.id,sources.root_path,sources.config_json FROM workspaces JOIN sources ON sources.workspace_id=workspaces.id ORDER BY workspaces.last_used_at DESC LIMIT 1`).Scan(&workspaceID, &sourceID, &root, &configJSON)
+func RescanRecentWorkspace(ctx context.Context, db *sql.DB, runtime contracts.ProviderRuntime) (workspaceapp.ScanReport, error) {
+	var workspaceID, sourceID, providerType, root, configJSON string
+	err := db.QueryRowContext(ctx, `SELECT workspaces.id,sources.id,sources.provider_type,sources.root_path,sources.config_json FROM workspaces JOIN sources ON sources.workspace_id=workspaces.id ORDER BY workspaces.last_used_at DESC LIMIT 1`).Scan(&workspaceID, &sourceID, &providerType, &root, &configJSON)
 	if err == sql.ErrNoRows {
 		return workspaceapp.ScanReport{}, nil
 	}
@@ -38,7 +37,11 @@ func RescanRecentWorkspace(ctx context.Context, db *sql.DB) (workspaceapp.ScanRe
 	if config.IgnoredFileNames == nil {
 		config.IgnoredFileNames = []string{"index.md", "_index.md"}
 	}
-	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: root, ContentRoots: config.ContentRoots, IgnoredFolders: config.IgnoredFolders, IgnoredFileNames: config.IgnoredFileNames})
+	view, err := sourceConfigView(root, []byte(configJSON))
+	if err != nil {
+		return workspaceapp.ScanReport{}, err
+	}
+	source, err := runtime.BuildSource(ctx, contracts.ProviderRef{ID: sourceID, Type: contracts.ProviderType(providerType)}, view)
 	if err != nil {
 		return workspaceapp.ScanReport{}, err
 	}

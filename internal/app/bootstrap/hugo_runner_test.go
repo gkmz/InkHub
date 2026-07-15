@@ -42,7 +42,11 @@ func TestPublicationRunnerDeliversHugoWithRealBuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := newPublicationRunner(db, nil)
+	runtime, err := newProviderRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := newPublicationRunner(db, nil, runtime)
 	worked, err := runner.RunOne(ctx)
 	if err != nil || !worked {
 		t.Fatalf("执行 Hugo: worked=%v err=%v", worked, err)
@@ -50,7 +54,7 @@ func TestPublicationRunnerDeliversHugoWithRealBuild(t *testing.T) {
 	var state string
 	if err := db.QueryRow(`SELECT state FROM publications WHERE article_id='a1' AND provider_instance_id='h1'`).Scan(&state); err != nil || state != "published" {
 		var jobState, code, message string
-		_ = db.QueryRow(`SELECT state,COALESCE(error_code,''),COALESCE(error_message,'') FROM jobs WHERE kind='hugo_sync'`).Scan(&jobState, &code, &message)
+		_ = db.QueryRow(`SELECT state,COALESCE(error_code,''),COALESCE(error_message,'') FROM jobs WHERE kind='publication'`).Scan(&jobState, &code, &message)
 		t.Fatalf("Hugo 未发布: state=%s err=%v job=%s %s %s", state, err, jobState, code, message)
 	}
 	if _, err := os.Stat(filepath.Join(site, "content", "posts", "hugo-runner", "index.md")); err != nil {

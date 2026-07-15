@@ -28,6 +28,9 @@ func TestFactoryBuildsAuthorizedHugoProviderAndRejectsUnknownFields(t *testing.T
 	if factory.Descriptor().Type != contracts.ProviderHugo || factory.Descriptor().ConfigSchema == "" {
 		t.Fatalf("Hugo Descriptor 不完整: %+v", factory.Descriptor())
 	}
+	if provider.Descriptor().DeliveryMode != contracts.DeliveryAutomatic {
+		t.Fatalf("构建后的 Hugo 交付模式错误: %s", provider.Descriptor().DeliveryMode)
+	}
 
 	invalid := json.RawMessage(`{"root":"` + root + `","staging_root":"` + staging + `","unknown":true}`)
 	_, err = factory.Build(context.Background(), contracts.ProviderRef{ID: "hugo_1", Type: contracts.ProviderHugo}, contracts.ConfigView{
@@ -51,5 +54,12 @@ func TestFactoryRejectsUnauthorizedHugoRoot(t *testing.T) {
 	var providerErr *contracts.ProviderError
 	if !errors.As(err, &providerErr) || providerErr.Category != contracts.ErrorUnauthorizedResource {
 		t.Fatalf("未授权路径应被拒绝: %T %v", err, err)
+	}
+}
+
+func TestFactoryDeclaresAutomaticDelivery(t *testing.T) {
+	t.Parallel()
+	if mode := NewFactory(&fakeBuilder{}).Descriptor().DeliveryMode; mode != contracts.DeliveryAutomatic {
+		t.Fatalf("Hugo 交付模式错误: %s", mode)
 	}
 }

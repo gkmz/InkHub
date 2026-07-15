@@ -44,19 +44,15 @@ func TestPublicationRunnerPreparesWeChatArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := publicationJobHandler{db: db, publications: repository.NewPublicationRepository(db)}
-	input, _, config, err := handler.loadInput(ctx, jobID, publicationPayload{ArticleID: "a1", ProviderID: "wx1", ContentHash: "hash-current"})
+	runtime, err := newProviderRuntime()
 	if err != nil {
+		t.Fatalf("注册 Provider: %v", err)
+	}
+	handler := publicationJobHandler{db: db, publications: repository.NewPublicationRepository(db), runtime: runtime}
+	if _, _, _, err := handler.loadInput(ctx, jobID, publicationPayload{ArticleID: "a1", ProviderID: "wx1", ContentHash: "hash-current"}); err != nil {
 		t.Fatalf("加载输入: %v", err)
 	}
-	provider, err := handler.buildWeChat(ctx, "wx1", config, &input)
-	if err != nil {
-		t.Fatalf("构建微信 Provider: %v", err)
-	}
-	if _, err := provider.Prepare(ctx, input); err != nil {
-		t.Fatalf("准备微信内容: %v", err)
-	}
-	runner := newPublicationRunner(db, nil)
+	runner := newPublicationRunner(db, nil, runtime)
 	worked, err := runner.RunOne(ctx)
 	if err != nil || !worked {
 		t.Fatalf("执行微信任务: worked=%v err=%v", worked, err)

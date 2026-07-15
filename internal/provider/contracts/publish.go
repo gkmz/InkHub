@@ -19,7 +19,20 @@ type PublishProvider interface {
 // PublishDescriptor 描述发布渠道的通用能力。
 type PublishDescriptor struct {
 	Descriptor
+	DeliveryMode DeliveryMode
 }
+
+// DeliveryMode 描述产物生成后的标准交付策略。
+type DeliveryMode string
+
+const (
+	// DeliveryAutomatic 表示 Application 应继续执行自动交付。
+	DeliveryAutomatic DeliveryMode = "automatic"
+	// DeliveryManualConfirmation 表示交付后仍需用户在外部平台确认。
+	DeliveryManualConfirmation DeliveryMode = "manual_confirmation"
+	// DeliveryPrepareOnly 表示 Provider 只生成产物，不由后台任务自动交付。
+	DeliveryPrepareOnly DeliveryMode = "prepare_only"
+)
 
 // PublishProviderFactory 构建一个类型安全的 Publish Provider 实例。
 type PublishProviderFactory interface {

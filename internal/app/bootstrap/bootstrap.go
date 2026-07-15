@@ -130,8 +130,12 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 	}
 	defer db.Close()
 	logger.Info("数据库已打开", zap.String("component", "sqlite"))
+	providerRuntime, err := newProviderRuntime()
+	if err != nil {
+		return fmt.Errorf("注册内置 Provider: %w", err)
+	}
 	// 启动重扫只修复可重建索引；失败不阻止用户进入设置修正 Vault 或目录规则。
-	if report, scanErr := RescanRecentWorkspace(ctx, db); scanErr != nil {
+	if report, scanErr := RescanRecentWorkspace(ctx, db, providerRuntime); scanErr != nil {
 		logger.Warn("启动重扫失败", zap.String("error_code", "workspace_rescan_failed"), zap.Error(scanErr))
 	} else {
 		logger.Info("启动重扫完成",
@@ -140,7 +144,7 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 			zap.Int("failed_count", report.Failed),
 		)
 	}
-	runner := newPublicationRunner(db, logger)
+	runner := newPublicationRunner(db, logger, providerRuntime)
 	if err := runner.Recover(ctx, time.Now().UTC().Add(-time.Minute)); err != nil {
 		logger.Error("恢复后台任务失败", zap.String("error_code", "job_recovery_failed"), zap.Error(err))
 		return fmt.Errorf("恢复后台任务: %w", err)

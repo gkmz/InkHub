@@ -84,7 +84,7 @@ func (p *Provider) Descriptor() contracts.PublishDescriptor {
 		Capabilities: []contracts.Capability{
 			contracts.CapabilityPreview, contracts.CapabilityImages, contracts.CapabilityManualConfirmation,
 		},
-	}}
+	}, DeliveryMode: contracts.DeliveryPrepareOnly}
 }
 
 // Validate 检查 Provider 的必要本地依赖。

@@ -37,6 +37,23 @@ type Provider struct {
 	folder *folder.Source
 }
 
+var _ contracts.SourceProvider = (*Provider)(nil)
+
+// Descriptor 返回当前 Obsidian Provider 的稳定能力描述。
+func (p *Provider) Descriptor() contracts.SourceDescriptor { return NewFactory().Descriptor() }
+
+// Validate 检查 Vault 和共享文件夹能力仍然可用。
+func (p *Provider) Validate(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	info, err := os.Stat(filepath.Join(p.config.Root, ".obsidian"))
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("Obsidian Vault 已不可用: %s", p.config.Root)
+	}
+	return nil
+}
+
 // New 创建并校验 Obsidian Provider。
 func New(config Config) (*Provider, error) {
 	root, err := filepath.Abs(config.Root)

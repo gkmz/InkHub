@@ -17,14 +17,6 @@ var (
 	ErrConfirmationInvalid = errors.New("微信草稿状态不允许确认")
 )
 
-// Channel 是 Application 支持的发布渠道。
-type Channel string
-
-const (
-	ChannelHugo   Channel = "hugo"
-	ChannelWeChat Channel = "wechat"
-)
-
 // JobIntent 是提交给持久化任务队列的可重建发布意图。
 type JobIntent struct {
 	ID                 string
@@ -69,7 +61,6 @@ func NewService(queue JobQueue, store Store) *Service { return &Service{queue: q
 type QueueRequest struct {
 	JobID               string
 	ProviderInstanceID  string
-	Channel             Channel
 	Article             article.Article
 	ApprovedContentHash string
 }
@@ -82,17 +73,8 @@ func (s *Service) Queue(ctx context.Context, request QueueRequest) (string, erro
 	if request.Article.ContentHash == "" || request.ApprovedContentHash != request.Article.ContentHash {
 		return "", ErrContentChanged
 	}
-	kind := ""
-	switch request.Channel {
-	case ChannelHugo:
-		kind = "hugo_sync"
-	case ChannelWeChat:
-		kind = "wechat_prepare"
-	default:
-		return "", fmt.Errorf("不支持发布渠道: %s", request.Channel)
-	}
 	return s.queue.Enqueue(ctx, JobIntent{
-		ID: request.JobID, WorkspaceID: request.Article.WorkspaceID, Kind: kind,
+		ID: request.JobID, WorkspaceID: request.Article.WorkspaceID, Kind: "publication",
 		ArticleID: request.Article.ID, ProviderInstanceID: request.ProviderInstanceID,
 		ContentHash: request.Article.ContentHash,
 	})

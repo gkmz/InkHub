@@ -131,7 +131,7 @@ func (r *router) listArticles(response http.ResponseWriter, request *http.Reques
 
 func (r *router) queuePublication(response http.ResponseWriter, request *http.Request) {
 	var command PublicationCommand
-	if err := decodeJSON(request, &command); err != nil || command.ArticleID == "" || command.ProviderInstanceID == "" || command.ContentHash == "" || (command.Channel != "hugo" && command.Channel != "wechat") {
+	if err := decodeJSON(request, &command); err != nil || command.ArticleID == "" || command.ProviderInstanceID == "" || command.ContentHash == "" {
 		writeError(response, http.StatusBadRequest, "request.invalid", "发布请求无效")
 		return
 	}

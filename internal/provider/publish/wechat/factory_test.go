@@ -21,4 +21,14 @@ func TestFactoryBuildsAuthorizedWeChatProvider(t *testing.T) {
 	if err != nil || provider.Descriptor().Type != contracts.ProviderWeChat {
 		t.Fatalf("构建 WeChat Provider: provider=%v err=%v", provider, err)
 	}
+	if provider.Descriptor().DeliveryMode != contracts.DeliveryPrepareOnly {
+		t.Fatalf("构建后的微信交付模式错误: %s", provider.Descriptor().DeliveryMode)
+	}
+}
+
+func TestFactoryDeclaresPrepareOnlyDelivery(t *testing.T) {
+	t.Parallel()
+	if mode := NewFactory(staticLoader{}, nil, nil).Descriptor().DeliveryMode; mode != contracts.DeliveryPrepareOnly {
+		t.Fatalf("微信交付模式错误: %s", mode)
+	}
 }

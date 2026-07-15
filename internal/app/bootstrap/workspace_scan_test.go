@@ -36,7 +36,11 @@ func TestRescanRecentWorkspaceIndexesConfiguredScopeIdempotently(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		report, err := RescanRecentWorkspace(context.Background(), db)
+		runtime, runtimeErr := newProviderRuntime()
+		if runtimeErr != nil {
+			t.Fatal(runtimeErr)
+		}
+		report, err := RescanRecentWorkspace(context.Background(), db, runtime)
 		if err != nil || report.Indexed != 1 {
 			t.Fatalf("启动重扫失败: report=%#v err=%v", report, err)
 		}

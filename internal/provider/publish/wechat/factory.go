@@ -11,7 +11,7 @@ import (
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
 
-const wechatConfigSchema = `{"type":"object","additionalProperties":false,"required":["staging_root"],"properties":{"staging_root":{"type":"string","minLength":1},"artifact_ttl_seconds":{"type":"integer","minimum":1},"variables":{"type":"object"}}}`
+const wechatConfigSchema = `{"type":"object","additionalProperties":false,"required":["staging_root"],"properties":{"staging_root":{"type":"string","minLength":1},"artifact_ttl_seconds":{"type":"integer","minimum":1},"variables":{"type":"object"},"template":{"type":"string"}}}`
 
 // Factory 使用已注入的平台能力构建微信 Provider。
 type Factory struct {
@@ -40,7 +40,7 @@ func (f *Factory) Descriptor() contracts.PublishDescriptor {
 	return contracts.PublishDescriptor{Descriptor: contracts.Descriptor{
 		Type: contracts.ProviderWeChat, DisplayName: "微信公众号", Version: "1", ConfigSchema: wechatConfigSchema,
 		Capabilities: []contracts.Capability{contracts.CapabilityPreview, contracts.CapabilityImages, contracts.CapabilityManualConfirmation},
-	}}
+	}, DeliveryMode: contracts.DeliveryPrepareOnly}
 }
 
 // Build 严格解码配置并校验 staging 授权范围。
@@ -52,6 +52,7 @@ func (f *Factory) Build(_ context.Context, ref contracts.ProviderRef, view contr
 		StagingRoot        string         `json:"staging_root"`
 		ArtifactTTLSeconds int64          `json:"artifact_ttl_seconds,omitempty"`
 		Variables          map[string]any `json:"variables,omitempty"`
+		Template           string         `json:"template,omitempty"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(view.Data))
 	decoder.DisallowUnknownFields()
