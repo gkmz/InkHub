@@ -85,7 +85,7 @@ func configuredTemplate(data []byte) (*contracts.TemplateRef, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &contracts.TemplateRef{ID: validated.Manifest.ID, Version: validated.Manifest.Version, Digest: validated.Digest}, nil
+	return &contracts.TemplateRef{ID: validated.Manifest.ID, Version: validated.Manifest.Version, Digest: validated.Digest, Target: validated.Manifest.Target}, nil
 }
 
 func templateID(value string) string {

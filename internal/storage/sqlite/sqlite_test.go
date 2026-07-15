@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -29,8 +30,8 @@ func TestOpenMigratesEmptyDatabaseAndIsRepeatable(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatalf("query migration version: %v", err)
 	}
-	if version != 3 {
-		t.Fatalf("migration version = %d, want 3", version)
+	if version != 4 {
+		t.Fatalf("migration version = %d, want 4", version)
 	}
 }
 
@@ -95,6 +96,47 @@ func TestTaxonomyProjectionMigrationPreservesLegacyTermsAndRelations(t *testing.
 	}
 	if terms != 1 || relations != 1 {
 		t.Fatalf("旧 taxonomy 数据丢失: terms=%d relations=%d", terms, relations)
+	}
+}
+
+func TestTemplateTargetMigrationUpgradesLegacyManifest(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "inkhub.db")
+	legacy, err := sql.Open("sqlite", "file:"+filepath.ToSlash(dbPath)+"?_pragma=foreign_keys(0)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,name TEXT NOT NULL,checksum TEXT NOT NULL,applied_at TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, migration := range []struct {
+		version int
+		name    string
+	}{{1, "0001_init.sql"}, {2, "0002_optional_stable_id.sql"}, {3, "0003_taxonomy_projection.sql"}} {
+		content, readErr := migrationFiles.ReadFile("migrations/" + migration.name)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if _, err := legacy.Exec(string(content)); err != nil {
+			t.Fatalf("执行旧 migration %s: %v", migration.name, err)
+		}
+		sum := sha256.Sum256(content)
+		if _, err := legacy.Exec(`INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES(?,?,?,'2026-01-01')`, migration.version, migration.name, hex.EncodeToString(sum[:])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := legacy.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','test','/tmp','2026-01-01','2026-01-01','2026-01-01'); INSERT INTO templates(id,workspace_id,template_id,version,source,manifest_json,install_path,enabled,created_at,updated_at) VALUES('t1','w1','legacy','1.0.0','local','{"digest":"old"}','/tmp/template',1,'2026-01-01','2026-01-01')`); err != nil {
+		t.Fatal(err)
+	}
+	legacy.Close()
+	migrated, err := Open(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("升级模板目标: %v", err)
+	}
+	defer migrated.Close()
+	var target, manifest string
+	if err := migrated.QueryRow(`SELECT target,manifest_json FROM templates WHERE id='t1'`).Scan(&target, &manifest); err != nil || target != "wechat-html" || !strings.Contains(manifest, `"renderer":"wechat-html-v1"`) {
+		t.Fatalf("历史模板未迁移: target=%s manifest=%s err=%v", target, manifest, err)
 	}
 }
 

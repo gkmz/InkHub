@@ -115,6 +115,21 @@ func TestPrepareConvertsMermaidThroughControlledRenderer(t *testing.T) {
 	}
 }
 
+func TestPreflightRejectsTemplateForAnotherTarget(t *testing.T) {
+	t.Parallel()
+	provider, err := New(Config{StagingRoot: t.TempDir()}, staticLoader{}, nil, &memoryClipboard{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := provider.Preflight(context.Background(), contracts.PublishInput{OperationID: "operation_target", ContentHash: "hash", TemplateRef: &contracts.TemplateRef{ID: "other", Version: "1.0.0", Target: "hugo-partial"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Ready {
+		t.Fatal("微信 Provider 不应接受其他目标模板")
+	}
+}
+
 type staticLoader struct{ template domaintemplate.Validated }
 
 func (l staticLoader) Load(context.Context, contracts.TemplateRef) (domaintemplate.Validated, error) {

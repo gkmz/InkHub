@@ -56,7 +56,7 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 - MVP 只支持固定的 Obsidian frontmatter 标准：`id`、`title`、`description`、`tags`、`keywords` 和 `publish.category/series/slug/cover`。
 - AI 只推荐，不直接覆盖；新 tag 必须人工准入并受控写回 Hugo taxonomy。
 - 内链建议移到 Release 1 之后。
-- 微信模板从 MVP 起标准化、可校验、可安装、可分享；`InkHub Default` 和 `InkHub Minimal` 走同一模板链路。
+- 模板使用 target/format/renderer/compatibility 通用模型；MVP 的 `InkHub Default` 和 `InkHub Minimal` 目标均为 `wechat-html`。
 - 现有 Hugo 导入脚本不作为 InkHub 运行依赖；Hugo 逻辑归入内部 Hugo Publish Provider。
 - 不建立动态插件系统，Provider 先编译期注册。
 

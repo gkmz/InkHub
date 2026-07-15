@@ -58,6 +58,7 @@ type TemplateRef struct {
 	ID      string
 	Version string
 	Digest  string
+	Target  string
 }
 
 // PreflightResult 保存不产生副作用的渠道检查结果。

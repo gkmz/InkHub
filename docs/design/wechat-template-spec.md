@@ -1,6 +1,6 @@
 # InkHub 微信模板规范
 
-> 规范版本 1.0，对应 PRD 1.4、架构设计 1.1 和 Provider 契约。
+> 规范版本 1.1，对应 PRD 1.5、架构设计 1.2 和 Provider 契约。
 
 ## 1. 目标与边界
 
@@ -44,7 +44,13 @@ MVP 限制：
 ### 3.1 完整示例
 
 ```yaml
-specVersion: "1.0"
+specVersion: "1.1"
+target: wechat-html
+format: css
+renderer: wechat-html-v1
+compatibility:
+  providers: [wechat]
+  rendererVersion: "1"
 id: inkhub-default
 name: InkHub Default
 description: InkHub 默认微信公众号模板
@@ -132,6 +138,10 @@ files:
 | 字段 | 必需 | 约束 |
 | --- | --- | --- |
 | `specVersion` | 是 | 精确匹配 InkHub 支持的规范 major |
+| `target` | 是 | 微信模板固定为 `wechat-html` |
+| `format` | 是 | 微信模板固定为 `css` |
+| `renderer` | 是 | 当前固定为 `wechat-html-v1` |
+| `compatibility` | 是 | 必须包含 `wechat` Provider 和受支持 Renderer 版本 |
 | `id` | 是 | `^[a-z][a-z0-9-]{2,63}$`，安装后不可修改 |
 | `name` | 是 | 1-80 个 Unicode 字符，纯文本 |
 | `description` | 是 | 1-240 个 Unicode 字符，纯文本 |
@@ -148,6 +158,8 @@ files:
 | `files` | 是 | 覆盖除 `template.yaml` 外的全部文件且不得包含额外路径 |
 
 未知顶层字段在规范 1.x 中校验失败，防止拼写错误被静默忽略。
+
+历史 1.0 模板没有目标字段，加载时按 `wechat-html`、`css`、`wechat-html-v1` 和 `wechat` Provider 规范化；InkHub 不改写原模板包。新发布模板必须使用 1.1 并显式声明这些字段。
 
 YAML 只接受 UTF-8、单文档和 YAML 1.2 Core Schema。重复 key、锚点、alias、自定义 tag、多文档和超过 32 层的嵌套结构必须失败，避免类型歧义和 alias 扩展攻击。模板根目录名必须与 `id` 完全一致。
 

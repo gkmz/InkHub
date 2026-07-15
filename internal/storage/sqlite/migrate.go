@@ -164,7 +164,7 @@ var tableComments = map[string]string{
 	"publications":       "保存文章在渠道中的当前处理投影",
 	"publication_events": "追加保存渠道处理状态事件",
 	"ai_suggestions":     "保存 AI 建议及用户采用结果",
-	"templates":          "保存已安装微信模板的版本与来源",
+	"templates":          "保存按渲染目标隔离的已安装模板版本与来源",
 	"jobs":               "保存可恢复后台任务及执行结果",
 	"settings":           "保存工作区非敏感设置",
 }
@@ -184,6 +184,7 @@ var columnComments = map[string]string{
 	"last_error_code": "最近刷新失败的稳定错误码", "last_error_message": "最近刷新失败的脱敏说明",
 	"last_attempt_at": "最近刷新尝试时间（UTC）", "last_success_at": "最近成功刷新时间（UTC）",
 	"canonical_name": "term 的规范显示名称",
+	"target":         "模板适用的稳定渲染目标", "format": "模板入口内容格式", "renderer": "模板要求的 Renderer 契约标识",
 }
 
 func ensureSchemaComments(ctx context.Context, db *sql.DB) error {

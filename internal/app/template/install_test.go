@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	domaintemplate "github.com/gkmz/InkHub/internal/domain/template"
 )
 
 func TestInstallRejectsZipSlip(t *testing.T) {
@@ -34,7 +36,7 @@ func TestInstallKeepsVersionsImmutableAndActivatesValidatedTemplate(t *testing.T
 	if err != nil {
 		t.Fatalf("安装模板: %v", err)
 	}
-	if activator.activeID != "test-template" || activator.activeVersion != "1.0.0" {
+	if activator.activeID != "test-template" || activator.activeVersion != "1.0.0" || activator.activeTarget != domaintemplate.TargetWeChatHTML {
 		t.Fatalf("模板未激活: %+v", activator)
 	}
 	if _, err := os.Stat(filepath.Join(installed.Path, "template.yaml")); err != nil {
@@ -63,14 +65,15 @@ func TestInstallActivationFailureKeepsPreviousActiveVersion(t *testing.T) {
 type memoryActivator struct {
 	activeID      string
 	activeVersion string
+	activeTarget  string
 	err           error
 }
 
-func (a *memoryActivator) Activate(_ context.Context, id, version, _ string, _ string) error {
+func (a *memoryActivator) Activate(_ context.Context, id, version, _, _, target, _, _ string) error {
 	if a.err != nil {
 		return a.err
 	}
-	a.activeID, a.activeVersion = id, version
+	a.activeID, a.activeVersion, a.activeTarget = id, version, target
 	return nil
 }
 

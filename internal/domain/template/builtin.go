@@ -14,7 +14,9 @@ const (
 // Builtin 返回经过同一 CSS 安全校验的内置模板。
 func Builtin(id string) (Validated, error) {
 	manifest := Manifest{
-		SpecVersion: "1.0", ID: id, Version: "1.0.0", Author: Author{Name: "InkHub"},
+		SpecVersion: "1.1", Target: TargetWeChatHTML, Format: "css", Renderer: RendererWeChatHTMLV1,
+		Compatibility: Compatibility{Providers: []string{"wechat"}, RendererVersion: "1"},
+		ID:            id, Version: "1.0.0", Author: Author{Name: "InkHub"},
 		License: "Apache-2.0", InkHubVersion: ">=1.0.0 <2.0.0", Variables: map[string]Variable{
 			"accentColor": {Type: "color", Label: "强调色", Default: "#1677ff"},
 			"bodyFont":    {Type: "font-family", Label: "正文字体", Default: "system-sans", Options: []string{"system-sans", "system-serif"}},
@@ -57,6 +59,7 @@ func Builtin(id string) (Validated, error) {
 	if err := validateCSS(css, manifest.Variables); err != nil {
 		return Validated{}, fmt.Errorf("内置模板校验失败: %w", err)
 	}
-	sum := sha256.Sum256([]byte(id + "\x00" + manifest.Version + "\x00" + css))
+	// 摘要必须绑定渲染语义，不能只绑定 CSS，否则目标变更会复用旧缓存。
+	sum := sha256.Sum256([]byte(id + "\x00" + manifest.Version + "\x00" + manifest.Target + "\x00" + manifest.Format + "\x00" + manifest.Renderer + "\x00" + css))
 	return Validated{Manifest: manifest, CSS: css, Digest: hex.EncodeToString(sum[:])}, nil
 }

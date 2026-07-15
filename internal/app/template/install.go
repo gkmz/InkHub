@@ -1,4 +1,4 @@
-// Package template 编排微信模板的安全安装、激活和回滚。
+// Package template 编排多目标模板的安全安装、激活和回滚。
 package template
 
 import (
@@ -29,15 +29,18 @@ var (
 
 // Activator 在文件安装成功后以短事务切换工作区活动模板。
 type Activator interface {
-	Activate(ctx context.Context, id, version, digest, path string) error
+	Activate(ctx context.Context, id, version, digest, path, target, format, renderer string) error
 }
 
 // Installed 描述一个已校验并写入不可变目录的模板版本。
 type Installed struct {
-	ID      string
-	Version string
-	Digest  string
-	Path    string
+	ID       string
+	Version  string
+	Digest   string
+	Path     string
+	Target   string
+	Format   string
+	Renderer string
 }
 
 // Install 流式解压、校验、原子安装并激活模板包。
@@ -82,8 +85,8 @@ func Install(ctx context.Context, archivePath, installRoot string, activator Act
 		if existing.Digest != validated.Digest {
 			return Installed{}, ErrVersionConflict
 		}
-		installed := Installed{ID: existing.Manifest.ID, Version: existing.Manifest.Version, Digest: existing.Digest, Path: destination}
-		if err := activator.Activate(ctx, installed.ID, installed.Version, installed.Digest, installed.Path); err != nil {
+		installed := installedFromValidated(existing, destination)
+		if err := activator.Activate(ctx, installed.ID, installed.Version, installed.Digest, installed.Path, installed.Target, installed.Format, installed.Renderer); err != nil {
 			return Installed{}, fmt.Errorf("激活模板: %w", err)
 		}
 		return installed, nil
@@ -98,11 +101,15 @@ func Install(ctx context.Context, archivePath, installRoot string, activator Act
 	if err := os.Rename(validated.Root, destination); err != nil {
 		return Installed{}, fmt.Errorf("原子安装模板版本: %w", err)
 	}
-	installed := Installed{ID: validated.Manifest.ID, Version: validated.Manifest.Version, Digest: validated.Digest, Path: destination}
-	if err := activator.Activate(ctx, installed.ID, installed.Version, installed.Digest, installed.Path); err != nil {
+	installed := installedFromValidated(validated, destination)
+	if err := activator.Activate(ctx, installed.ID, installed.Version, installed.Digest, installed.Path, installed.Target, installed.Format, installed.Renderer); err != nil {
 		return Installed{}, fmt.Errorf("激活模板: %w", err)
 	}
 	return installed, nil
+}
+
+func installedFromValidated(validated domaintemplate.Validated, path string) Installed {
+	return Installed{ID: validated.Manifest.ID, Version: validated.Manifest.Version, Digest: validated.Digest, Path: path, Target: validated.Manifest.Target, Format: validated.Manifest.Format, Renderer: validated.Manifest.Renderer}
 }
 
 func extractArchive(ctx context.Context, files []*zip.File, staging string) (string, error) {

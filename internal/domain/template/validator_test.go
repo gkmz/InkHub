@@ -23,6 +23,36 @@ func TestValidateDirectoryAcceptsStrictTemplate(t *testing.T) {
 	if validated.Manifest.ID != "test-template" || validated.Digest == "" {
 		t.Fatalf("校验结果不完整: %+v", validated)
 	}
+	if validated.Manifest.Target != TargetWeChatHTML || validated.Manifest.Renderer != RendererWeChatHTMLV1 {
+		t.Fatalf("1.0 模板未迁移默认目标: %+v", validated.Manifest)
+	}
+}
+
+func TestValidateDirectoryAcceptsExplicitTemplateTargetV11(t *testing.T) {
+	t.Parallel()
+	root := makeTemplateFixture(t, safeCSS)
+	path := filepath.Join(root, "template.yaml")
+	content, _ := os.ReadFile(path)
+	updated := strings.Replace(string(content), `specVersion: "1.0"`, `specVersion: "1.1"
+target: wechat-html
+format: css
+renderer: wechat-html-v1
+compatibility:
+  providers: [wechat]
+  rendererVersion: "1"`, 1)
+	if err := os.WriteFile(path, []byte(updated), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	validated, err := ValidateDirectory(root)
+	if err != nil {
+		t.Fatalf("校验 1.1 模板: %v", err)
+	}
+	if validated.Manifest.SpecVersion != "1.1" || validated.Manifest.Target != TargetWeChatHTML {
+		t.Fatalf("显式模板目标丢失: %+v", validated.Manifest)
+	}
+	if !validated.Manifest.CompatibleWith("wechat", TargetWeChatHTML, RendererWeChatHTMLV1) || validated.Manifest.CompatibleWith("hugo", TargetWeChatHTML, RendererWeChatHTMLV1) {
+		t.Fatal("模板兼容性判断错误")
+	}
 }
 
 func TestValidateDirectoryRejectsDuplicateKeyAliasAndDangerousCSS(t *testing.T) {

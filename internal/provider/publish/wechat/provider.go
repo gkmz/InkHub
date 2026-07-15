@@ -98,6 +98,8 @@ func (p *Provider) Preflight(ctx context.Context, input contracts.PublishInput) 
 	var diagnostics []contracts.Diagnostic
 	if !wechatOperationPattern.MatchString(input.OperationID) || input.ContentHash == "" || input.TemplateRef == nil {
 		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.input_invalid", Message: "微信发布输入缺少 OperationID、内容版本或模板", Blocking: true})
+	} else if input.TemplateRef.Target != "" && input.TemplateRef.Target != domaintemplate.TargetWeChatHTML {
+		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.template_target_invalid", Message: "所选模板不适用于微信公众号", Blocking: true})
 	}
 	if len(input.ResourceRefs) > 0 && p.uploader == nil {
 		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.uploader_missing", Message: "文章包含本地图片但未配置图片上传", Blocking: true})
@@ -136,6 +138,9 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 	}
 	if input.TemplateRef.Digest != "" && validated.Digest != input.TemplateRef.Digest {
 		return contracts.PreparedArtifact{}, providerError("wechat.template_conflict", "微信模板摘要不匹配", contracts.ErrorConflict, nil)
+	}
+	if !validated.Manifest.CompatibleWith(string(contracts.ProviderWeChat), domaintemplate.TargetWeChatHTML, domaintemplate.RendererWeChatHTMLV1) || (input.TemplateRef.Target != "" && input.TemplateRef.Target != domaintemplate.TargetWeChatHTML) {
+		return contracts.PreparedArtifact{}, providerError("wechat.template_target_invalid", "微信模板目标不兼容", contracts.ErrorValidation, nil)
 	}
 	body, err := p.uploadResources(ctx, input.Body, input.ResourceRefs)
 	if err != nil {

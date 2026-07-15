@@ -28,10 +28,11 @@ const (
 )
 
 var (
-	templateIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{2,63}$`)
-	semverPattern     = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$`)
-	digestPattern     = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	regexpColor       = regexp.MustCompile(`^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$`)
+	templateIDPattern     = regexp.MustCompile(`^[a-z][a-z0-9-]{2,63}$`)
+	templateTargetPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{1,63}$`)
+	semverPattern         = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$`)
+	digestPattern         = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	regexpColor           = regexp.MustCompile(`^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$`)
 )
 
 // ValidateDirectory 对已解包模板目录执行完整结构和安全校验。
@@ -136,8 +137,23 @@ func parseManifest(content []byte) (Manifest, error) {
 	if err := decoder.Decode(&manifest); err != nil {
 		return Manifest{}, fmt.Errorf("解码模板 manifest: %w", err)
 	}
-	if manifest.SpecVersion != "1.0" || !templateIDPattern.MatchString(manifest.ID) || !semverPattern.MatchString(manifest.Version) {
+	if manifest.SpecVersion == "1.0" && manifest.Target == "" && manifest.Format == "" && manifest.Renderer == "" {
+		// 1.0 只有微信 CSS 一种语义，加载时升级为显式目标但不改写原模板包。
+		manifest.Target = TargetWeChatHTML
+		manifest.Format = "css"
+		manifest.Renderer = RendererWeChatHTMLV1
+		manifest.Compatibility = Compatibility{Providers: []string{"wechat"}, RendererVersion: "1"}
+	}
+	if (manifest.SpecVersion != "1.0" && manifest.SpecVersion != "1.1") || !templateIDPattern.MatchString(manifest.ID) || !semverPattern.MatchString(manifest.Version) {
 		return Manifest{}, fmt.Errorf("模板规范版本、id 或版本号无效")
+	}
+	if !templateTargetPattern.MatchString(manifest.Target) || !templateTargetPattern.MatchString(manifest.Format) || !templateTargetPattern.MatchString(manifest.Renderer) || len(manifest.Compatibility.Providers) == 0 || manifest.Compatibility.RendererVersion == "" {
+		return Manifest{}, fmt.Errorf("模板目标、格式、Renderer 或兼容性无效")
+	}
+	for _, provider := range manifest.Compatibility.Providers {
+		if !templateTargetPattern.MatchString(provider) {
+			return Manifest{}, fmt.Errorf("模板兼容 Provider 无效: %s", provider)
+		}
 	}
 	if manifest.Name == "" || manifest.Description == "" || manifest.Author.Name == "" || manifest.License == "" || manifest.InkHubVersion == "" {
 		return Manifest{}, fmt.Errorf("模板必填元数据不完整")
