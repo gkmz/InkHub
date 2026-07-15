@@ -122,3 +122,45 @@ test("初始化表单有内容时阻止浏览器意外离开", async () => {
   window.dispatchEvent(event);
   expect(event.defaultPrevented).toBe(true);
 });
+
+test("内容库可以按 Cursor 追加文章直到末页", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.includes("/session")) return Response.json({ has_workspace: true, workspace: { id: "w1", name: "我的文章" } });
+    if (url.includes("/dashboard")) return Response.json({ items: [] });
+    if (url.includes("cursor=page-2")) return Response.json({ items: [{ ...articles[0], id: "a3", title: "第三页文章" }] });
+    if (url.includes("/articles")) return Response.json({ items: articles, next_cursor: "page-2" });
+    return Response.json({ error: { message: "接口不存在" } }, { status: 404 });
+  });
+  render(<App />);
+  await screen.findByRole("heading", { name: "目前没有需要处理的文章" });
+  await userEvent.click(screen.getAllByRole("link", { name: "内容库" })[0]);
+
+  expect(await screen.findByText("发布失败")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "加载更多" }));
+
+  expect(await screen.findByText("第三页文章")).toBeInTheDocument();
+  expect(screen.getByText("发布失败")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
+  expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("cursor=page-2"))).toBe(true);
+});
+
+test("内容库下一页失败时保留现有文章并提示", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.includes("/session")) return Response.json({ has_workspace: true, workspace: { id: "w1", name: "我的文章" } });
+    if (url.includes("/dashboard")) return Response.json({ items: [] });
+    if (url.includes("cursor=page-2")) throw new Error("无法读取下一页");
+    if (url.includes("/articles")) return Response.json({ items: articles, next_cursor: "page-2" });
+    return Response.json({ error: { message: "接口不存在" } }, { status: 404 });
+  });
+  render(<App />);
+  await screen.findByRole("heading", { name: "目前没有需要处理的文章" });
+  await userEvent.click(screen.getAllByRole("link", { name: "内容库" })[0]);
+  expect(await screen.findByText("发布失败")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "加载更多" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("无法读取下一页");
+  expect(screen.getByText("发布失败")).toBeInTheDocument();
+});

@@ -46,6 +46,13 @@ export function ContentScopePicker({ directories, contentRoots, ignoredFolders, 
 
   return <section className="content-scope-picker" aria-labelledby="content-scope-heading">
     <header><Folder size={18} /><div><h2 id="content-scope-heading">管理这些目录</h2><p>目录中的 Markdown 会递归加入内容库</p></div></header>
+    <div className="scope-current-grid">
+      <section aria-label="当前管理目录"><h3>当前管理</h3>{roots.length === 0 ? <p>尚未选择</p> : <ul>{roots.map((root) => <li key={root}><span>{root}</span><small>{directoryCount(directories, root)}</small><button type="button" aria-label={`移除管理目录 ${root}`} onClick={() => {
+        const selected = roots.filter((item) => item !== root);
+        onChange(selected, ignored.filter((item) => selected.some((selectedRoot) => isWithin(item, selectedRoot))), fileNames);
+      }}><MinusCircle size={15} /></button></li>)}</ul>}</section>
+      <section aria-label="当前排除目录"><h3>当前排除</h3>{ignored.length === 0 ? <p>没有排除目录</p> : <ul>{ignored.map((path) => <li key={path}><span>{path}</span><small>{directoryCount(directories, path)}</small><button type="button" aria-label={`移除排除目录 ${path}`} onClick={() => onChange(roots, ignored.filter((item) => item !== path), fileNames)}><MinusCircle size={15} /></button></li>)}</ul>}</section>
+    </div>
     <input className="scope-search" aria-label="搜索管理目录" placeholder="搜索目录" value={rootSearch} onChange={(event) => setRootSearch(event.target.value)} />
     <div className="scope-directory-list">{visibleDirectories.map((directory) => <label key={directory.path}>
       <input type="checkbox" aria-label={`${directory.path}（${directory.markdown_count} 篇）`} checked={roots.includes(directory.path)} onChange={() => toggleRoot(directory.path)} />
@@ -63,4 +70,9 @@ export function ContentScopePicker({ directories, contentRoots, ignoredFolders, 
 
 function isWithin(candidate: string, root: string) {
   return candidate === root || candidate.startsWith(`${root}/`);
+}
+
+function directoryCount(directories: DirectoryCandidate[], path: string) {
+  const directory = directories.find((candidate) => candidate.path === path);
+  return directory ? `${directory.markdown_count} 篇` : "数量待扫描";
 }

@@ -27,8 +27,21 @@ func newDatabaseAPI(db *sql.DB) databaseAPI {
 	return databaseAPI{db: db, publications: publication.NewService(jobQueueAdapter{repository.NewJobRepository(db)}, publicationStoreAdapter{repository.NewPublicationRepository(db)})}
 }
 
-func (api databaseAPI) ListArticles(ctx context.Context, _ string, limit int) (httptransport.ArticlePage, error) {
-	rows, err := api.db.QueryContext(ctx, `SELECT articles.id,articles.title,articles.relative_path,articles.category,COALESCE(articles.source_mtime,articles.updated_at),COALESCE(editorial_reviews.state,'pending_review'),COALESCE((SELECT CASE WHEN publications.content_hash<>articles.content_hash THEN 'outdated' ELSE publications.state END FROM publications JOIN provider_instances ON provider_instances.id=publications.provider_instance_id WHERE publications.article_id=articles.id AND provider_instances.provider_type='hugo' LIMIT 1),'never'),COALESCE((SELECT CASE WHEN publications.content_hash<>articles.content_hash THEN 'outdated' ELSE publications.state END FROM publications JOIN provider_instances ON provider_instances.id=publications.provider_instance_id WHERE publications.article_id=articles.id AND provider_instances.provider_type='wechat' LIMIT 1),'never') FROM articles LEFT JOIN editorial_reviews ON editorial_reviews.article_id=articles.id WHERE articles.deleted_at IS NULL ORDER BY COALESCE(articles.source_mtime,articles.updated_at) DESC,articles.id LIMIT ?`, limit)
+func (api databaseAPI) ListArticles(ctx context.Context, cursorValue string, limit int) (httptransport.ArticlePage, error) {
+	query := `SELECT articles.id,articles.title,articles.relative_path,articles.category,COALESCE(articles.source_mtime,articles.updated_at),COALESCE(editorial_reviews.state,'pending_review'),COALESCE((SELECT CASE WHEN publications.content_hash<>articles.content_hash THEN 'outdated' ELSE publications.state END FROM publications JOIN provider_instances ON provider_instances.id=publications.provider_instance_id WHERE publications.article_id=articles.id AND provider_instances.provider_type='hugo' LIMIT 1),'never'),COALESCE((SELECT CASE WHEN publications.content_hash<>articles.content_hash THEN 'outdated' ELSE publications.state END FROM publications JOIN provider_instances ON provider_instances.id=publications.provider_instance_id WHERE publications.article_id=articles.id AND provider_instances.provider_type='wechat' LIMIT 1),'never') FROM articles LEFT JOIN editorial_reviews ON editorial_reviews.article_id=articles.id WHERE articles.deleted_at IS NULL`
+	arguments := []any{}
+	if cursorValue != "" {
+		cursor, err := decodeArticleCursor(cursorValue)
+		if err != nil {
+			return httptransport.ArticlePage{}, httptransport.ErrInvalidCursor
+		}
+		// 时间和 ID 共同构成稳定 keyset，避免翻页期间新增文章造成 OFFSET 漂移。
+		query += ` AND (COALESCE(articles.source_mtime,articles.updated_at) < ? OR (COALESCE(articles.source_mtime,articles.updated_at) = ? AND articles.id < ?))`
+		arguments = append(arguments, cursor.ModifiedAt, cursor.ModifiedAt, cursor.ID)
+	}
+	query += ` ORDER BY COALESCE(articles.source_mtime,articles.updated_at) DESC,articles.id DESC LIMIT ?`
+	arguments = append(arguments, limit+1)
+	rows, err := api.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return httptransport.ArticlePage{}, err
 	}
@@ -48,7 +61,18 @@ func (api databaseAPI) ListArticles(ctx context.Context, _ string, limit int) (h
 		item.HugoState, item.WeChatState = publicationLabel(hugoState, "hugo"), publicationLabel(wechatState, "wechat")
 		page.Items = append(page.Items, item)
 	}
-	return page, rows.Err()
+	if err := rows.Err(); err != nil {
+		return page, err
+	}
+	if len(page.Items) > limit {
+		page.Items = page.Items[:limit]
+		last := page.Items[len(page.Items)-1]
+		page.NextCursor, err = encodeArticleCursor(articleCursor{ModifiedAt: last.ModifiedAt, ID: last.ID})
+		if err != nil {
+			return httptransport.ArticlePage{}, err
+		}
+	}
+	return page, nil
 }
 
 func publicationLabel(state, channel string) string {

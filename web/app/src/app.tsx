@@ -10,9 +10,14 @@ import { ArticlePage } from "./pages/article/ArticlePage";
 import { WeChatPreviewPage } from "./pages/wechat-preview/WeChatPreviewPage";
 import { TaxonomyPage } from "./pages/taxonomy/TaxonomyPage";
 import { SettingsPage } from "./pages/settings/SettingsPage";
+import { ToastProvider } from "./components/ToastProvider";
 
 /** App 根据最近工作区状态选择初始化或日常工作界面。 */
 export function App() {
+  return <ToastProvider><AppContent /></ToastProvider>;
+}
+
+function AppContent() {
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [path, setPath] = useState(window.location.pathname);
   const [error, setError] = useState("");

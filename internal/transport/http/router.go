@@ -19,6 +19,8 @@ var (
 	ErrStaleContent = errors.New("文章内容版本已过期")
 	// ErrNotFound 表示请求的本地资源不存在。
 	ErrNotFound = errors.New("资源不存在")
+	// ErrInvalidCursor 表示列表分页位置损坏或不是服务端签发的结构。
+	ErrInvalidCursor = errors.New("分页 Cursor 无效")
 )
 
 // ArticleSummary 是内容库列表使用的脱敏 DTO。
@@ -208,6 +210,8 @@ func mapError(response http.ResponseWriter, err error) {
 		writeError(response, http.StatusConflict, "content.stale", "文章内容已变化，请刷新后重试")
 	case errors.Is(err, ErrNotFound):
 		writeError(response, http.StatusNotFound, "resource.not_found", "请求的资源不存在")
+	case errors.Is(err, ErrInvalidCursor):
+		writeError(response, http.StatusBadRequest, "request.cursor_invalid", "分页位置无效，请重新加载列表")
 	default:
 		writeError(response, http.StatusInternalServerError, "internal.error", "操作失败")
 	}

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { ContentScopePicker } from "./ContentScopePicker";
@@ -36,4 +36,15 @@ test("旧配置包含 null 时不会导致设置页白屏", () => {
   render(<ContentScopePicker directories={directories} contentRoots={["Areas"]} ignoredFolders={null as unknown as string[]} ignoredFileNames={null as unknown as string[]} onChange={vi.fn()} />);
   expect(screen.getByRole("heading", { name: "管理这些目录" })).toBeInTheDocument();
   expect(screen.getByRole("checkbox", { name: "忽略 Areas/私人记录（3 篇）" })).not.toBeChecked();
+});
+
+test("当前目录规则固定展示并可以直接移除", async () => {
+  const onChange = vi.fn();
+  render(<ContentScopePicker directories={directories} contentRoots={["Areas"]} ignoredFolders={["Areas/私人记录"]} ignoredFileNames={["index.md"]} onChange={onChange} />);
+
+  expect(within(screen.getByLabelText("当前管理目录")).getByText("Areas")).toBeInTheDocument();
+  expect(within(screen.getByLabelText("当前排除目录")).getByText("Areas/私人记录")).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "移除管理目录 Areas" }));
+  expect(onChange).toHaveBeenLastCalledWith([], [], ["index.md"]);
 });

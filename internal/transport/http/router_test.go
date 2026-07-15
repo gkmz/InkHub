@@ -25,6 +25,16 @@ func TestRouterListsCursorPageWithoutAbsolutePaths(t *testing.T) {
 	}
 }
 
+func TestRouterMapsInvalidCursorToBadRequest(t *testing.T) {
+	t.Parallel()
+
+	response := httptest.NewRecorder()
+	NewRouter(&fakeAPI{err: ErrInvalidCursor}).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/articles?cursor=broken", nil))
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":"request.cursor_invalid"`) {
+		t.Fatalf("Cursor 错误映射不正确: code=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestRouterRequiresSameOriginForWritesAndReturnsJobID(t *testing.T) {
 	t.Parallel()
 
