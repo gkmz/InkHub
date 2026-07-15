@@ -165,8 +165,12 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 		_ = runner.Shutdown(shutdownCtx)
 	}()
 	api := httptransport.NewRuntimeHandler(db, httptransport.NewRouter(newDatabaseAPI(db)), httptransport.RuntimeOptions{
-		DataDir:       config.DataDir,
-		SourceRuntime: providerRuntime,
+		DataDir:         config.DataDir,
+		ProviderRuntime: providerRuntime,
+		RefreshTaxonomy: func(refreshCtx context.Context) error {
+			_, refreshErr := RefreshRecentTaxonomy(refreshCtx, db, providerRuntime)
+			return refreshErr
+		},
 		AfterWorkspaceCreated: func(refreshCtx context.Context) (string, error) {
 			snapshots, refreshErr := RefreshRecentTaxonomy(refreshCtx, db, providerRuntime)
 			if len(snapshots) == 0 && refreshErr == nil {

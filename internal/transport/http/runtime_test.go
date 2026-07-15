@@ -34,7 +34,7 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 		t.Fatal(err)
 	}
 	refreshCalls := 0
-	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{SourceRuntime: testSourceRuntime(t), AfterWorkspaceCreated: func(context.Context) (string, error) {
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{ProviderRuntime: testProviderRuntime(t), AfterWorkspaceCreated: func(context.Context) (string, error) {
 		refreshCalls++
 		return "ready", nil
 	}})

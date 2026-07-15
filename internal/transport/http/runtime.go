@@ -25,7 +25,8 @@ type RuntimeOptions struct {
 	DirectoryPicker       dialog.DirectoryPicker
 	AssetTokenKey         []byte
 	AfterWorkspaceCreated func(context.Context) (string, error)
-	SourceRuntime         contracts.ProviderRuntime
+	ProviderRuntime       contracts.ProviderRuntime
+	RefreshTaxonomy       func(context.Context) error
 }
 
 // NewRuntimeHandler 提供首次初始化和页面查询端点，并把领域命令交给核心 API。
@@ -43,12 +44,14 @@ func NewRuntimeHandler(db *sql.DB, core http.Handler, options ...RuntimeOptions)
 		assetTokenKey = append([]byte(nil), options[0].AssetTokenKey...)
 	}
 	var afterWorkspaceCreated func(context.Context) (string, error)
-	var sourceRuntime contracts.ProviderRuntime
+	var providerRuntime contracts.ProviderRuntime
+	var refreshTaxonomy func(context.Context) error
 	if len(options) > 0 {
 		afterWorkspaceCreated = options[0].AfterWorkspaceCreated
-		sourceRuntime = options[0].SourceRuntime
+		providerRuntime = options[0].ProviderRuntime
+		refreshTaxonomy = options[0].RefreshTaxonomy
 	}
-	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey, afterWorkspaceCreated: afterWorkspaceCreated, sourceRuntime: sourceRuntime}
+	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey, afterWorkspaceCreated: afterWorkspaceCreated, providerRuntime: providerRuntime, refreshTaxonomy: refreshTaxonomy}
 	return localOnly(handler)
 }
 
@@ -59,7 +62,8 @@ type runtimeHandler struct {
 	directoryPicker       dialog.DirectoryPicker
 	assetTokenKey         []byte
 	afterWorkspaceCreated func(context.Context) (string, error)
-	sourceRuntime         contracts.ProviderRuntime
+	providerRuntime       contracts.ProviderRuntime
+	refreshTaxonomy       func(context.Context) error
 }
 
 func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -84,7 +88,11 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/dashboard":
 		writeJSON(response, http.StatusOK, map[string]any{"items": []any{}})
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/taxonomy":
-		writeJSON(response, http.StatusOK, map[string]any{"source": "尚未配置", "loaded_at": "-", "readonly": true, "issues": []any{}})
+		h.taxonomyOverview(response, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/taxonomy/refresh":
+		if validateWriteRequest(response, request) {
+			h.refreshTaxonomyOverview(response, request)
+		}
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/settings":
 		h.settings(response, request)
 	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/content-scope":

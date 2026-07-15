@@ -10,7 +10,7 @@ import (
 )
 
 func (h *runtimeHandler) buildSource(ctx context.Context, sourceID string, overrideConfig []byte) (contracts.SourceProvider, error) {
-	if h.sourceRuntime == nil {
+	if h.providerRuntime == nil {
 		return nil, fmt.Errorf("Source Provider Runtime 未配置")
 	}
 	var providerType, root, configJSON string
@@ -30,7 +30,7 @@ func (h *runtimeHandler) buildSource(ctx context.Context, sourceID string, overr
 	if err != nil {
 		return nil, fmt.Errorf("编码 Source Provider 配置: %w", err)
 	}
-	return h.sourceRuntime.BuildSource(ctx, contracts.ProviderRef{ID: sourceID, Type: contracts.ProviderType(providerType)}, contracts.ConfigView{Data: encoded, AllowedRoots: []string{root}})
+	return h.providerRuntime.BuildSource(ctx, contracts.ProviderRef{ID: sourceID, Type: contracts.ProviderType(providerType)}, contracts.ConfigView{Data: encoded, AllowedRoots: []string{root}})
 }
 
 func sourceConflict(err error) bool {
