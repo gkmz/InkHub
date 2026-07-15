@@ -31,6 +31,6 @@ function AppContent() {
   if (scanJob && session.workspace) return <ScanPage workspace={session.workspace} jobID={scanJob} onDone={() => { sessionStorage.removeItem("inkhub.scan-job"); setScanJob(""); }} />;
   const articleMatch = path.match(/^\/articles\/([^/]+)(\/wechat)?$/);
   if (articleMatch?.[2]) return <WeChatPreviewPage articleID={articleMatch[1]} onNavigate={navigate} />;
-  const title = path === "/library" ? "内容库" : path === "/taxonomy" ? "标签治理" : path === "/settings" ? "设置" : "工作台";
+  const title = path === "/library" ? "内容库" : path === "/taxonomy" ? "类目管理" : path === "/settings" ? "设置" : "工作台";
   return <AppShell path={path} title={articleMatch ? "文章审核" : title} workspaceName={session.workspace?.name ?? "InkHub"} onNavigate={navigate}>{articleMatch ? <ArticlePage articleID={articleMatch[1]} onNavigate={navigate} /> : path === "/library" ? <LibraryPage onNavigate={navigate} /> : path === "/taxonomy" ? <TaxonomyPage /> : path === "/settings" ? <SettingsPage /> : <DashboardPage onNavigate={navigate} />}</AppShell>;
 }

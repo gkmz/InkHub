@@ -113,9 +113,41 @@ export interface TaxonomyIssue {
 
 export interface TaxonomyOverview {
   source: string;
+  provider_id?: string;
+  provider_type?: string;
+  state: "ready" | "failed" | "not_loaded" | "not_enabled";
+  revision?: string;
   loaded_at: string;
+  attempted_at?: string;
   readonly: boolean;
+  error?: string;
+  error_code?: string;
+  terms: TaxonomyTerm[];
   issues: TaxonomyIssue[];
+}
+
+export interface TaxonomyTerm {
+  kind: string;
+  key: string;
+  name: string;
+  usage_count: number;
+  metadata: Record<string, string>;
+}
+
+export interface TaxonomyTermCommand {
+  provider_id: string;
+  kind: string;
+  key?: string;
+  name: string;
+  description: string;
+  aliases: string[];
+  expected_revision: string;
+}
+
+export interface TaxonomyChangePreview {
+  provider_id: string;
+  expected_revision: string;
+  files: { relative_path: string; before: string; after: string }[];
 }
 
 export interface SettingsView {

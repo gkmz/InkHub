@@ -46,7 +46,7 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 
 ## Next
 
-Provider 抽象重构已经完成。下一步设计并实现类目管理页面：从 SQLite 快照立即展示，手工刷新调用 Taxonomy Service，新增 term 先展示 Hugo 原生变更再应用。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁；每个阶段完成后立即提交。
+Provider 抽象和类目管理闭环已经完成。下一步把文章元数据中的 Category 从自由文本改为 Taxonomy Provider 快照选择器，并定义新 category 从文章审核页进入同一预览、确认流程的交互。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁；每个阶段完成后立即提交。
 
 ## Important Decisions
 
@@ -61,6 +61,7 @@ Provider 抽象重构已经完成。下一步设计并实现类目管理页面�
 - 不建立动态插件系统，Provider 先编译期注册。
 - Application 和 Transport 的文章运行链路通过 Provider Runtime 构建 Source/Publish/Taxonomy；具体工厂只在 bootstrap 注册。
 - `markdown-folder` 只读 Source 用于验证扩展契约，MVP UI 暂不开放配置入口。
+- 类目管理页面从 SQLite 快照即时展示 categories/tags；手工刷新调用 Taxonomy Service，新建 category 必须先预览 Hugo 原生 term page，再按 revision 确认应用。
 
 ## Files
 
@@ -70,7 +71,7 @@ Provider 抽象重构已经完成。下一步设计并实现类目管理页面�
 
 ## Verification
 
-- Provider Runtime、Hugo 标准 taxonomy、SQLite 快照、模板 target 和第二 Source 均有单元测试。
+- Provider Runtime、Hugo 标准 taxonomy、SQLite 快照、类目查询/刷新/预览/应用 API、类目管理页面、模板 target 和第二 Source 均有单元测试。
 - 每阶段已运行全量 `go test ./...`、`go vet ./...` 和相关 race 测试。
 - 当前项目实际路径：`/Users/hank/workspace/mine/InkHub`。
 
@@ -82,4 +83,4 @@ Provider 抽象重构已经完成。下一步设计并实现类目管理页面�
 
 ## Fresh Session Prompt
 
-请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计、`docs/plans/provider-runtime-taxonomy-plan.md` 和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象已完成，从类目管理页面设计开始。
+请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计、`docs/plans/provider-runtime-taxonomy-plan.md` 和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象和类目管理闭环已完成，从文章 Category 选择器设计开始。

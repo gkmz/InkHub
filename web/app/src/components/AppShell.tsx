@@ -12,7 +12,7 @@ interface AppShellProps {
 const links = [
   { path: "/", label: "工作台", icon: LayoutDashboard },
   { path: "/library", label: "内容库", icon: BookOpenText },
-  { path: "/taxonomy", label: "标签治理", icon: Tags },
+  { path: "/taxonomy", label: "类目管理", icon: Tags },
   { path: "/settings", label: "设置", icon: Settings },
 ];
 

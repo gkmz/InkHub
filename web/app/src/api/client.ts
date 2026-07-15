@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, DirectoryCandidate, JobStatus, SessionResponse, SettingsView, TaxonomyOverview, WorkspaceDraft } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, DirectoryCandidate, JobStatus, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WorkspaceDraft } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -99,9 +99,19 @@ export function getTaxonomyOverview(signal?: AbortSignal) {
   return request<TaxonomyOverview>("/taxonomy", { signal });
 }
 
-/** approveTaxonomyTerm 批准新词并请求更新明确的受影响文章。 */
-export function approveTaxonomyTerm(issueID: string) {
-  return request<{ state: string }>(`/taxonomy/issues/${encodeURIComponent(issueID)}/approve`, { method: "POST", body: "{}" });
+/** refreshTaxonomy 从已配置博客重新生成类目快照。 */
+export function refreshTaxonomy() {
+  return request<TaxonomyOverview>("/taxonomy/refresh", { method: "POST", body: "{}" });
+}
+
+/** previewTaxonomyTerm 由 Provider 生成待写入文件，不接受客户端构造的文件内容。 */
+export function previewTaxonomyTerm(command: TaxonomyTermCommand) {
+  return request<TaxonomyChangePreview>("/taxonomy/terms/preview", { method: "POST", body: JSON.stringify(command) });
+}
+
+/** applyTaxonomyTerm 按预览使用的 revision 重新规划并应用类目变更。 */
+export function applyTaxonomyTerm(command: TaxonomyTermCommand) {
+  return request<TaxonomyOverview>("/taxonomy/terms/apply", { method: "POST", body: JSON.stringify(command) });
 }
 
 /** getSettings 读取不含 Secret 明文的设置视图。 */
