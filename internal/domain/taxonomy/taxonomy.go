@@ -6,31 +6,35 @@ import (
 	"strings"
 )
 
-// Rules 定义 Tag alias、准入表和数量限制。
+// Rules 定义 Tag 标准名称映射和数量限制。
 type Rules struct {
 	Aliases map[string]string
-	Allowed map[string]bool
 	MinTags int
 	MaxTags int
 }
 
-// ValidateTags 规范化并校验文章 Tag。
-func ValidateTags(tags []string, rules Rules) ([]string, error) {
+// NormalizeTags 清理空值和重复值，并优先使用 taxonomy 快照中的标准名称。
+func NormalizeTags(tags []string, canonical map[string]string) []string {
 	result := make([]string, 0, len(tags))
 	seen := make(map[string]bool, len(tags))
 	for _, tag := range tags {
-		normalized := strings.ToLower(strings.TrimSpace(tag))
-		if canonical, ok := rules.Aliases[normalized]; ok {
-			normalized = canonical
+		value := strings.TrimSpace(tag)
+		key := strings.ToLower(value)
+		if key == "" || seen[key] {
+			continue
 		}
-		if len(rules.Allowed) > 0 && !rules.Allowed[normalized] {
-			return nil, fmt.Errorf("Tag %q 未通过准入", normalized)
+		if standard, ok := canonical[key]; ok {
+			value = standard
 		}
-		if !seen[normalized] {
-			seen[normalized] = true
-			result = append(result, normalized)
-		}
+		seen[key] = true
+		result = append(result, value)
 	}
+	return result
+}
+
+// ValidateTags 规范化并校验文章 Tag 的数量。
+func ValidateTags(tags []string, rules Rules) ([]string, error) {
+	result := NormalizeTags(tags, rules.Aliases)
 	if len(result) < rules.MinTags {
 		return nil, fmt.Errorf("Tag 数量不能少于 %d", rules.MinTags)
 	}

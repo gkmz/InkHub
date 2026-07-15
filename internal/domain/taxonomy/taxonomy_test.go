@@ -2,20 +2,23 @@ package taxonomy
 
 import "testing"
 
-func TestValidateTagsNormalizesAliasesAndLimitsCount(t *testing.T) {
+func TestNormalizeTagsUsesCanonicalNamesAndKeepsNewTerms(t *testing.T) {
 	t.Parallel()
 
-	got, err := ValidateTags([]string{"GoLang", "SQLite", "AI"}, Rules{
-		Aliases: map[string]string{"golang": "go"},
-		Allowed: map[string]bool{"go": true, "sqlite": true, "ai": true},
-		MinTags: 3,
-		MaxTags: 6,
-	})
-	if err != nil {
-		t.Fatalf("ValidateTags() error = %v", err)
+	got := NormalizeTags([]string{" go ", "GO", "", "InkHub 2"}, map[string]string{"go": "Go"})
+	if len(got) != 2 || got[0] != "Go" || got[1] != "InkHub 2" {
+		t.Fatalf("NormalizeTags() = %#v, want [Go InkHub 2]", got)
 	}
-	if got[0] != "go" {
-		t.Fatalf("ValidateTags()[0] = %q, want go", got[0])
+}
+
+func TestValidateTagsAllowsNewTermsAndLimitsCount(t *testing.T) {
+	t.Parallel()
+
+	got, err := ValidateTags([]string{"GoLang", "SQLite", "New Topic"}, Rules{
+		Aliases: map[string]string{"golang": "Go"}, MinTags: 3, MaxTags: 6,
+	})
+	if err != nil || len(got) != 3 || got[0] != "Go" || got[2] != "New Topic" {
+		t.Fatalf("ValidateTags() = %#v, %v", got, err)
 	}
 
 	if _, err := ValidateTags([]string{"go"}, Rules{MinTags: 3, MaxTags: 6}); err == nil {

@@ -18,7 +18,7 @@ func TestSuggestionRepositorySavesAndUpdatesFieldState(t *testing.T) {
 	want := domaineditorial.SuggestionSet{
 		ID: "suggestion_1", ArticleID: "a1", WorkspaceID: "w1", ProviderInstanceID: "provider_ai",
 		InputContentHash: "hash-v1", Model: "test-model", State: domaineditorial.SuggestionPending,
-		Items: []domaineditorial.SuggestionItem{{ID: "item_1", Field: "description", Value: json.RawMessage(`"新摘要"`)}},
+		Items: []domaineditorial.SuggestionItem{{ID: "item_1", Field: "tags", Value: json.RawMessage(`"Go"`), UsageCount: 18}},
 	}
 	if err := repository.Save(context.Background(), want); err != nil {
 		t.Fatalf("保存建议: %v", err)
@@ -33,8 +33,12 @@ func TestSuggestionRepositorySavesAndUpdatesFieldState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("查询建议: %v", err)
 	}
-	if got.Model != "test-model" || got.State != domaineditorial.SuggestionAccepted || !got.Items[0].Accepted {
+	if got.Model != "test-model" || got.State != domaineditorial.SuggestionAccepted || !got.Items[0].Accepted || got.Items[0].UsageCount != 18 {
 		t.Fatalf("建议往返结果不匹配: %+v", got)
+	}
+	latest, found, err := repository.FindLatestByArticle(context.Background(), "w1", "a1")
+	if err != nil || !found || latest.ID != want.ID {
+		t.Fatalf("按文章查询最近建议 = %+v, %v, %v", latest, found, err)
 	}
 }
 

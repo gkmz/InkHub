@@ -109,8 +109,13 @@ test("重新诊断失败时显示错误且保留原诊断", async () => {
   expect(screen.getByText("原诊断仍有效")).toBeInTheDocument();
 });
 
-test("尚未开发的设置操作点击后明确提示", async () => {
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({
+test("AI 设置保存到 Provider 且不要求重新输入已有 Secret", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+    if (init?.method === "PUT") {
+      expect(init.body).toBe(JSON.stringify({ enabled: true, base_url: "https://ai.example.com/v1", model: "model-1", api_key: "" }));
+      return Response.json({ ai_enabled: true, ai_secret_saved: true });
+    }
+    return Response.json({
     workspace_name: "极客老墨",
     vault_path: "/Users/me/Vault",
     content_roots: ["Areas"],
@@ -119,19 +124,32 @@ test("尚未开发的设置操作点击后明确提示", async () => {
     directories: [],
     ai_enabled: false,
     ai_secret_saved: true,
+    ai_base_url: "https://ai.example.com/v1",
+    ai_model: "model-1",
     hugo_enabled: true,
     wechat_enabled: true,
     wechat_secret_saved: true,
     default_template: "default",
     templates: [],
     diagnostics: [],
+    });
+  });
+  renderSettings();
+
+  await screen.findByDisplayValue("极客老墨");
+  await userEvent.click(screen.getByRole("checkbox", { name: "启用 AI 建议" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存 AI 设置" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("AI 设置已保存");
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+test("尚未开发的发布设置操作点击后明确提示", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({
+    workspace_name: "极客老墨", vault_path: "/Users/me/Vault", content_roots: ["Areas"], ignored_folders: [], ignored_file_names: ["index.md"], directories: [], ai_enabled: false, ai_secret_saved: false, hugo_enabled: true, wechat_enabled: true, wechat_secret_saved: true, default_template: "default", templates: [], diagnostics: [],
   }));
   renderSettings();
 
   await screen.findByDisplayValue("极客老墨");
-  await userEvent.click(screen.getByRole("button", { name: "保存 AI 设置" }));
-  expect(screen.getByText("AI 设置保存功能尚未开放")).toBeInTheDocument();
-
   await userEvent.click(screen.getByRole("button", { name: "保存发布设置" }));
   expect(screen.getByText("发布设置保存功能尚未开放")).toBeInTheDocument();
 

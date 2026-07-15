@@ -46,7 +46,7 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 
 ## Next
 
-Provider 抽象、类目管理闭环以及文章 Category/Series 单值选择和创建已经完成。下一步设计 Tags 多选、alias 提示和新 tag 准入治理；Tags 是多值集合，禁止直接复用单值 taxonomy 字段。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁；每个阶段完成后立即提交。
+Provider 抽象、类目管理闭环、文章 Category/Series 单值选择，以及 Tags 多选与 AI 建议闭环已经完成。下一步按 PRD 优先级推进发布前检查或 Hugo 同步闭环；Tags 是多值集合，继续保持独立组件，不复用单值 taxonomy 字段。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁；每个阶段完成后立即提交。
 
 ## Important Decisions
 
@@ -54,7 +54,7 @@ Provider 抽象、类目管理闭环以及文章 Category/Series 单值选择和
 - MVP Release 1 = 开发阶段 A + 开发阶段 B，并通过 PRD 第 32 章全部验收标准。
 - MVP 每个工作区只能有一个 Hugo 和一个微信 Provider 实例；数据模型为后续多实例预留 ID，但 UI 不开放多实例。
 - MVP 只支持固定的 Obsidian frontmatter 标准：`id`、`title`、`description`、`tags`、`keywords` 和 `publish.category/series/slug/cover`。
-- AI 只推荐，不直接覆盖；新 tag 必须人工准入并受控写回 Hugo taxonomy。
+- AI 只生成候选，不直接覆盖；用户逐项采用 Tag 后仍需保存文章，新 Tag 随文章发布和 taxonomy 刷新自然入库。
 - 内链建议移到 Release 1 之后。
 - 模板使用 target/format/renderer/compatibility 通用模型；MVP 的 `InkHub Default` 和 `InkHub Minimal` 目标均为 `wechat-html`。
 - 现有 Hugo 导入脚本不作为 InkHub 运行依赖；Hugo 逻辑归入内部 Hugo Publish Provider。
@@ -63,6 +63,8 @@ Provider 抽象、类目管理闭环以及文章 Category/Series 单值选择和
 - `markdown-folder` 只读 Source 用于验证扩展契约，MVP UI 暂不开放配置入口。
 - 类目管理页面从 SQLite 快照即时展示 categories/tags；手工刷新调用 Taxonomy Service，新建 category 必须先预览 Hugo 原生 term page，再按 revision 确认应用。
 - 文章审核页 Category/Series 通过共用的单值字段从 Taxonomy Provider 快照选择；快照外旧值明确保留，同页创建 term 后只回填发起字段的草稿，仍需用户保存文章。
+- 文章 Tags 使用独立的可创建多选器，从 SQLite taxonomy 投影查询候选和文章数量；AI 使用现有候选生成结构化建议，使用次数由 Application 从快照补充，不能信任模型输出。
+- OpenAI-compatible 设置已接入系统 Secret Store；API Key 不进入 SQLite、HTTP 响应或日志。
 
 ## Files
 
@@ -72,7 +74,7 @@ Provider 抽象、类目管理闭环以及文章 Category/Series 单值选择和
 
 ## Verification
 
-- Provider Runtime、Hugo 标准 taxonomy、SQLite 快照、类目查询/刷新/预览/应用 API、类目管理页面、文章 Category/Series 选择与同页创建、模板 target 和第二 Source 均有单元测试。
+- Provider Runtime、Hugo 标准 taxonomy、SQLite 快照、类目查询/刷新/预览/应用 API、类目管理页面、文章 Category/Series/Tags 编辑、AI Tag 建议、模板 target 和第二 Source 均有单元测试。
 - 每阶段已运行全量 `go test ./...`、`go vet ./...` 和相关 race 测试。
 - 当前项目实际路径：`/Users/hank/workspace/mine/InkHub`。
 
@@ -84,4 +86,4 @@ Provider 抽象、类目管理闭环以及文章 Category/Series 单值选择和
 
 ## Fresh Session Prompt
 
-请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计、`docs/plans/provider-runtime-taxonomy-plan.md` 和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象、类目管理和文章 Category/Series 单值选择器已完成，下一步设计 Tags 多选与准入治理。
+请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计、`docs/plans/provider-runtime-taxonomy-plan.md` 和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象、类目管理、文章 Category/Series/Tags 编辑和 AI Tag 建议已完成，下一步按 PRD 优先级推进发布前检查或 Hugo 同步闭环。

@@ -18,6 +18,7 @@ import (
 
 	"github.com/gkmz/InkHub/internal/buildinfo"
 	platformlogging "github.com/gkmz/InkHub/internal/platform/logging"
+	platformsecrets "github.com/gkmz/InkHub/internal/platform/secrets"
 	"github.com/gkmz/InkHub/internal/storage/sqlite"
 	transportcli "github.com/gkmz/InkHub/internal/transport/cli"
 	httptransport "github.com/gkmz/InkHub/internal/transport/http"
@@ -130,7 +131,8 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 	}
 	defer db.Close()
 	logger.Info("数据库已打开", zap.String("component", "sqlite"))
-	providerRuntime, err := newProviderRuntime()
+	secretStore := platformsecrets.NewSystemStore()
+	providerRuntime, err := newProviderRuntime(secretStoreResolver{store: secretStore})
 	if err != nil {
 		return fmt.Errorf("注册内置 Provider: %w", err)
 	}
@@ -167,6 +169,7 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 	api := httptransport.NewRuntimeHandler(db, httptransport.NewRouter(newDatabaseAPI(db)), httptransport.RuntimeOptions{
 		DataDir:         config.DataDir,
 		ProviderRuntime: providerRuntime,
+		AISecrets:       secretStore,
 		RefreshTaxonomy: func(refreshCtx context.Context) error {
 			_, refreshErr := RefreshRecentTaxonomy(refreshCtx, db, providerRuntime)
 			return refreshErr

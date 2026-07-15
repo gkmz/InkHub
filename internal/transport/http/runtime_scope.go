@@ -87,8 +87,8 @@ type storedSourceScope struct {
 }
 
 func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Request) {
-	var workspaceName, root, configJSON string
-	err := h.db.QueryRowContext(request.Context(), `SELECT workspaces.name,sources.root_path,sources.config_json FROM workspaces JOIN sources ON sources.workspace_id=workspaces.id ORDER BY workspaces.last_used_at DESC LIMIT 1`).Scan(&workspaceName, &root, &configJSON)
+	var workspaceID, workspaceName, root, configJSON string
+	err := h.db.QueryRowContext(request.Context(), `SELECT workspaces.id,workspaces.name,sources.root_path,sources.config_json FROM workspaces JOIN sources ON sources.workspace_id=workspaces.id ORDER BY workspaces.last_used_at DESC LIMIT 1`).Scan(&workspaceID, &workspaceName, &root, &configJSON)
 	if err != nil {
 		mapError(response, ErrNotFound)
 		return
@@ -115,6 +115,12 @@ func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Re
 	settings["ignored_folders"] = config.IgnoredFolders
 	settings["ignored_file_names"] = config.IgnoredFileNames
 	settings["directories"] = directories
+	if aiConfig, enabled, found := loadStoredAIConfig(request.Context(), h.db, workspaceID); found {
+		settings["ai_enabled"] = enabled
+		settings["ai_base_url"] = aiConfig.BaseURL
+		settings["ai_model"] = aiConfig.Model
+		settings["ai_secret_saved"] = h.hasAISecret(request.Context(), aiConfig.SecretRef)
+	}
 	if inspectErr != nil {
 		settings["directories"] = []directoryCandidate{}
 		settings["diagnostics"] = []map[string]string{{"name": "内容目录", "state": "异常", "message": "无法读取 Vault 目录"}}

@@ -22,6 +22,7 @@ type SuggestionItem struct {
 	Rationale  string          `json:"rationale,omitempty"`
 	Confidence float64         `json:"confidence,omitempty"`
 	NewTerm    bool            `json:"new_term,omitempty"`
+	UsageCount int             `json:"usage_count,omitempty"`
 	Accepted   bool            `json:"accepted,omitempty"`
 }
 

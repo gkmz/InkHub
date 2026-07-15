@@ -70,10 +70,12 @@ export interface CheckResult {
 }
 
 export interface AISuggestion {
+  id: string;
   field: keyof ArticleMetadata;
-  original: string;
-  suggested: string;
+  name: string;
   reason: string;
+  new_term: boolean;
+  usage_count: number;
 }
 
 export interface ArticleDetail {
@@ -159,6 +161,8 @@ export interface SettingsView {
   ignored_file_names: string[];
   ai_enabled: boolean;
   ai_secret_saved: boolean;
+  ai_base_url?: string;
+  ai_model?: string;
   hugo_enabled: boolean;
   wechat_enabled: boolean;
   wechat_secret_saved: boolean;

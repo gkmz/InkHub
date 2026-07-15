@@ -256,7 +256,7 @@ Article 不包含 Hugo bundle、微信 HTML 或 AI 原始响应。
 
 - 通过 Taxonomy Provider 解析发布平台的标准 taxonomy 资源。
 - Hugo 实现读取站点配置、文章 frontmatter 和 taxonomy term 页面。
-- 管理 category、series、aliases、核心 tag 和低频豁免。
+- 管理 category、series 和 tags，并提供使用统计供用户调整。
 - 规范化和统计 tags。
 - 生成受控 YAML 变更。
 

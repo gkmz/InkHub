@@ -1,6 +1,6 @@
 import { Activity, Bot, Database, Globe2, RefreshCw, Save } from "lucide-react";
 import { useEffect, useState } from "react";
-import { getSettings, previewContentScope, saveContentScope } from "../../api/client";
+import { getSettings, previewContentScope, saveAISettings, saveContentScope } from "../../api/client";
 import type { SettingsView } from "../../api/types";
 import { ContentScopePicker } from "../../components/ContentScopePicker";
 import { SecretField } from "../../components/SecretField";
@@ -15,6 +15,8 @@ export function SettingsPage() {
   const [savingScope, setSavingScope] = useState(false);
   const [scopePreview, setScopePreview] = useState<{ added: number; removed: number } | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
+  const [aiKey, setAIKey] = useState("");
+  const [savingAI, setSavingAI] = useState(false);
   useEffect(() => { const controller = new AbortController(); void getSettings(controller.signal).then(setSettings); return () => controller.abort(); }, []);
   if (!settings) return <div className="page-state">正在读取设置…</div>;
   const updateScope = (content_roots: string[], ignored_folders: string[], ignored_file_names: string[]) => {
@@ -65,6 +67,19 @@ export function SettingsPage() {
       setDiagnosing(false);
     }
   };
+  const persistAI = async () => {
+    setSavingAI(true);
+    try {
+      const result = await saveAISettings({ enabled: settings.ai_enabled, base_url: settings.ai_base_url ?? "", model: settings.ai_model ?? "", api_key: aiKey });
+      setSettings({ ...settings, ...result });
+      setAIKey("");
+      toast.show({ kind: "success", message: "AI 设置已保存" });
+    } catch (reason) {
+      toast.show({ kind: "error", message: reason instanceof Error ? reason.message : "AI 设置保存失败" });
+    } finally {
+      setSavingAI(false);
+    }
+  };
   return <div className="settings-page">
     <SettingsSection icon={<Database />} title="工作区" description="内容位置和本地索引">
       <label>工作区名称<input value={settings.workspace_name} readOnly /></label>
@@ -74,7 +89,7 @@ export function SettingsPage() {
       {scopePreview && <div className="scope-confirm"><p>将新增 {scopePreview.added} 篇，移出 {scopePreview.removed} 篇。源文件不会被修改。</p><button className="primary" disabled={savingScope} onClick={persistScope}>{savingScope ? "正在保存…" : "确认并重扫"}</button><button className="secondary" onClick={() => setScopePreview(null)}>取消</button></div>}
       {scopeResult && <p className="inline-status" role="status">{scopeResult}</p>}
     </SettingsSection>
-    <SettingsSection icon={<Bot />} title="AI 建议" description="只在主动请求时发送内容"><label className="switch-line">启用 AI 建议<input type="checkbox" defaultChecked={settings.ai_enabled} /></label><SecretField label="AI API Key" saved={settings.ai_secret_saved} onDelete={() => toast.show({ kind: "info", message: "AI API Key 删除功能尚未开放" })} /><button className="secondary" onClick={() => toast.show({ kind: "info", message: "AI 设置保存功能尚未开放" })}><Save size={15} />保存 AI 设置</button></SettingsSection>
+    <SettingsSection icon={<Bot />} title="AI 建议" description="只在主动请求时发送内容"><label className="switch-line">启用 AI 建议<input type="checkbox" checked={settings.ai_enabled} onChange={(event) => setSettings({ ...settings, ai_enabled: event.target.checked })} /></label><label>服务地址<input value={settings.ai_base_url ?? ""} onChange={(event) => setSettings({ ...settings, ai_base_url: event.target.value })} placeholder="https://api.openai.com/v1" /></label><label>模型<input value={settings.ai_model ?? ""} onChange={(event) => setSettings({ ...settings, ai_model: event.target.value })} placeholder="gpt-4.1-mini" /></label><SecretField label="AI API Key" saved={settings.ai_secret_saved} value={aiKey} onValueChange={setAIKey} onDelete={() => toast.show({ kind: "info", message: "请保存空配置前先关闭 AI" })} /><button className="secondary" disabled={savingAI} onClick={() => void persistAI()}><Save size={15} />{savingAI ? "正在保存…" : "保存 AI 设置"}</button></SettingsSection>
     <SettingsSection icon={<Globe2 />} title="发布渠道" description="Hugo 与微信公众号"><h3>微信公众号模板</h3><TemplatePicker value={settings.default_template} templates={settings.templates} onChange={(id) => setSettings({ ...settings, default_template: id })} /><SecretField label="图片托管 Token" saved={settings.wechat_secret_saved} onDelete={() => toast.show({ kind: "info", message: "图片托管 Token 删除功能尚未开放" })} /><button className="secondary" onClick={() => toast.show({ kind: "info", message: "发布设置保存功能尚未开放" })}><Save size={15} />保存发布设置</button></SettingsSection>
     <SettingsSection icon={<Activity />} title="数据与诊断" description="检查本机依赖和工作区状态"><div className="diagnostic-list">{settings.diagnostics.map((item) => <div key={item.name}><span className={`doctor-${item.state}`}>{item.state}</span><b>{item.name}</b><p>{item.message}</p></div>)}</div><button className="secondary" disabled={diagnosing} onClick={refreshDiagnostics}><RefreshCw size={15} />{diagnosing ? "正在诊断…" : "重新诊断"}</button></SettingsSection>
   </div>;

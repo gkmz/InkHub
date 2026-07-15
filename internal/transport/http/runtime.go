@@ -27,6 +27,7 @@ type RuntimeOptions struct {
 	AfterWorkspaceCreated func(context.Context) (string, error)
 	ProviderRuntime       contracts.ProviderRuntime
 	RefreshTaxonomy       func(context.Context) error
+	AISecrets             AISecretStore
 }
 
 // NewRuntimeHandler 提供首次初始化和页面查询端点，并把领域命令交给核心 API。
@@ -46,12 +47,14 @@ func NewRuntimeHandler(db *sql.DB, core http.Handler, options ...RuntimeOptions)
 	var afterWorkspaceCreated func(context.Context) (string, error)
 	var providerRuntime contracts.ProviderRuntime
 	var refreshTaxonomy func(context.Context) error
+	var aiSecrets AISecretStore
 	if len(options) > 0 {
 		afterWorkspaceCreated = options[0].AfterWorkspaceCreated
 		providerRuntime = options[0].ProviderRuntime
 		refreshTaxonomy = options[0].RefreshTaxonomy
+		aiSecrets = options[0].AISecrets
 	}
-	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey, afterWorkspaceCreated: afterWorkspaceCreated, providerRuntime: providerRuntime, refreshTaxonomy: refreshTaxonomy}
+	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey, afterWorkspaceCreated: afterWorkspaceCreated, providerRuntime: providerRuntime, refreshTaxonomy: refreshTaxonomy, aiSecrets: aiSecrets}
 	return localOnly(handler)
 }
 
@@ -64,6 +67,7 @@ type runtimeHandler struct {
 	afterWorkspaceCreated func(context.Context) (string, error)
 	providerRuntime       contracts.ProviderRuntime
 	refreshTaxonomy       func(context.Context) error
+	aiSecrets             AISecretStore
 }
 
 func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -103,6 +107,10 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		}
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/settings":
 		h.settings(response, request)
+	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/ai":
+		if validateWriteRequest(response, request) {
+			h.saveAISettings(response, request)
+		}
 	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/content-scope":
 		if validateWriteRequest(response, request) {
 			h.saveContentScope(response, request)
@@ -115,6 +123,10 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		h.wechatContent(response, request)
 	case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/assets/") && strings.HasPrefix(request.URL.Path, "/api/v1/articles/"):
 		h.articleAsset(response, request)
+	case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/suggestions"):
+		if validateWriteRequest(response, request) {
+			h.generateArticleSuggestions(response, request)
+		}
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/articles/"):
 		h.articleDetail(response, request)
 	case request.Method == http.MethodPut && strings.HasSuffix(request.URL.Path, "/metadata"):
@@ -271,8 +283,8 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 	}
 	reviewState := "等待审核"
 	_ = h.db.QueryRowContext(request.Context(), `SELECT CASE state WHEN 'approved' THEN '已通过' WHEN 'changed' THEN '内容已更新' WHEN 'blocked' THEN '处理失败' ELSE '等待审核' END FROM editorial_reviews WHERE article_id=?`, id).Scan(&reviewState)
-	providers := map[string]string{"hugo": "", "wechat": ""}
-	rows, _ := h.db.QueryContext(request.Context(), `SELECT provider_type,id FROM provider_instances WHERE workspace_id=?`, workspaceID)
+	providers := map[string]string{"hugo": "", "wechat": "", "openai-compatible": ""}
+	rows, _ := h.db.QueryContext(request.Context(), `SELECT provider_type,id FROM provider_instances WHERE workspace_id=? AND enabled=1`, workspaceID)
 	if rows != nil {
 		defer rows.Close()
 		for rows.Next() {
@@ -298,7 +310,13 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 		}
 	}
 	metadata := map[string]any{"title": title, "description": description, "category": category, "series": series, "tags": tags, "keywords": keywords, "slug": slug, "cover": cover}
-	writeJSON(response, http.StatusOK, map[string]any{"id": id, "content_version": contentHash, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": false, "suggestions": []any{}, "suggestions_stale": false, "wechat_copied": wechatCopied})
+	suggestionItems := []articleSuggestionView{}
+	suggestionsStale := false
+	if latest, found, findErr := repository.NewSuggestionRepository(h.db).FindLatestByArticle(request.Context(), workspaceID, id); findErr == nil && found {
+		suggestionItems = suggestionViews(latest.Items)
+		suggestionsStale = latest.InputContentHash != contentHash
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"id": id, "content_version": contentHash, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied})
 }
 
 func runtimePublicationLabel(state, channel string) string {

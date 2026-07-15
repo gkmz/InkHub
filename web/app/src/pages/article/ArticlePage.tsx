@@ -1,6 +1,6 @@
 import { ArrowLeft, Bot, Check, CloudUpload, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { getArticle, getTaxonomyOverview, reviewArticle, saveMetadata, startPublication } from "../../api/client";
+import { generateArticleSuggestions, getArticle, getTaxonomyOverview, reviewArticle, saveMetadata, startPublication } from "../../api/client";
 import { sanitizePreviewHTML } from "../../api/safeHTML";
 import type { ArticleDetail, ArticleMetadata, TaxonomyOverview } from "../../api/types";
 import { AISuggestions } from "../../components/AISuggestions";
@@ -23,6 +23,8 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   const [taxonomy, setTaxonomy] = useState<TaxonomyOverview | null>(null);
   const [taxonomyState, setTaxonomyState] = useState<TaxonomyFieldState>("loading");
   const [taxonomySelection, setTaxonomySelection] = useState<PendingTaxonomySelection>(null);
+  const [generatingAI, setGeneratingAI] = useState(false);
+  const [externalSuggestion, setExternalSuggestion] = useState<{ id: string; field: keyof ArticleMetadata; value: string } | null>(null);
   const load = useCallback(() => getArticle(articleID).then(setArticle).catch((reason: Error) => setNotice(reason.message)), [articleID]);
   useEffect(() => { void load(); }, [load]);
   // Taxonomy 是文章编辑的增强数据，加载失败不能阻断文章详情或清空旧 Category/Series。
@@ -38,9 +40,9 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
     return () => controller.abort();
   }, []);
   if (!article) return <div className="page-state">{notice || "正在打开文章…"}</div>;
-  const updateMetadata = (metadata: ArticleMetadata) => setArticle((current) => current ? { ...current, metadata } : current);
   const categoryOptions = taxonomy?.terms.filter((term) => term.kind === "category").map((term) => ({ key: term.key, name: term.name })) ?? [];
   const seriesOptions = taxonomy?.terms.filter((term) => term.kind === "series").map((term) => ({ key: term.key, name: term.name })) ?? [];
+  const tagOptions = taxonomy?.terms.filter((term) => term.kind === "tag").map((term) => ({ key: term.key, name: term.name, usageCount: term.usage_count })) ?? [];
   const canCreateTaxonomy = Boolean(taxonomy && !taxonomy.readonly && taxonomy.provider_id && taxonomy.revision);
   const primary = article.review_state !== "已通过" ? { label: "审核通过", icon: Check, action: async () => { await reviewArticle(article.id); setArticle({ ...article, review_state: "已通过", hugo_state: "需要同步" }); } } : article.hugo_state !== "已同步" ? { label: "同步到 Hugo", icon: CloudUpload, action: async () => { await startPublication(article, "hugo"); setArticle({ ...article, hugo_state: "正在同步" }); } } : { label: "准备微信内容", icon: Send, action: async () => onNavigate(`/articles/${article.id}/wechat`) };
   const PrimaryIcon = primary.icon;
@@ -51,9 +53,9 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
     <div className="article-layout">
       <article className={`article-preview mobile-${tab}`}><p className="eyebrow">文章预览</p><h1>{article.metadata.title}</h1><p className="article-description">{article.metadata.description}</p><div className="prose" dangerouslySetInnerHTML={{ __html: sanitizePreviewHTML(article.preview_html) }} /></article>
       <aside className={`review-panel mobile-${tab}`}>
-        <MetadataForm value={article.metadata} sourceChanged={article.source_changed} categoryOptions={categoryOptions} seriesOptions={seriesOptions} taxonomyState={taxonomyState} canCreateTaxonomy={canCreateTaxonomy} onCreateTaxonomy={(kind, select) => setTaxonomySelection({ kind, select })} onReload={load} onSave={async (metadata) => { const next = await saveMetadata(article.id, metadata); setArticle(next); setNotice("元数据已保存"); }} />
+        <MetadataForm value={article.metadata} sourceChanged={article.source_changed} categoryOptions={categoryOptions} seriesOptions={seriesOptions} tagOptions={tagOptions} taxonomyState={taxonomyState} canCreateTaxonomy={canCreateTaxonomy} onCreateTaxonomy={(kind, select) => setTaxonomySelection({ kind, select })} externalSuggestion={externalSuggestion} onReload={load} onSave={async (metadata) => { const next = await saveMetadata(article.id, metadata); setArticle(next); setNotice("元数据已保存"); }} />
         <Checks items={article.checks} />
-        {article.ai_configured ? <AISuggestions stale={article.suggestions_stale} suggestions={article.suggestions} onAccept={(field, value) => updateMetadata({ ...article.metadata, [field]: field === "tags" || field === "keywords" ? value.split(/[,，]/).map((item) => item.trim()).filter(Boolean) : value })} /> : <section className="tool-section ai-unconfigured"><Bot size={17} /><span><b>AI 建议未启用</b><small>不影响手工审核</small></span><button onClick={() => onNavigate("/settings")}>配置 AI</button></section>}
+        {article.ai_configured ? <AISuggestions stale={article.suggestions_stale} suggestions={article.suggestions} generating={generatingAI} onAccept={(suggestion) => setExternalSuggestion({ id: `${suggestion.id}:${Date.now()}`, field: suggestion.field, value: suggestion.name })} onGenerate={async () => { setGeneratingAI(true); try { const result = await generateArticleSuggestions(article.id); setArticle({ ...article, ...result }); setNotice("AI Tag 已生成"); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "AI Tag 生成失败"); } finally { setGeneratingAI(false); } }} /> : <section className="tool-section ai-unconfigured"><Bot size={17} /><span><b>AI 建议未启用</b><small>不影响手工审核</small></span><button onClick={() => onNavigate("/settings")}>配置 AI</button></section>}
         <div className="primary-action"><button className="primary" onClick={() => void primary.action()}><PrimaryIcon size={17} />{primary.label}</button>{notice && <span role="status">{notice}</span>}</div>
         {article.hugo_state === "正在同步" && <JobStatus state="running" progress={42} stage="构建预览" onRetry={() => void startPublication(article, "hugo")} />}
       </aside>

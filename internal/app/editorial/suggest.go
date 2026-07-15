@@ -49,8 +49,14 @@ type GenerateSuggestionOptions struct {
 	Article            article.Article
 	Body               string
 	AllowBody          bool
-	AllowedTags        []string
+	TagCandidates      []TagCandidate
 	Taxonomy           contracts.TaxonomyContext
+}
+
+// TagCandidate 是 Application 从 taxonomy 快照读取的可信 Tag 候选。
+type TagCandidate struct {
+	Name       string
+	UsageCount int
 }
 
 // GenerateSuggestions 调用 AI Provider、验证结构化结果并保存待处理建议。
@@ -76,7 +82,7 @@ func GenerateSuggestions(ctx context.Context, provider contracts.AIProvider, sto
 	if response.InputContentHash != options.Article.ContentHash {
 		return SuggestionSet{}, ErrStaleSuggestion
 	}
-	items, err := normalizeSuggestions(response.Suggestions, options.AllowedTags, options.SuggestionID)
+	items, err := normalizeSuggestions(response.Suggestions, options.TagCandidates, options.SuggestionID)
 	if err != nil {
 		return SuggestionSet{}, err
 	}
@@ -91,10 +97,12 @@ func GenerateSuggestions(ctx context.Context, provider contracts.AIProvider, sto
 	return result, nil
 }
 
-func normalizeSuggestions(input []contracts.Suggestion, allowedTags []string, suggestionID string) ([]SuggestionItem, error) {
-	allowed := make(map[string]struct{}, len(allowedTags))
-	for _, tag := range allowedTags {
-		allowed[normalizeTerm(tag)] = struct{}{}
+func normalizeSuggestions(input []contracts.Suggestion, candidates []TagCandidate, suggestionID string) ([]SuggestionItem, error) {
+	known := make(map[string]TagCandidate, len(candidates))
+	for _, candidate := range candidates {
+		if key := normalizeTerm(candidate.Name); key != "" {
+			known[key] = candidate
+		}
 	}
 	items := make([]SuggestionItem, 0, len(input))
 	for _, suggestion := range input {
@@ -117,8 +125,13 @@ func normalizeSuggestions(input []contracts.Suggestion, allowedTags []string, su
 				return nil, fmt.Errorf("%w: tags 必须是字符串数组", ErrInvalidSuggestion)
 			}
 			for _, value := range cleanStrings(values) {
-				_, known := allowed[normalizeTerm(value)]
-				items = append(items, newSuggestionItem(suggestionID, len(items), suggestion, mustRawJSON(value), !known))
+				candidate, exists := known[normalizeTerm(value)]
+				if exists {
+					value = candidate.Name
+				}
+				item := newSuggestionItem(suggestionID, len(items), suggestion, mustRawJSON(value), !exists)
+				item.UsageCount = candidate.UsageCount
+				items = append(items, item)
 			}
 		default:
 			return nil, fmt.Errorf("%w: 不支持字段 %s", ErrInvalidSuggestion, suggestion.Field)

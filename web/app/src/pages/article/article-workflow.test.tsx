@@ -28,7 +28,7 @@ const article = {
 
 const taxonomy = {
   source: "Hugo", provider_id: "h1", provider_type: "hugo", state: "ready", revision: "revision-1", loaded_at: "2026-07-15", readonly: false,
-  terms: [{ kind: "category", key: "engineering", name: "工程实践", usage_count: 3, metadata: {} }, { kind: "category", key: "product", name: "产品", usage_count: 2, metadata: {} }, { kind: "series", key: "inkhub", name: "InkHub", usage_count: 4, metadata: {} }, { kind: "series", key: "go-course", name: "Go 课程", usage_count: 2, metadata: {} }], issues: [],
+  terms: [{ kind: "category", key: "engineering", name: "工程实践", usage_count: 3, metadata: {} }, { kind: "category", key: "product", name: "产品", usage_count: 2, metadata: {} }, { kind: "series", key: "inkhub", name: "InkHub", usage_count: 4, metadata: {} }, { kind: "series", key: "go-course", name: "Go 课程", usage_count: 2, metadata: {} }, { kind: "tag", key: "go", name: "Go", usage_count: 18, metadata: {} }, { kind: "tag", key: "sqlite", name: "SQLite", usage_count: 7, metadata: {} }], issues: [],
 };
 
 afterEach(() => vi.restoreAllMocks());
@@ -63,6 +63,19 @@ test("Series 从 Hugo 快照选择并进入文章草稿", async () => {
   expect(screen.getByText("Series：InkHub → Go 课程")).toBeInTheDocument();
 });
 
+test("Tags 从 Hugo 快照多选并允许创建新 Tag", async () => {
+  const save = vi.fn();
+  render(<MetadataForm value={metadata} sourceChanged={false} taxonomyState="ready" tagOptions={[{ key: "go", name: "Go", usageCount: 18 }, { key: "sqlite", name: "SQLite", usageCount: 7 }]} onSave={save} />);
+  const input = screen.getByRole("combobox", { name: "搜索或创建 Tag" });
+  await userEvent.click(input);
+  expect(screen.getByRole("option", { name: "SQLite，7 篇文章" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("option", { name: "SQLite，7 篇文章" }));
+  expect(screen.getByText("Tags：Go、React → Go、React、SQLite")).toBeInTheDocument();
+  await userEvent.type(input, "New Topic{Enter}");
+  expect(screen.getByText("Tags：Go、React → Go、React、SQLite、New Topic")).toBeInTheDocument();
+  expect(save).not.toHaveBeenCalled();
+});
+
 test("Category 快照保留博客中未发现的文章旧值", () => {
   render(<MetadataForm value={{ ...metadata, category: "旧分类" }} sourceChanged={false} taxonomyState="ready" categoryOptions={[{ key: "engineering", name: "工程实践" }]} onSave={vi.fn()} />);
   expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("旧分类");
@@ -84,6 +97,8 @@ test("文章页读取 Hugo Category 且 taxonomy 失败不阻止审核", async (
   expect(screen.getByRole("option", { name: "产品" })).toBeInTheDocument();
   expect(screen.getByRole("combobox", { name: "Series" })).toHaveValue("InkHub");
   expect(screen.getByRole("option", { name: "Go 课程" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("combobox", { name: "搜索或创建 Tag" }));
+  expect(screen.getByRole("option", { name: "SQLite，7 篇文章" })).toBeInTheDocument();
   view.unmount();
 
   vi.restoreAllMocks();
@@ -149,16 +164,32 @@ test("文章页创建 Series 时提交正确 kind 且只回填 Series 草稿", a
 
 test("AI 建议只能逐字段采用并写入表单草稿", async () => {
   const accept = vi.fn();
-  render(<AISuggestions stale={false} suggestions={[{ field: "description", original: "旧摘要", suggested: "更清晰的新摘要", reason: "补充文章收益" }]} onAccept={accept} />);
+  render(<AISuggestions stale={false} suggestions={[{ id: "s1", field: "tags", name: "SQLite", reason: "主题匹配", new_term: false, usage_count: 7 }]} onAccept={accept} onGenerate={vi.fn()} />);
   expect(screen.queryByRole("button", { name: /全部/ })).not.toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "采用 Description 建议" }));
-  expect(accept).toHaveBeenCalledWith("description", "更清晰的新摘要");
+  expect(screen.getByText("7 篇文章")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "采用 Tag SQLite" }));
+  expect(accept).toHaveBeenCalledWith(expect.objectContaining({ name: "SQLite" }));
 });
 
 test("文章更新后 AI 建议过期且不能继续采用", () => {
-  render(<AISuggestions stale suggestions={[{ field: "title", original: "旧标题", suggested: "新标题", reason: "更具体" }]} onAccept={vi.fn()} />);
+  render(<AISuggestions stale suggestions={[{ id: "s1", field: "tags", name: "Agent", reason: "主题匹配", new_term: true, usage_count: 0 }]} onAccept={vi.fn()} onGenerate={vi.fn()} />);
   expect(screen.getByText("文章已更新，请重新分析")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "采用 Title 建议" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "采用 Tag Agent" })).toBeDisabled();
+});
+
+test("文章页生成 AI Tag 并逐项加入草稿", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/suggestions") && init?.method === "POST") return Response.json({ suggestions: [{ id: "s1", field: "tags", name: "SQLite", reason: "数据层主题", new_term: false, usage_count: 7 }, { id: "s2", field: "tags", name: "Agent", reason: "智能体主题", new_term: true, usage_count: 0 }], suggestions_stale: false });
+    if (url.endsWith("/taxonomy")) return Response.json(taxonomy);
+    return Response.json({ ...article, ai_configured: true });
+  });
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  await screen.findByRole("button", { name: "生成 AI Tag" });
+  await userEvent.click(screen.getByRole("button", { name: "生成 AI Tag" }));
+  expect(await screen.findByText("新 Tag")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "采用 Tag SQLite" }));
+  expect(screen.getByText("Tags：Go、React → Go、React、SQLite")).toBeInTheDocument();
 });
 
 test("发布轨道不暴露内部 hash 和任务 ID", () => {

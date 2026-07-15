@@ -137,13 +137,13 @@ AI 默认关闭。启用后填写服务地址、模型、Secret 和隐私范围�
 
 ### 7.2 元数据编辑
 
-字段：标题、Description、Category、Series、Tags、Keywords、Slug、Cover。Category 与 Series 使用当前博客 taxonomy 快照的单值下拉选择器；当前文章值不在快照时必须保留并标记“博客中未发现”，不能静默清空。未连接博客与临时读取失败使用不同提示，均不阻止编辑其他字段。Tags 使用独立的多选与准入交互，不能直接复用单值选择器；支持键盘添加、删除和 alias 提示。
+字段：标题、Description、Category、Series、Tags、Keywords、Slug、Cover。Category 与 Series 使用当前博客 taxonomy 快照的单值下拉选择器；当前文章值不在快照时必须保留并标记“博客中未发现”，不能静默清空。未连接博客与临时读取失败使用不同提示，均不阻止编辑其他字段。Tags 使用独立的可创建多选器，不能直接复用单值选择器；支持搜索、键盘添加、删除，并展示快照中每个 Tag 的文章数量。
 
 Category 与 Series 选择器旁只在 Provider 可写且存在 revision 时显示对应的新建按钮。新建流程复用 Taxonomy Provider 的 Hugo 原生文件预览和确认；创建成功只将新 term 回填到发起字段的文章表单草稿，用户仍需点击 `保存到文章` 才写回 Obsidian，禁止创建 term 时顺带隐式修改文章或串改另一个字段。
 
 表单草稿保存在浏览器 session storage，以 workspace、article ID 和源文件指纹为 key，不包含正文或 Secret；关闭标签页后自动清除。只有点击 `保存到文章` 才写回 Markdown。保存前展示字段级变更摘要；若源文件指纹已变化，草稿标记失效，停止写回并提供 `重新加载`，不得覆盖外部编辑。
 
-新 tag 不直接保存：打开准入区，优先显示相似现有 tag，并提供 `改用现有 Tag`、`批准新 Tag`、`仅本次使用`。批准时先展示 Taxonomy Provider 生成的 Hugo 原生文件差异；`仅本次使用` 仍需向权威 taxonomy 写入低频豁免，不允许只写文章。
+新 Tag 可以直接加入文章草稿，不单独创建 Hugo term page。文章发布到 Hugo 后，新 Tag 通过博客 frontmatter 进入权威来源，并在下一次 taxonomy 刷新时自然入库。AI 候选逐项采用或忽略，优先复用已有 Tag；AI 未配置或请求失败不影响手工编辑。
 
 ### 7.3 检查结果
 

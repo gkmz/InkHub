@@ -11,8 +11,6 @@ import (
 )
 
 var (
-	// ErrTaxonomyAdmissionRequired 表示新 Tag 必须先写入权威 taxonomy。
-	ErrTaxonomyAdmissionRequired = errors.New("新 Tag 尚未通过 taxonomy 准入")
 	// ErrSuggestionAlreadyAccepted 表示同一字段建议不能重复应用。
 	ErrSuggestionAlreadyAccepted = errors.New("AI 建议已经采纳")
 )
@@ -22,17 +20,11 @@ type MetadataWriter interface {
 	WriteMetadata(ctx context.Context, command contracts.MetadataWriteCommand) (contracts.SourceDocument, error)
 }
 
-// TagAdmissionGate 查询 Tag 是否已进入权威 taxonomy。
-type TagAdmissionGate interface {
-	IsTagAllowed(ctx context.Context, tag string) (bool, error)
-}
-
 // AcceptSuggestion 校验文章版本并只应用指定的一条字段建议。
 func AcceptSuggestion(
 	ctx context.Context,
 	writer MetadataWriter,
 	store SuggestionStore,
-	tags TagAdmissionGate,
 	current article.Article,
 	record SuggestionSet,
 	itemID string,
@@ -57,7 +49,7 @@ func AcceptSuggestion(
 	if item.Accepted {
 		return SuggestionSet{}, ErrSuggestionAlreadyAccepted
 	}
-	patch, err := buildMetadataPatch(ctx, current, item, tags)
+	patch, err := buildMetadataPatch(current, item)
 	if err != nil {
 		return SuggestionSet{}, err
 	}
@@ -82,7 +74,7 @@ func AcceptSuggestion(
 	return record, nil
 }
 
-func buildMetadataPatch(ctx context.Context, current article.Article, item SuggestionItem, tags TagAdmissionGate) (contracts.MetadataPatch, error) {
+func buildMetadataPatch(current article.Article, item SuggestionItem) (contracts.MetadataPatch, error) {
 	var patch contracts.MetadataPatch
 	switch item.Field {
 	case "description":
@@ -113,18 +105,6 @@ func buildMetadataPatch(ctx context.Context, current article.Article, item Sugge
 		var value string
 		if err := json.Unmarshal(item.Value, &value); err != nil || value == "" {
 			return patch, fmt.Errorf("%w: tag 必须是非空字符串", ErrInvalidSuggestion)
-		}
-		if item.NewTerm {
-			if tags == nil {
-				return patch, ErrTaxonomyAdmissionRequired
-			}
-			allowed, err := tags.IsTagAllowed(ctx, value)
-			if err != nil {
-				return patch, fmt.Errorf("检查 Tag 准入状态: %w", err)
-			}
-			if !allowed {
-				return patch, ErrTaxonomyAdmissionRequired
-			}
 		}
 		valueList := cleanStrings(append(append([]string(nil), current.Tags...), value))
 		patch.Tags = &valueList

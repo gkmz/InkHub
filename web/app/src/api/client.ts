@@ -64,6 +64,11 @@ export function getArticle(articleID: string, signal?: AbortSignal) {
   return request<ArticleDetail>(`/articles/${encodeURIComponent(articleID)}`, { signal });
 }
 
+/** generateArticleSuggestions 主动请求当前文章的结构化 AI 建议。 */
+export function generateArticleSuggestions(articleID: string) {
+  return request<Pick<ArticleDetail, "suggestions" | "suggestions_stale">>(`/articles/${encodeURIComponent(articleID)}/suggestions`, { method: "POST", body: "{}" });
+}
+
 /** saveMetadata 使用源文件指纹约束写回，冲突由服务端拒绝。 */
 export function saveMetadata(articleID: string, metadata: ArticleMetadata) {
   return request<ArticleDetail>(`/articles/${encodeURIComponent(articleID)}/metadata`, { method: "PUT", body: JSON.stringify({ metadata }) });
@@ -117,6 +122,11 @@ export function applyTaxonomyTerm(command: TaxonomyTermCommand) {
 /** getSettings 读取不含 Secret 明文的设置视图。 */
 export function getSettings(signal?: AbortSignal) {
   return request<SettingsView>("/settings", { signal });
+}
+
+/** saveAISettings 保存 OpenAI-compatible 非敏感配置和可选的新 API Key。 */
+export function saveAISettings(input: { enabled: boolean; base_url: string; model: string; api_key: string }) {
+  return request<{ ai_enabled: boolean; ai_secret_saved: boolean }>("/settings/ai", { method: "PUT", body: JSON.stringify(input) });
 }
 
 /** saveContentScope 保存当前 Source 的目录规则并返回重扫结果。 */

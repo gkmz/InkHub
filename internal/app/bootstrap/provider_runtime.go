@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	domaintemplate "github.com/gkmz/InkHub/internal/domain/template"
+	openai "github.com/gkmz/InkHub/internal/provider/ai/openai"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/provider/publish/hugo"
 	"github.com/gkmz/InkHub/internal/provider/publish/wechat"
@@ -15,9 +16,31 @@ import (
 	taxonomyhugo "github.com/gkmz/InkHub/internal/provider/taxonomy/hugo"
 )
 
+type secretGetter interface {
+	Get(context.Context, string) (string, error)
+}
+
+// secretStoreResolver 将系统 Secret Store 适配为 Provider 只读解析器。
+type secretStoreResolver struct{ store secretGetter }
+
+func (r secretStoreResolver) Resolve(ctx context.Context, ref string) (contracts.SecretValue, error) {
+	value, err := r.store.Get(ctx, ref)
+	if err != nil {
+		return contracts.SecretValue{}, err
+	}
+	return contracts.SecretValue{Bytes: []byte(value)}, nil
+}
+
 // newProviderRuntime 注册所有内置 Provider；具体实现只在装配层出现。
-func newProviderRuntime() (*registry.Registry, error) {
-	runtime := registry.New(nil)
+func newProviderRuntime(resolvers ...contracts.SecretResolver) (*registry.Registry, error) {
+	var resolver contracts.SecretResolver
+	if len(resolvers) > 0 {
+		resolver = resolvers[0]
+	}
+	runtime := registry.New(resolver)
+	if err := runtime.RegisterAI(openai.NewFactory(nil)); err != nil {
+		return nil, err
+	}
 	if err := runtime.RegisterSource(obsidian.NewFactory()); err != nil {
 		return nil, err
 	}

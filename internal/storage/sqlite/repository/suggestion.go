@@ -60,10 +60,22 @@ WHERE ai_suggestions.article_id=excluded.article_id
 
 // FindByID 按建议 ID 查询完整建议集合。
 func (r *SuggestionRepository) FindByID(ctx context.Context, id string) (domaineditorial.SuggestionSet, error) {
+	return scanSuggestion(r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state FROM ai_suggestions WHERE id=?`, id))
+}
+
+// FindLatestByArticle 查询当前工作区文章最近更新的一组 AI 建议。
+func (r *SuggestionRepository) FindLatestByArticle(ctx context.Context, workspaceID, articleID string) (domaineditorial.SuggestionSet, bool, error) {
+	value, err := scanSuggestion(r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state FROM ai_suggestions WHERE workspace_id=? AND article_id=? ORDER BY updated_at DESC LIMIT 1`, workspaceID, articleID))
+	if err == sql.ErrNoRows {
+		return domaineditorial.SuggestionSet{}, false, nil
+	}
+	return value, err == nil, err
+}
+
+func scanSuggestion(row rowScanner) (domaineditorial.SuggestionSet, error) {
 	var value domaineditorial.SuggestionSet
 	var payloadJSON string
-	err := r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state
-FROM ai_suggestions WHERE id=?`, id).Scan(
+	err := row.Scan(
 		&value.ID, &value.ArticleID, &value.InputContentHash, &value.ProviderInstanceID,
 		&value.WorkspaceID, &payloadJSON, &value.State,
 	)

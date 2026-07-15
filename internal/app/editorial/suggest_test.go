@@ -10,7 +10,7 @@ import (
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
 
-func TestGenerateSuggestionsAppliesPrivacyAndMarksUnknownTags(t *testing.T) {
+func TestGenerateSuggestionsAppliesPrivacyAndEnrichesTagsFromSnapshot(t *testing.T) {
 	t.Parallel()
 
 	provider := &capturingAI{response: contracts.AIResponse{
@@ -18,7 +18,7 @@ func TestGenerateSuggestionsAppliesPrivacyAndMarksUnknownTags(t *testing.T) {
 		Model:            "test-model",
 		Suggestions: []contracts.Suggestion{
 			{Field: "description", Value: json.RawMessage(`"新摘要"`)},
-			{Field: "tags", Value: json.RawMessage(`["Go","Agent"]`)},
+			{Field: "tags", Value: json.RawMessage(`["go","GO","Agent",""]`), NewTerm: false},
 		},
 	}}
 	store := &memorySuggestionStore{}
@@ -28,10 +28,10 @@ func TestGenerateSuggestionsAppliesPrivacyAndMarksUnknownTags(t *testing.T) {
 		Article: article.Article{
 			ID: "article_1", WorkspaceID: "workspace_1", Title: "标题", Description: "旧摘要", ContentHash: "hash-v1",
 		},
-		Body:        "不得发送的正文",
-		AllowBody:   false,
-		AllowedTags: []string{"Go"},
-		Taxonomy:    contracts.TaxonomyContext{Tags: []string{"Go"}},
+		Body:          "不得发送的正文",
+		AllowBody:     false,
+		TagCandidates: []TagCandidate{{Name: "Go", UsageCount: 18}},
+		Taxonomy:      contracts.TaxonomyContext{Tags: []string{"Go"}},
 	})
 	if err != nil {
 		t.Fatalf("生成建议: %v", err)
@@ -42,8 +42,12 @@ func TestGenerateSuggestionsAppliesPrivacyAndMarksUnknownTags(t *testing.T) {
 	if len(result.Items) != 3 {
 		t.Fatalf("Tag 建议应拆分为可采纳字段项: %+v", result.Items)
 	}
+	goItem := findItem(result.Items, "tags", "Go")
+	if goItem.NewTerm || goItem.UsageCount != 18 {
+		t.Fatalf("已有 Tag 未使用快照标准名称和数量: %+v", goItem)
+	}
 	if !findItem(result.Items, "tags", "Agent").NewTerm {
-		t.Fatalf("未知 Tag 未标记为待准入: %+v", result.Items)
+		t.Fatalf("未知 Tag 未标记为新词: %+v", result.Items)
 	}
 	if store.saved.ID != "suggestion_1" || store.saved.State != SuggestionPending {
 		t.Fatalf("建议未持久化: %+v", store.saved)
@@ -63,7 +67,7 @@ func TestGenerateSuggestionsRejectsStaleProviderResponse(t *testing.T) {
 	}
 }
 
-func TestAcceptSuggestionWritesOneFieldAndRequiresNewTagAdmission(t *testing.T) {
+func TestAcceptSuggestionWritesOneFieldAndAllowsNewTag(t *testing.T) {
 	t.Parallel()
 
 	value := json.RawMessage(`"新摘要"`)
@@ -78,7 +82,7 @@ func TestAcceptSuggestionWritesOneFieldAndRequiresNewTagAdmission(t *testing.T) 
 	store := &memorySuggestionStore{saved: record}
 	current := article.Article{ID: "article_1", SourceID: "source_1", StableID: "article_STABLE", RelativePath: "文章.md", ContentHash: "hash-v1", FrontmatterHash: "frontmatter-v1"}
 
-	updated, err := AcceptSuggestion(context.Background(), writer, store, staticTagGate{allowed: map[string]bool{"Go": true}}, current, record, "item_description")
+	updated, err := AcceptSuggestion(context.Background(), writer, store, current, record, "item_description")
 	if err != nil {
 		t.Fatalf("采纳摘要建议: %v", err)
 	}
@@ -89,9 +93,9 @@ func TestAcceptSuggestionWritesOneFieldAndRequiresNewTagAdmission(t *testing.T) 
 		t.Fatalf("采纳单字段不应改写其他字段: patch=%+v state=%s", writer.command.Patch, updated.State)
 	}
 
-	_, err = AcceptSuggestion(context.Background(), writer, store, staticTagGate{allowed: map[string]bool{"Go": true}}, current, record, "item_new_tag")
-	if !errors.Is(err, ErrTaxonomyAdmissionRequired) {
-		t.Fatalf("未知 Tag 未准入时应拒绝写回: %T %v", err, err)
+	_, err = AcceptSuggestion(context.Background(), writer, store, current, record, "item_new_tag")
+	if err != nil || writer.command.Patch.Tags == nil || len(*writer.command.Patch.Tags) != 1 || (*writer.command.Patch.Tags)[0] != "Agent" {
+		t.Fatalf("新 Tag 应直接追加到文章: patch=%+v err=%v", writer.command.Patch, err)
 	}
 }
 
@@ -102,7 +106,7 @@ func TestAcceptSuggestionRejectsChangedArticle(t *testing.T) {
 		ID: "suggestion_1", ArticleID: "article_1", InputContentHash: "old-hash", State: SuggestionPending,
 		Items: []SuggestionItem{{ID: "item", Field: "slug", Value: json.RawMessage(`"new-slug"`)}},
 	}
-	_, err := AcceptSuggestion(context.Background(), &capturingMetadataWriter{}, &memorySuggestionStore{}, staticTagGate{}, article.Article{
+	_, err := AcceptSuggestion(context.Background(), &capturingMetadataWriter{}, &memorySuggestionStore{}, article.Article{
 		ID: "article_1", ContentHash: "new-hash",
 	}, record, "item")
 	if !errors.Is(err, ErrStaleSuggestion) {
@@ -138,14 +142,6 @@ type capturingMetadataWriter struct {
 func (w *capturingMetadataWriter) WriteMetadata(_ context.Context, command contracts.MetadataWriteCommand) (contracts.SourceDocument, error) {
 	w.command = command
 	return contracts.SourceDocument{}, nil
-}
-
-type staticTagGate struct {
-	allowed map[string]bool
-}
-
-func (g staticTagGate) IsTagAllowed(_ context.Context, tag string) (bool, error) {
-	return g.allowed[tag], nil
 }
 
 func findItem(items []SuggestionItem, field, stringValue string) SuggestionItem {
