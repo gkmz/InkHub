@@ -39,3 +39,67 @@ test("已有工作区可以配置内容目录并触发重扫", async () => {
 
   expect(await screen.findByText("已索引 12 篇，失败 0 篇")).toBeInTheDocument();
 });
+
+test("重新诊断会再次请求设置并刷新诊断结果", async () => {
+  let settingsRequests = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+    settingsRequests += 1;
+    return Response.json({
+      workspace_name: "极客老墨",
+      vault_path: "/Users/me/Vault",
+      content_roots: ["Areas"],
+      ignored_folders: [],
+      ignored_file_names: ["index.md", "_index.md"],
+      directories: [],
+      ai_enabled: false,
+      ai_secret_saved: false,
+      hugo_enabled: true,
+      wechat_enabled: true,
+      wechat_secret_saved: false,
+      default_template: "default",
+      templates: [],
+      diagnostics: settingsRequests === 1
+        ? [{ name: "内容目录", state: "需要处理", message: "暂时无法读取" }]
+        : [{ name: "内容目录", state: "正常", message: "路径可读" }],
+    });
+  });
+  render(<SettingsPage />);
+
+  expect(await screen.findByText("暂时无法读取")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "重新诊断" }));
+
+  expect(await screen.findByText("路径可读")).toBeInTheDocument();
+  expect(await screen.findByRole("status")).toHaveTextContent("诊断已更新");
+  expect(settingsRequests).toBe(2);
+});
+
+test("重新诊断失败时显示错误且保留原诊断", async () => {
+  let settingsRequests = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+    settingsRequests += 1;
+    if (settingsRequests > 1) throw new Error("网络不可用");
+    return Response.json({
+      workspace_name: "极客老墨",
+      vault_path: "/Users/me/Vault",
+      content_roots: ["Areas"],
+      ignored_folders: [],
+      ignored_file_names: ["index.md"],
+      directories: [],
+      ai_enabled: false,
+      ai_secret_saved: false,
+      hugo_enabled: false,
+      wechat_enabled: false,
+      wechat_secret_saved: false,
+      default_template: "default",
+      templates: [],
+      diagnostics: [{ name: "内容目录", state: "正常", message: "原诊断仍有效" }],
+    });
+  });
+  render(<SettingsPage />);
+
+  expect(await screen.findByText("原诊断仍有效")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "重新诊断" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent("网络不可用");
+  expect(screen.getByText("原诊断仍有效")).toBeInTheDocument();
+});
