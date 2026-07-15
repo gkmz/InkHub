@@ -23,11 +23,12 @@ var ErrSourceConflict = errors.New("源文章身份冲突")
 
 // Config 定义 Obsidian Source Provider 配置。
 type Config struct {
-	SourceID       string
-	Root           string
-	PollInterval   time.Duration
-	ContentRoots   []string
-	IgnoredFolders []string
+	SourceID         string
+	Root             string
+	PollInterval     time.Duration
+	ContentRoots     []string
+	IgnoredFolders   []string
+	IgnoredFileNames []string
 }
 
 // Provider 读取和受控写回 Obsidian Vault。
@@ -49,6 +50,7 @@ func New(config Config) (*Provider, error) {
 		Root: root, SourceID: config.SourceID, PollInterval: config.PollInterval,
 		ExcludedDirs: map[string]bool{".obsidian": true, ".git": true},
 		ContentRoots: config.ContentRoots, IgnoredFolders: config.IgnoredFolders,
+		IgnoredFileNames: config.IgnoredFileNames,
 	})
 	if err != nil {
 		return nil, err

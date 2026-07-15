@@ -82,8 +82,9 @@ func inspectVaultDirectories(root string) ([]directoryCandidate, error) {
 }
 
 type storedSourceScope struct {
-	ContentRoots   []string `json:"content_roots"`
-	IgnoredFolders []string `json:"ignored_folders"`
+	ContentRoots     []string `json:"content_roots"`
+	IgnoredFolders   []string `json:"ignored_folders"`
+	IgnoredFileNames []string `json:"ignored_file_names"`
 }
 
 func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Request) {
@@ -98,12 +99,16 @@ func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Re
 		writeError(response, http.StatusInternalServerError, "workspace.config_invalid", "工作区目录配置损坏")
 		return
 	}
+	if config.IgnoredFileNames == nil {
+		config.IgnoredFileNames = folder.DefaultIgnoredFileNames()
+	}
 	directories, inspectErr := inspectVaultDirectories(root)
 	settings := defaultSettings()
 	settings["workspace_name"] = workspaceName
 	settings["vault_path"] = root
 	settings["content_roots"] = config.ContentRoots
 	settings["ignored_folders"] = config.IgnoredFolders
+	settings["ignored_file_names"] = config.IgnoredFileNames
 	settings["directories"] = directories
 	if inspectErr != nil {
 		settings["directories"] = []directoryCandidate{}
@@ -118,7 +123,10 @@ func (h *runtimeHandler) saveContentScope(response http.ResponseWriter, request 
 		writeError(response, http.StatusBadRequest, "request.invalid", "内容目录配置无效")
 		return
 	}
-	scope, err := folder.NewScope(input.ContentRoots, input.IgnoredFolders)
+	if input.IgnoredFileNames == nil {
+		input.IgnoredFileNames = folder.DefaultIgnoredFileNames()
+	}
+	scope, err := folder.NewScopeWithFileNames(input.ContentRoots, input.IgnoredFolders, input.IgnoredFileNames)
 	if err != nil {
 		writeError(response, http.StatusBadRequest, "workspace.scope_invalid", "内容目录规则无效")
 		return
@@ -128,12 +136,12 @@ func (h *runtimeHandler) saveContentScope(response http.ResponseWriter, request 
 		mapError(response, ErrNotFound)
 		return
 	}
-	configJSON, _ := json.Marshal(storedSourceScope{ContentRoots: scope.ContentRoots(), IgnoredFolders: scope.IgnoredFolders()})
+	configJSON, _ := json.Marshal(storedSourceScope{ContentRoots: scope.ContentRoots(), IgnoredFolders: scope.IgnoredFolders(), IgnoredFileNames: scope.IgnoredFileNames()})
 	if _, err := h.db.ExecContext(request.Context(), `UPDATE sources SET config_json=?,updated_at=? WHERE id=?`, string(configJSON), time.Now().UTC().Format(time.RFC3339Nano), sourceID); err != nil {
 		mapError(response, err)
 		return
 	}
-	report, err := scanInitialWorkspace(request, sourceID, workspaceID, root, scope.ContentRoots(), scope.IgnoredFolders(), h.db)
+	report, err := scanInitialWorkspace(request, sourceID, workspaceID, root, scope.ContentRoots(), scope.IgnoredFolders(), scope.IgnoredFileNames(), h.db)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -147,7 +155,10 @@ func (h *runtimeHandler) previewContentScope(response http.ResponseWriter, reque
 		writeError(response, http.StatusBadRequest, "request.invalid", "内容目录配置无效")
 		return
 	}
-	scope, err := folder.NewScope(input.ContentRoots, input.IgnoredFolders)
+	if input.IgnoredFileNames == nil {
+		input.IgnoredFileNames = folder.DefaultIgnoredFileNames()
+	}
+	scope, err := folder.NewScopeWithFileNames(input.ContentRoots, input.IgnoredFolders, input.IgnoredFileNames)
 	if err != nil {
 		writeError(response, http.StatusBadRequest, "workspace.scope_invalid", "内容目录规则无效")
 		return
@@ -157,7 +168,7 @@ func (h *runtimeHandler) previewContentScope(response http.ResponseWriter, reque
 		mapError(response, ErrNotFound)
 		return
 	}
-	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: root, ContentRoots: scope.ContentRoots(), IgnoredFolders: scope.IgnoredFolders()})
+	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: root, ContentRoots: scope.ContentRoots(), IgnoredFolders: scope.IgnoredFolders(), IgnoredFileNames: scope.IgnoredFileNames()})
 	if err != nil {
 		mapError(response, err)
 		return

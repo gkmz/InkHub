@@ -34,6 +34,7 @@ export interface WorkspaceDraft {
   ai_enabled: boolean;
   content_roots: string[];
   ignored_folders: string[];
+  ignored_file_names: string[];
 }
 
 export interface DirectoryCandidate {
@@ -123,6 +124,7 @@ export interface SettingsView {
   content_roots: string[];
   ignored_folders: string[];
   directories: DirectoryCandidate[];
+  ignored_file_names: string[];
   ai_enabled: boolean;
   ai_secret_saved: boolean;
   hugo_enabled: boolean;

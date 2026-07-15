@@ -18,12 +18,13 @@ import (
 
 // Config 定义文件夹 Source 的共享配置。
 type Config struct {
-	Root           string
-	SourceID       string
-	PollInterval   time.Duration
-	ExcludedDirs   map[string]bool
-	ContentRoots   []string
-	IgnoredFolders []string
+	Root             string
+	SourceID         string
+	PollInterval     time.Duration
+	ExcludedDirs     map[string]bool
+	ContentRoots     []string
+	IgnoredFolders   []string
+	IgnoredFileNames []string
 }
 
 // Source 提供路径授权、Markdown 遍历和变化监听。
@@ -49,7 +50,11 @@ func New(config Config) (*Source, error) {
 	}
 	var scope *Scope
 	if config.ContentRoots != nil || config.IgnoredFolders != nil {
-		value, err := NewScope(config.ContentRoots, config.IgnoredFolders)
+		ignoredFileNames := config.IgnoredFileNames
+		if ignoredFileNames == nil {
+			ignoredFileNames = DefaultIgnoredFileNames()
+		}
+		value, err := NewScopeWithFileNames(config.ContentRoots, config.IgnoredFolders, ignoredFileNames)
 		if err != nil {
 			return nil, err
 		}

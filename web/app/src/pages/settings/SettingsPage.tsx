@@ -14,16 +14,16 @@ export function SettingsPage() {
   const [scopePreview, setScopePreview] = useState<{ added: number; removed: number } | null>(null);
   useEffect(() => { const controller = new AbortController(); void getSettings(controller.signal).then(setSettings); return () => controller.abort(); }, []);
   if (!settings) return <div className="page-state">正在读取设置…</div>;
-  const updateScope = (content_roots: string[], ignored_folders: string[]) => {
+  const updateScope = (content_roots: string[], ignored_folders: string[], ignored_file_names: string[]) => {
     setScopePreview(null);
     setScopeResult("");
-    setSettings({ ...settings, content_roots, ignored_folders });
+    setSettings({ ...settings, content_roots, ignored_folders, ignored_file_names });
   };
   const inspectScopeChange = async () => {
     setSavingScope(true);
     setScopeResult("");
     try {
-      setScopePreview(await previewContentScope(settings.content_roots, settings.ignored_folders));
+      setScopePreview(await previewContentScope(settings.content_roots, settings.ignored_folders, settings.ignored_file_names));
     } catch (reason) {
       setScopeResult(reason instanceof Error ? reason.message : "无法预览变更");
     } finally {
@@ -34,7 +34,7 @@ export function SettingsPage() {
     setSavingScope(true);
     setScopeResult("");
     try {
-      const result = await saveContentScope(settings.content_roots, settings.ignored_folders);
+      const result = await saveContentScope(settings.content_roots, settings.ignored_folders, settings.ignored_file_names);
       setScopeResult(`已索引 ${result.indexed} 篇，失败 ${result.failed} 篇`);
       setScopePreview(null);
     } catch (reason) {
@@ -47,7 +47,7 @@ export function SettingsPage() {
     <SettingsSection icon={<Database />} title="工作区" description="内容位置和本地索引">
       <label>工作区名称<input value={settings.workspace_name} readOnly /></label>
       <label>Obsidian Vault<input value={settings.vault_path} readOnly /></label>
-      <ContentScopePicker directories={settings.directories} contentRoots={settings.content_roots} ignoredFolders={settings.ignored_folders} onChange={updateScope} />
+      <ContentScopePicker directories={settings.directories} contentRoots={settings.content_roots} ignoredFolders={settings.ignored_folders} ignoredFileNames={settings.ignored_file_names} onChange={updateScope} />
       {!scopePreview && <button className="secondary" disabled={savingScope || settings.content_roots.length === 0} onClick={inspectScopeChange}><Save size={15} />{savingScope ? "正在计算…" : "预览内容范围变更"}</button>}
       {scopePreview && <div className="scope-confirm"><p>将新增 {scopePreview.added} 篇，移出 {scopePreview.removed} 篇。源文件不会被修改。</p><button className="primary" disabled={savingScope} onClick={persistScope}>{savingScope ? "正在保存…" : "确认并重扫"}</button><button className="secondary" onClick={() => setScopePreview(null)}>取消</button></div>}
       {scopeResult && <p className="inline-status" role="status">{scopeResult}</p>}

@@ -208,3 +208,51 @@ Run: `go test ./... && go test -race ./... && go vet ./... && npm --prefix web/a
 ```bash
 git commit -m "feat(preview): render Obsidian vault images safely"
 ```
+
+### Task 5: 搜索多选目录与忽略文件名
+
+**Files:**
+- Modify: `internal/provider/source/folder/scope.go`
+- Modify: `internal/provider/source/folder/scope_test.go`
+- Modify: `internal/provider/source/folder/source.go`
+- Modify: `internal/provider/source/obsidian/provider.go`
+- Modify: `internal/transport/http/runtime_scope.go`
+- Modify: `internal/transport/http/runtime.go`
+- Modify: `internal/transport/http/runtime_test.go`
+- Modify: `web/app/src/api/types.ts`
+- Modify: `web/app/src/components/ContentScopePicker.tsx`
+- Modify: `web/app/src/components/ContentScopePicker.test.tsx`
+- Modify: `web/app/src/pages/setup/SetupPage.tsx`
+- Modify: `web/app/src/pages/settings/SettingsPage.tsx`
+- Modify: `web/app/src/pages/settings/settings.test.tsx`
+
+**Interfaces:**
+- Extends: `Scope` 增加精确、大小写不敏感的 `ignored_file_names`。
+- Extends: `WorkspaceDraft`、设置 API 和 Source 配置增加 `ignored_file_names: string[]`。
+- Produces: 默认忽略 `index.md`、`_index.md`，用户可以增加或删除文件名。
+
+- [x] **Step 1: 写失败测试**
+
+覆盖默认索引文件、大小写不敏感精确匹配、`my-index.md` 不误匹配、空文件名和目录逃逸拒绝；前端覆盖两个可搜索多选列表、已选项在搜索后保留、忽略文件名添加/删除。
+
+- [x] **Step 2: RED 验证**
+
+Run: `go test ./internal/provider/source/folder ./internal/transport/http -run 'Scope|Directory' -count=1 && npm --prefix web/app test -- --run src/components/ContentScopePicker.test.tsx`
+
+Expected: 默认索引文件仍会进入范围，前端只有单选下拉且没有搜索框。
+
+- [x] **Step 3: 实现**
+
+在 scope 配置中加入默认文件名并序列化保存；扫描按 basename 精确匹配后跳过。目录选择器改为搜索框+checkbox 多选，忽略文件名使用标签式输入；配置预览和保存透传新字段。
+
+- [x] **Step 4: reflection 与真实 Vault 验证**
+
+Run: `go test ./... && go test -race ./... && go vet ./... && npm --prefix web/app test -- --run && npm --prefix web/app run lint && npm --prefix web/app run typecheck && npm --prefix web/app run build`
+
+使用真实 Vault 副本确认 `index.md`、`_index.md` 不进入索引，`my-index.md` 仍可进入；检查搜索过滤不清除已选项。
+
+- [x] **Step 5: 提交**
+
+```bash
+git commit -m "feat(scope): support searchable folder rules and ignored filenames"
+```

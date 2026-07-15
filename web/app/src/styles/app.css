@@ -110,6 +110,7 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .scope-directory-list label:last-child { border-bottom: 0; }
 .scope-directory-list input { margin: 0; }
 .scope-directory-list small { color: var(--muted); font-weight: 400; }
+.scope-search { margin: 8px 0; font-size: 12px; }
 .scope-empty { padding: 10px 0 0; }
 .scope-ignore { margin-top: 16px; }
 .scope-ignore-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 8px; }
@@ -117,6 +118,8 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .scope-ignore ul { list-style: none; margin: 8px 0 0; padding: 0; }
 .scope-ignore li { display: flex; align-items: center; justify-content: space-between; padding: 7px 9px; background: #f5f7f5; font-size: 12px; }
 .scope-ignore li button { border: 0; background: transparent; color: var(--danger); cursor: pointer; }
+.scope-file-names { margin-top: 16px; }
+.scope-file-names p { margin: 3px 0 8px; color: var(--muted); font-size: 12px; }
 .scope-confirm { margin-top: 10px; padding: 10px; border-left: 3px solid var(--warning); background: #fff9e8; }
 .scope-confirm p { margin: 0 0 9px; font-size: 13px; }
 .scope-confirm button { margin-right: 8px; }

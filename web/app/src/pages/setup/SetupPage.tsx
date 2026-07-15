@@ -20,6 +20,7 @@ export function SetupPage({ onComplete }: { onComplete: (draft: WorkspaceDraft) 
       ai_enabled: restored.ai_enabled ?? false,
       content_roots: restored.content_roots ?? [],
       ignored_folders: restored.ignored_folders ?? [],
+      ignored_file_names: restored.ignored_file_names ?? ["index.md", "_index.md"],
     };
   });
   const [submitting, setSubmitting] = useState(false);
@@ -71,7 +72,7 @@ export function SetupPage({ onComplete }: { onComplete: (draft: WorkspaceDraft) 
             <label>Obsidian Vault 路径<div className="path-field"><input value={draft.vault_path} onChange={(event) => { setPathError(""); setDirectories([]); update({ vault_path: event.target.value, content_roots: [], ignored_folders: [] }); }} placeholder="/Users/you/Documents/Vault" /><button type="button" aria-label="选择目录" onClick={() => { setPathError(""); pickDirectory("vault").then(({ path }) => { update({ vault_path: path, content_roots: [], ignored_folders: [] }); return loadDirectories(path); }).catch((reason: Error) => setPathError(reason.message)); }}><FolderOpen size={18} /></button></div></label>
             {pathError && <p className="field-error" role="alert">{pathError}，你仍可手工输入路径。</p>}
             {draft.vault_path && directories.length === 0 && <button className="secondary inspect-directories" type="button" disabled={inspecting} onClick={() => loadDirectories(draft.vault_path)}>{inspecting ? "正在读取…" : "读取目录"}</button>}
-            {directories.length > 0 && <ContentScopePicker directories={directories} contentRoots={draft.content_roots} ignoredFolders={draft.ignored_folders} onChange={(content_roots, ignored_folders) => update({ content_roots, ignored_folders })} />}
+            {directories.length > 0 && <ContentScopePicker directories={directories} contentRoots={draft.content_roots} ignoredFolders={draft.ignored_folders} ignoredFileNames={draft.ignored_file_names} onChange={(content_roots, ignored_folders, ignored_file_names) => update({ content_roots, ignored_folders, ignored_file_names })} />}
             <button className="primary" type="button" disabled={!valid} onClick={next}>继续</button>
           </>}
           {step === 1 && <>

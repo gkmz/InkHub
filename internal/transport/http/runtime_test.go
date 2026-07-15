@@ -30,6 +30,9 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	if err := os.WriteFile(filepath.Join(vault, "Areas", "文章.md"), []byte(article), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(vault, "Areas", "index.md"), []byte(article), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}))
 
 	session := httptest.NewRecorder()
@@ -75,6 +78,15 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	updated, readErr := os.ReadFile(filepath.Join(vault, "Areas", "文章.md"))
 	if metadataResponse.Code != http.StatusOK || readErr != nil || !strings.Contains(string(updated), "写回后的标题") {
 		t.Fatalf("元数据未原子写回: code=%d body=%s file=%s err=%v", metadataResponse.Code, metadataResponse.Body.String(), updated, readErr)
+	}
+	scopeRequest := httptest.NewRequest(http.MethodPut, "http://localhost/api/v1/settings/content-scope", strings.NewReader(`{"content_roots":["Areas"],"ignored_folders":[],"ignored_file_names":["toc.md"]}`))
+	scopeRequest.Header.Set("Content-Type", "application/json")
+	scopeRequest.Header.Set("Origin", "http://localhost")
+	scopeResponse := httptest.NewRecorder()
+	handler.ServeHTTP(scopeResponse, scopeRequest)
+	var sourceConfig string
+	if err := db.QueryRow(`SELECT config_json FROM sources LIMIT 1`).Scan(&sourceConfig); scopeResponse.Code != http.StatusOK || err != nil || !strings.Contains(sourceConfig, `"ignored_file_names":["toc.md"]`) {
+		t.Fatalf("忽略文件名未持久化: code=%d config=%s err=%v", scopeResponse.Code, sourceConfig, err)
 	}
 }
 

@@ -9,7 +9,7 @@ test("已有工作区可以配置内容目录并触发重扫", async () => {
     if (url.includes("/settings/content-scope/preview")) return Response.json({ added: 12, removed: 1 });
     if (url.includes("/settings/content-scope")) {
       expect(init?.method).toBe("PUT");
-      expect(init?.body).toBe(JSON.stringify({ content_roots: ["Areas"], ignored_folders: [] }));
+      expect(init?.body).toBe(JSON.stringify({ content_roots: ["Areas"], ignored_folders: [], ignored_file_names: ["index.md", "_index.md"] }));
       return Response.json({ indexed: 12, failed: 0 });
     }
     return Response.json({
@@ -17,6 +17,7 @@ test("已有工作区可以配置内容目录并触发重扫", async () => {
       vault_path: "/Users/me/Vault",
       content_roots: [],
       ignored_folders: [],
+      ignored_file_names: ["index.md", "_index.md"],
       directories: [{ path: "Areas", markdown_count: 12 }],
       ai_enabled: false,
       ai_secret_saved: false,

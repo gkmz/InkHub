@@ -49,7 +49,7 @@ func TestMarkdownPathsOnlyReturnsConfiguredContentScope(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	source, err := New(Config{Root: root, ContentRoots: []string{"Areas"}, IgnoredFolders: []string{"Areas/私人"}})
+	source, err := New(Config{Root: root, ContentRoots: []string{"Areas"}, IgnoredFolders: []string{"Areas/私人"}, IgnoredFileNames: []string{"index.md"}})
 	if err != nil {
 		t.Fatal(err)
 	}

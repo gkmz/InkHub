@@ -13,8 +13,9 @@ import (
 )
 
 type persistedSourceScope struct {
-	ContentRoots   []string `json:"content_roots"`
-	IgnoredFolders []string `json:"ignored_folders"`
+	ContentRoots     []string `json:"content_roots"`
+	IgnoredFolders   []string `json:"ignored_folders"`
+	IgnoredFileNames []string `json:"ignored_file_names"`
 }
 
 // RescanRecentWorkspace 按最近工作区保存的目录规则恢复文章索引。
@@ -34,7 +35,10 @@ func RescanRecentWorkspace(ctx context.Context, db *sql.DB) (workspaceapp.ScanRe
 	if len(config.ContentRoots) == 0 {
 		return workspaceapp.ScanReport{}, nil
 	}
-	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: root, ContentRoots: config.ContentRoots, IgnoredFolders: config.IgnoredFolders})
+	if config.IgnoredFileNames == nil {
+		config.IgnoredFileNames = []string{"index.md", "_index.md"}
+	}
+	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: root, ContentRoots: config.ContentRoots, IgnoredFolders: config.IgnoredFolders, IgnoredFileNames: config.IgnoredFileNames})
 	if err != nil {
 		return workspaceapp.ScanReport{}, err
 	}

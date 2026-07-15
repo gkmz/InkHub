@@ -110,11 +110,11 @@ export function getSettings(signal?: AbortSignal) {
 }
 
 /** saveContentScope 保存当前 Source 的目录规则并返回重扫结果。 */
-export function saveContentScope(contentRoots: string[], ignoredFolders: string[]) {
-  return request<{ indexed: number; failed: number }>("/settings/content-scope", { method: "PUT", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders }) });
+export function saveContentScope(contentRoots: string[], ignoredFolders: string[], ignoredFileNames: string[]) {
+  return request<{ indexed: number; failed: number }>("/settings/content-scope", { method: "PUT", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders, ignored_file_names: ignoredFileNames }) });
 }
 
 /** previewContentScope 计算保存目录规则将新增和移出的索引数量。 */
-export function previewContentScope(contentRoots: string[], ignoredFolders: string[]) {
-  return request<{ added: number; removed: number }>("/settings/content-scope/preview", { method: "POST", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders }) });
+export function previewContentScope(contentRoots: string[], ignoredFolders: string[], ignoredFileNames: string[]) {
+  return request<{ added: number; removed: number }>("/settings/content-scope/preview", { method: "POST", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders, ignored_file_names: ignoredFileNames }) });
 }

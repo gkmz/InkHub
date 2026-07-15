@@ -62,3 +62,23 @@ func TestScopeWithNoContentRootsIncludesNothing(t *testing.T) {
 		t.Fatal("未授权内容目录时不得扫描文章")
 	}
 }
+
+func TestScopeIgnoresExactMarkdownFileNamesCaseInsensitively(t *testing.T) {
+	t.Parallel()
+
+	scope, err := NewScopeWithFileNames([]string{"Areas"}, nil, []string{"index.md", "_index.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]bool{
+		"Areas/index.md":       false,
+		"Areas/Deep/INDEX.MD":  false,
+		"Areas/Deep/_index.md":  false,
+		"Areas/my-index.md":     true,
+		"Areas/article.md":      true,
+	} {
+		if got := scope.Includes(path); got != want {
+			t.Errorf("Includes(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
