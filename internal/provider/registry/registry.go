@@ -11,20 +11,22 @@ import (
 
 // Registry 只管理 Provider 类型、工厂和能力发现，不保存业务状态。
 type Registry struct {
-	mu      sync.RWMutex
-	secrets contracts.SecretResolver
-	source  map[contracts.ProviderType]contracts.SourceProviderFactory
-	ai      map[contracts.ProviderType]contracts.AIProviderFactory
-	publish map[contracts.ProviderType]contracts.PublishProviderFactory
+	mu       sync.RWMutex
+	secrets  contracts.SecretResolver
+	source   map[contracts.ProviderType]contracts.SourceProviderFactory
+	ai       map[contracts.ProviderType]contracts.AIProviderFactory
+	publish  map[contracts.ProviderType]contracts.PublishProviderFactory
+	taxonomy map[contracts.ProviderType]contracts.TaxonomyProviderFactory
 }
 
 // New 创建空的 Provider Registry。
 func New(secrets contracts.SecretResolver) *Registry {
 	return &Registry{
-		secrets: secrets,
-		source:  make(map[contracts.ProviderType]contracts.SourceProviderFactory),
-		ai:      make(map[contracts.ProviderType]contracts.AIProviderFactory),
-		publish: make(map[contracts.ProviderType]contracts.PublishProviderFactory),
+		secrets:  secrets,
+		source:   make(map[contracts.ProviderType]contracts.SourceProviderFactory),
+		ai:       make(map[contracts.ProviderType]contracts.AIProviderFactory),
+		publish:  make(map[contracts.ProviderType]contracts.PublishProviderFactory),
+		taxonomy: make(map[contracts.ProviderType]contracts.TaxonomyProviderFactory),
 	}
 }
 
@@ -71,6 +73,9 @@ func (r *Registry) Descriptor(providerType contracts.ProviderType) (contracts.De
 		return factory.Descriptor().Descriptor, nil
 	}
 	if factory, exists := r.publish[providerType]; exists {
+		return factory.Descriptor().Descriptor, nil
+	}
+	if factory, exists := r.taxonomy[providerType]; exists {
 		return factory.Descriptor().Descriptor, nil
 	}
 	return contracts.Descriptor{}, fmt.Errorf("未知 Provider 类型: %s", providerType)
@@ -128,6 +133,34 @@ func (r *Registry) BuildPublish(ctx context.Context, ref contracts.ProviderRef, 
 	r.mu.RUnlock()
 	if !exists {
 		return nil, fmt.Errorf("未知 Publish Provider 类型: %s", ref.Type)
+	}
+	return factory.Build(ctx, ref, config, r.secrets)
+}
+
+// RegisterTaxonomy 注册一个编译期 Taxonomy Provider 工厂。
+func (r *Registry) RegisterTaxonomy(factory contracts.TaxonomyProviderFactory) error {
+	if factory == nil || factory.Type() == "" || factory.Descriptor().Type != factory.Type() {
+		return fmt.Errorf("Taxonomy Provider 工厂或 Descriptor 无效")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.taxonomy[factory.Type()]; exists {
+		return fmt.Errorf("Taxonomy Provider 已注册: %s", factory.Type())
+	}
+	r.taxonomy[factory.Type()] = factory
+	return nil
+}
+
+// BuildTaxonomy 根据实例引用构建对应类型的 Taxonomy Provider。
+func (r *Registry) BuildTaxonomy(ctx context.Context, ref contracts.ProviderRef, config contracts.ConfigView) (contracts.TaxonomyProvider, error) {
+	if ref.ID == "" || ref.Type == "" {
+		return nil, fmt.Errorf("Provider 实例 ID 或类型为空")
+	}
+	r.mu.RLock()
+	factory, exists := r.taxonomy[ref.Type]
+	r.mu.RUnlock()
+	if !exists {
+		return nil, fmt.Errorf("未知 Taxonomy Provider 类型: %s", ref.Type)
 	}
 	return factory.Build(ctx, ref, config, r.secrets)
 }

@@ -88,6 +88,18 @@ func TestRegistryBuildsSourceAndPublishProviders(t *testing.T) {
 	}
 }
 
+func TestRegistryBuildsTaxonomyProvider(t *testing.T) {
+	t.Parallel()
+	runtime := New(nil)
+	if err := runtime.RegisterTaxonomy(fakeTaxonomyFactory{}); err != nil {
+		t.Fatalf("注册 Taxonomy Provider: %v", err)
+	}
+	provider, err := runtime.BuildTaxonomy(context.Background(), contracts.ProviderRef{ID: "taxonomy", Type: contracts.ProviderHugo}, contracts.ConfigView{})
+	if err != nil || provider.Descriptor().Type != contracts.ProviderHugo {
+		t.Fatalf("构建 Taxonomy Provider: provider=%v err=%v", provider, err)
+	}
+}
+
 type fakeAIFactory struct {
 	descriptor contracts.AIDescriptor
 }
@@ -169,3 +181,30 @@ func (fakePublishProvider) Prepare(context.Context, contracts.PublishInput) (con
 func (fakePublishProvider) Deliver(context.Context, contracts.PreparedArtifact) (contracts.DeliveryResult, error) {
 	return contracts.DeliveryResult{}, nil
 }
+
+type fakeTaxonomyFactory struct{}
+
+func (fakeTaxonomyFactory) Type() contracts.ProviderType { return contracts.ProviderHugo }
+func (fakeTaxonomyFactory) Descriptor() contracts.TaxonomyDescriptor {
+	return contracts.TaxonomyDescriptor{Descriptor: contracts.Descriptor{Type: contracts.ProviderHugo}}
+}
+func (fakeTaxonomyFactory) Build(context.Context, contracts.ProviderRef, contracts.ConfigView, contracts.SecretResolver) (contracts.TaxonomyProvider, error) {
+	return fakeTaxonomyProvider{}, nil
+}
+
+type fakeTaxonomyProvider struct{}
+
+func (fakeTaxonomyProvider) Descriptor() contracts.TaxonomyDescriptor {
+	return contracts.TaxonomyDescriptor{Descriptor: contracts.Descriptor{Type: contracts.ProviderHugo}}
+}
+func (fakeTaxonomyProvider) Validate(context.Context) error { return nil }
+func (fakeTaxonomyProvider) Discover(context.Context, contracts.TaxonomyCursor) (contracts.TaxonomySnapshot, error) {
+	return contracts.TaxonomySnapshot{}, nil
+}
+func (fakeTaxonomyProvider) PlanChange(context.Context, contracts.TaxonomyCommand) (contracts.TaxonomyChangeSet, error) {
+	return contracts.TaxonomyChangeSet{}, nil
+}
+func (fakeTaxonomyProvider) ApplyChange(context.Context, contracts.TaxonomyChangeSet) (contracts.TaxonomySnapshot, error) {
+	return contracts.TaxonomySnapshot{}, nil
+}
+func (fakeTaxonomyProvider) Watch(context.Context, chan<- contracts.TaxonomyChange) error { return nil }

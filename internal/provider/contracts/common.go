@@ -103,6 +103,7 @@ type ProviderRuntime interface {
 	BuildSource(ctx context.Context, ref ProviderRef, config ConfigView) (SourceProvider, error)
 	BuildAI(ctx context.Context, ref ProviderRef, config ConfigView) (AIProvider, error)
 	BuildPublish(ctx context.Context, ref ProviderRef, config ConfigView) (PublishProvider, error)
+	BuildTaxonomy(ctx context.Context, ref ProviderRef, config ConfigView) (TaxonomyProvider, error)
 }
 
 // SecretResolver 只按引用读取 Provider 已声明的 Secret。

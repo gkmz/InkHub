@@ -12,6 +12,7 @@ import (
 	"github.com/gkmz/InkHub/internal/provider/publish/wechat"
 	"github.com/gkmz/InkHub/internal/provider/registry"
 	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
+	taxonomyhugo "github.com/gkmz/InkHub/internal/provider/taxonomy/hugo"
 )
 
 // newProviderRuntime 注册所有内置 Provider；具体实现只在装配层出现。
@@ -21,6 +22,9 @@ func newProviderRuntime() (*registry.Registry, error) {
 		return nil, err
 	}
 	if err := runtime.RegisterPublish(hugo.NewFactory(hugo.CLIBuilder{})); err != nil {
+		return nil, err
+	}
+	if err := runtime.RegisterTaxonomy(taxonomyhugo.NewFactory()); err != nil {
 		return nil, err
 	}
 	if err := runtime.RegisterPublish(wechat.NewFactory(builtinTemplateLoader{}, nil, unusedClipboard{})); err != nil {

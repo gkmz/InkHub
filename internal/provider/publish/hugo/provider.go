@@ -91,16 +91,18 @@ func (p *Provider) Descriptor() contracts.PublishDescriptor {
 	}, DeliveryMode: contracts.DeliveryAutomatic}
 }
 
-// Validate 检查 Hugo 根目录、taxonomy 和 staging 可用性。
+// Validate 检查 Hugo 根目录、配置和 staging 可用性。
 func (p *Provider) Validate(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	_, err := loadTaxonomy(filepath.Join(p.config.Root, "data", "taxonomy.yaml"))
-	return err
+	if !hasHugoConfig(p.config.Root) {
+		return fmt.Errorf("Hugo 配置文件不可用")
+	}
+	return nil
 }
 
-// Preflight 检查输入和 taxonomy，不产生文件副作用。
+// Preflight 检查标准文章输入，不产生文件副作用。
 func (p *Provider) Preflight(ctx context.Context, input contracts.PublishInput) (contracts.PreflightResult, error) {
 	if err := ctx.Err(); err != nil {
 		return contracts.PreflightResult{}, err
@@ -112,11 +114,6 @@ func (p *Provider) Preflight(ctx context.Context, input contracts.PublishInput) 
 	if input.ContentHash == "" || input.Article.StableID == "" || input.Article.Title == "" {
 		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "hugo.article_invalid", Message: "Hugo 文章缺少内容版本、稳定 ID 或标题", Blocking: true})
 	}
-	taxonomy, err := loadTaxonomy(filepath.Join(p.config.Root, "data", "taxonomy.yaml"))
-	if err != nil {
-		return contracts.PreflightResult{}, providerError("hugo.taxonomy_invalid", "Hugo taxonomy 无效", contracts.ErrorValidation, false, err)
-	}
-	diagnostics = append(diagnostics, taxonomy.check(input)...)
 	return contracts.PreflightResult{Diagnostics: diagnostics, Ready: !hasBlocking(diagnostics)}, nil
 }
 
@@ -134,7 +131,7 @@ func hasBlocking(values []contracts.Diagnostic) bool {
 }
 
 func hasHugoConfig(root string) bool {
-	for _, name := range []string{"hugo.yaml", "hugo.yml", "hugo.toml", "config.yaml", "config.toml"} {
+	for _, name := range []string{"hugo.yaml", "hugo.yml", "hugo.toml", "hugo.json", "config.yaml", "config.yml", "config.toml", "config.json"} {
 		if info, err := os.Stat(filepath.Join(root, name)); err == nil && !info.IsDir() {
 			return true
 		}

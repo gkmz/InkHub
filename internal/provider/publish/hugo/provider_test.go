@@ -60,7 +60,7 @@ func TestPrepareBuildsStagingWithoutChangingRealBundleAndIsIdempotent(t *testing
 	}
 }
 
-func TestPreflightRejectsUnknownTaxonomy(t *testing.T) {
+func TestPreflightAcceptsTermsManagedByHugoStandardTaxonomy(t *testing.T) {
 	t.Parallel()
 
 	provider, err := New(Config{
@@ -77,8 +77,8 @@ func TestPreflightRejectsUnknownTaxonomy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Preflight: %v", err)
 	}
-	if result.Ready || len(result.Diagnostics) == 0 || !result.Diagnostics[0].Blocking {
-		t.Fatalf("未知 taxonomy 未阻断: %+v", result)
+	if !result.Ready {
+		t.Fatalf("Hugo 原生 term 不应被私有白名单阻断: %+v", result)
 	}
 }
 
@@ -149,22 +149,19 @@ func TestPrepareRejectsOperationIDReusedForDifferentContent(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsDuplicateTaxonomyValues(t *testing.T) {
+func TestValidateDoesNotRequirePrivateTaxonomyFile(t *testing.T) {
 	t.Parallel()
 
 	root := copyHugoFixture(t)
-	taxonomyPath := filepath.Join(root, "data", "taxonomy.yaml")
-	content, _ := os.ReadFile(taxonomyPath)
-	content = []byte(strings.Replace(string(content), "  - AI应用开发\n", "  - AI应用开发\n  - AI应用开发\n", 1))
-	if err := os.WriteFile(taxonomyPath, content, 0o644); err != nil {
+	if err := os.Remove(filepath.Join(root, "data", "taxonomy.yaml")); err != nil {
 		t.Fatal(err)
 	}
 	provider, err := New(Config{Root: root, StagingRoot: filepath.Join(t.TempDir(), "staging")}, &fakeBuilder{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := provider.Validate(context.Background()); err == nil {
-		t.Fatal("重复 Category 应使 taxonomy 校验失败")
+	if err := provider.Validate(context.Background()); err != nil {
+		t.Fatalf("Hugo 标准配置有效时不应依赖私有 taxonomy 文件: %v", err)
 	}
 }
 
