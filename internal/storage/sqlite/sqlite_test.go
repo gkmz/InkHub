@@ -29,8 +29,72 @@ func TestOpenMigratesEmptyDatabaseAndIsRepeatable(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatalf("query migration version: %v", err)
 	}
-	if version != 2 {
-		t.Fatalf("migration version = %d, want 2", version)
+	if version != 3 {
+		t.Fatalf("migration version = %d, want 3", version)
+	}
+}
+
+func TestTaxonomyProjectionSchemaSupportsCustomKinds(t *testing.T) {
+	t.Parallel()
+	db := openTestDB(t)
+	insertWorkspaceAndSource(t, db)
+	if _, err := db.Exec(`INSERT INTO provider_instances(id,workspace_id,provider_type,name,created_at,updated_at) VALUES('h1','w1','hugo','Hugo','2026-01-01','2026-01-01')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO taxonomy_snapshots(provider_instance_id,workspace_id,revision,state,complete,last_attempt_at,updated_at) VALUES('h1','w1','r1','ready',1,'2026-01-01','2026-01-01')`); err != nil {
+		t.Fatalf("写入 taxonomy snapshot: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO taxonomy_terms(id,workspace_id,provider_instance_id,kind,external_key,name,canonical_name,metadata_json,source_revision,updated_at) VALUES('t1','w1','h1','topic','go','Go','Go','{}','r1','2026-01-01')`); err != nil {
+		t.Fatalf("自定义 taxonomy kind 应可持久化: %v", err)
+	}
+}
+
+func TestTaxonomyProjectionMigrationPreservesLegacyTermsAndRelations(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "inkhub.db")
+	legacy, err := sql.Open("sqlite", "file:"+filepath.ToSlash(dbPath)+"?_pragma=foreign_keys(0)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(`CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY,name TEXT NOT NULL,checksum TEXT NOT NULL,applied_at TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, migration := range []struct {
+		version int
+		name    string
+	}{{1, "0001_init.sql"}, {2, "0002_optional_stable_id.sql"}} {
+		version, name := migration.version, migration.name
+		content, readErr := migrationFiles.ReadFile("migrations/" + name)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if _, err := legacy.Exec(string(content)); err != nil {
+			t.Fatalf("执行旧 migration %s: %v", name, err)
+		}
+		sum := sha256.Sum256(content)
+		if _, err := legacy.Exec(`INSERT INTO schema_migrations(version,name,checksum,applied_at) VALUES(?,?,?,'2026-01-01')`, version, name, hex.EncodeToString(sum[:])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insertWorkspaceAndSource(t, legacy)
+	if _, err := legacy.Exec(`INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,indexed_at,created_at,updated_at) VALUES('a1','w1','s1','article_ONE','one.md','2026-01-01','2026-01-01','2026-01-01'); INSERT INTO taxonomy_terms(id,workspace_id,kind,name,canonical_name,source_revision,updated_at) VALUES('t1','w1','tag','Go','go','old','2026-01-01'); INSERT INTO article_taxonomies(article_id,taxonomy_term_id,workspace_id,created_at) VALUES('a1','t1','w1','2026-01-01')`); err != nil {
+		t.Fatal(err)
+	}
+	legacy.Close()
+	migrated, err := Open(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("升级 taxonomy projection: %v", err)
+	}
+	defer migrated.Close()
+	var terms, relations int
+	if err := migrated.QueryRow(`SELECT COUNT(*) FROM taxonomy_terms WHERE id='t1' AND source_revision='legacy'`).Scan(&terms); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrated.QueryRow(`SELECT COUNT(*) FROM article_taxonomies WHERE article_id='a1' AND taxonomy_term_id='t1'`).Scan(&relations); err != nil {
+		t.Fatal(err)
+	}
+	if terms != 1 || relations != 1 {
+		t.Fatalf("旧 taxonomy 数据丢失: terms=%d relations=%d", terms, relations)
 	}
 }
 

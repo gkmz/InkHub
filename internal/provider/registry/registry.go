@@ -19,6 +19,14 @@ type Registry struct {
 	taxonomy map[contracts.ProviderType]contracts.TaxonomyProviderFactory
 }
 
+// SupportsTaxonomy 返回指定类型是否注册了 Taxonomy Provider 工厂。
+func (r *Registry) SupportsTaxonomy(providerType contracts.ProviderType) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, exists := r.taxonomy[providerType]
+	return exists
+}
+
 // New 创建空的 Provider Registry。
 func New(secrets contracts.SecretResolver) *Registry {
 	return &Registry{

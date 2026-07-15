@@ -158,6 +158,7 @@ var tableComments = map[string]string{
 	"articles":           "保存可重建的文章索引和标准元数据快照",
 	"editorial_reviews":  "保存文章审核状态和已确认内容版本",
 	"taxonomy_terms":     "缓存权威 taxonomy 条目及使用统计",
+	"taxonomy_snapshots": "保存 Provider taxonomy 最近成功 revision 与刷新状态",
 	"article_taxonomies": "关联文章与 taxonomy 条目",
 	"provider_instances": "保存工作区 Provider 实例的非敏感配置",
 	"publications":       "保存文章在渠道中的当前处理投影",
@@ -177,6 +178,12 @@ var columnComments = map[string]string{
 	"state": "当前状态", "content_hash": "实际使用的文章内容版本", "frontmatter_hash": "标准元数据版本",
 	"config_json": "经过 schema 校验的非敏感配置", "capabilities_json": "Provider 能力快照", "payload_json": "结构化任务或事件输入",
 	"result_json": "结构化任务结果", "error_code": "稳定错误码", "error_message": "脱敏错误摘要",
+	"external_key": "Provider 内稳定 taxonomy term 标识", "metadata_json": "Provider term 元数据 JSON",
+	"source_revision": "生成当前投影的权威来源 revision", "usage_count": "term 在文章中的使用次数",
+	"revision": "最近成功发现的权威来源 revision", "complete": "快照是否为完整发现结果",
+	"last_error_code": "最近刷新失败的稳定错误码", "last_error_message": "最近刷新失败的脱敏说明",
+	"last_attempt_at": "最近刷新尝试时间（UTC）", "last_success_at": "最近成功刷新时间（UTC）",
+	"canonical_name": "term 的规范显示名称",
 }
 
 func ensureSchemaComments(ctx context.Context, db *sql.DB) error {

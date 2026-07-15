@@ -33,7 +33,11 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	if err := os.WriteFile(filepath.Join(vault, "Areas", "index.md"), []byte(article), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}))
+	refreshCalls := 0
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{AfterWorkspaceCreated: func(context.Context) (string, error) {
+		refreshCalls++
+		return "ready", nil
+	}})
 
 	session := httptest.NewRecorder()
 	handler.ServeHTTP(session, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/session", nil))
@@ -59,6 +63,9 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM articles WHERE title='真实扫描文章'`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("首次扫描未写入文章: count=%d err=%v", count, err)
+	}
+	if refreshCalls != 2 {
+		t.Fatalf("工作区创建后未触发 taxonomy 刷新: calls=%d", refreshCalls)
 	}
 	var articleID string
 	if err := db.QueryRow(`SELECT id FROM articles LIMIT 1`).Scan(&articleID); err != nil {

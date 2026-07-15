@@ -1,6 +1,7 @@
 package httptransport
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -22,9 +23,10 @@ import (
 
 // RuntimeOptions 提供运行期持久化目录和操作系统能力。
 type RuntimeOptions struct {
-	DataDir         string
-	DirectoryPicker dialog.DirectoryPicker
-	AssetTokenKey   []byte
+	DataDir               string
+	DirectoryPicker       dialog.DirectoryPicker
+	AssetTokenKey         []byte
+	AfterWorkspaceCreated func(context.Context) (string, error)
 }
 
 // NewRuntimeHandler 提供首次初始化和页面查询端点，并把领域命令交给核心 API。
@@ -41,16 +43,21 @@ func NewRuntimeHandler(db *sql.DB, core http.Handler, options ...RuntimeOptions)
 	if len(options) > 0 && len(options[0].AssetTokenKey) >= 32 {
 		assetTokenKey = append([]byte(nil), options[0].AssetTokenKey...)
 	}
-	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey}
+	var afterWorkspaceCreated func(context.Context) (string, error)
+	if len(options) > 0 {
+		afterWorkspaceCreated = options[0].AfterWorkspaceCreated
+	}
+	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey, afterWorkspaceCreated: afterWorkspaceCreated}
 	return localOnly(handler)
 }
 
 type runtimeHandler struct {
-	db              *sql.DB
-	core            http.Handler
-	dataDir         string
-	directoryPicker dialog.DirectoryPicker
-	assetTokenKey   []byte
+	db                    *sql.DB
+	core                  http.Handler
+	dataDir               string
+	directoryPicker       dialog.DirectoryPicker
+	assetTokenKey         []byte
+	afterWorkspaceCreated func(context.Context) (string, error)
 }
 
 func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -415,7 +422,17 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 	}
 	result, _ := json.Marshal(map[string]int{"indexed": report.Indexed, "failed": report.Failed})
 	_, _ = h.db.ExecContext(request.Context(), `UPDATE jobs SET state=?,progress=?,result_json=?,error_code=?,error_message=?,finished_at=?,updated_at=? WHERE id=?`, state, progress, string(result), nullableText(scanErr, "workspace.scan_failed"), nullableError(scanErr), now, now, jobID)
-	writeJSON(response, http.StatusCreated, map[string]any{"workspace": map[string]string{"id": workspaceID, "name": input.Name}, "job_id": jobID})
+	taxonomyState := "not_enabled"
+	if h.afterWorkspaceCreated != nil {
+		var refreshErr error
+		taxonomyState, refreshErr = h.afterWorkspaceCreated(request.Context())
+		if refreshErr != nil {
+			taxonomyState = "needs_attention"
+		} else if taxonomyState == "" {
+			taxonomyState = "not_enabled"
+		}
+	}
+	writeJSON(response, http.StatusCreated, map[string]any{"workspace": map[string]string{"id": workspaceID, "name": input.Name}, "job_id": jobID, "taxonomy_state": taxonomyState})
 }
 
 func scanInitialWorkspace(request *http.Request, sourceID, workspaceID, vault string, contentRoots, ignoredFolders, ignoredFileNames []string, db *sql.DB) (workspaceapp.ScanReport, error) {

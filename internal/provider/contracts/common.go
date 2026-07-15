@@ -100,6 +100,7 @@ type ConfigView struct {
 
 // ProviderRuntime 根据持久化实例构建已注册的类型化 Provider。
 type ProviderRuntime interface {
+	SupportsTaxonomy(providerType ProviderType) bool
 	BuildSource(ctx context.Context, ref ProviderRef, config ConfigView) (SourceProvider, error)
 	BuildAI(ctx context.Context, ref ProviderRef, config ConfigView) (AIProvider, error)
 	BuildPublish(ctx context.Context, ref ProviderRef, config ConfigView) (PublishProvider, error)

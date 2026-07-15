@@ -144,6 +144,11 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 			zap.Int("failed_count", report.Failed),
 		)
 	}
+	if snapshots, taxonomyErr := RefreshRecentTaxonomy(ctx, db, providerRuntime); taxonomyErr != nil {
+		logger.Warn("启动 taxonomy 刷新失败", zap.String("error_code", "taxonomy_refresh_failed"), zap.Error(taxonomyErr))
+	} else {
+		logger.Info("启动 taxonomy 刷新完成", zap.String("component", "taxonomy"), zap.Int("snapshot_count", len(snapshots)))
+	}
 	runner := newPublicationRunner(db, logger, providerRuntime)
 	if err := runner.Recover(ctx, time.Now().UTC().Add(-time.Minute)); err != nil {
 		logger.Error("恢复后台任务失败", zap.String("error_code", "job_recovery_failed"), zap.Error(err))
@@ -159,7 +164,16 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 		defer cancel()
 		_ = runner.Shutdown(shutdownCtx)
 	}()
-	api := httptransport.NewRuntimeHandler(db, httptransport.NewRouter(newDatabaseAPI(db)), httptransport.RuntimeOptions{DataDir: config.DataDir})
+	api := httptransport.NewRuntimeHandler(db, httptransport.NewRouter(newDatabaseAPI(db)), httptransport.RuntimeOptions{
+		DataDir: config.DataDir,
+		AfterWorkspaceCreated: func(refreshCtx context.Context) (string, error) {
+			snapshots, refreshErr := RefreshRecentTaxonomy(refreshCtx, db, providerRuntime)
+			if len(snapshots) == 0 && refreshErr == nil {
+				return "not_enabled", nil
+			}
+			return "ready", refreshErr
+		},
+	})
 	return runHTTPServer(ctx, config, logger, httptransport.NewApplicationHandler(api, assets))
 }
 
