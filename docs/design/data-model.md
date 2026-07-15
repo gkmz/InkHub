@@ -136,7 +136,7 @@ CREATE TABLE workspaces (
 CREATE TABLE sources (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id),
-  provider_type TEXT NOT NULL CHECK (provider_type = 'obsidian'),
+  provider_type TEXT NOT NULL,
   root_path TEXT NOT NULL,
   config_json TEXT NOT NULL DEFAULT '{}',
   last_scan_at TEXT,

@@ -31,6 +31,18 @@ type ResolvedAsset struct {
 	RemoteURL    string
 }
 
+// ResolveResource 将通用资源类型适配到 Obsidian 图片解析规则。
+func (p *Provider) ResolveResource(ctx context.Context, ref contracts.SourceRef, raw string, kind contracts.ResourceKind) (contracts.ResolvedResource, error) {
+	if kind != contracts.ResourceMarkdownImage && kind != contracts.ResourceWikiEmbed {
+		return contracts.ResolvedResource{}, fmt.Errorf("不支持的资源引用类型: %s", kind)
+	}
+	asset, err := p.ResolveAsset(ctx, ref, raw, AssetReferenceKind(kind))
+	if err != nil {
+		return contracts.ResolvedResource{}, err
+	}
+	return contracts.ResolvedResource{RelativePath: asset.RelativePath, AbsolutePath: asset.AbsolutePath, RemoteURL: asset.RemoteURL}, nil
+}
+
 // ResolveAsset 按 Obsidian 规则解析文章图片，并拒绝 Vault 外本地路径。
 func (p *Provider) ResolveAsset(ctx context.Context, ref contracts.SourceRef, raw string, kind AssetReferenceKind) (ResolvedAsset, error) {
 	if err := ctx.Err(); err != nil {

@@ -121,7 +121,7 @@ func (p *Provider) WriteMetadata(ctx context.Context, command contracts.Metadata
 		return contracts.SourceDocument{}, err
 	}
 	if current.Fingerprint != command.ExpectedFingerprint {
-		return contracts.SourceDocument{}, ErrSourceChanged
+		return contracts.SourceDocument{}, &contracts.ProviderError{Code: "obsidian.source_changed", Category: contracts.ErrorConflict, Message: "源文章已在外部修改", Cause: ErrSourceChanged}
 	}
 	content, err := applyMetadataPatch(current.RawFrontmatter, current.Body, command.Patch)
 	if err != nil {

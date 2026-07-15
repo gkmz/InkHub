@@ -253,15 +253,17 @@ func TestRunVersionDoesNotOpenWorkspace(t *testing.T) {
 
 ### 任务 6：Taxonomy、编辑检查与 SEO
 
+> Taxonomy 部分已由 `docs/plans/provider-runtime-taxonomy-plan.md` 的标准 Hugo Taxonomy Provider 和 SQLite 快照方案替代；以下旧私有 YAML 文件清单不再执行。
+
 **文件：**
-- 新建: `internal/app/taxonomy/{load.go,approve.go,govern.go}`
+- 新建: `internal/app/taxonomy/service.go`
 - 新建: `internal/app/editorial/{check.go,review.go}`
 - 新建: `internal/content/markdown/{parse.go,checks.go}`
 - 新建: matching `*_test.go`
-- 新建: `testdata/hugo/taxonomy/data/taxonomy.yaml`
+- 新建: `internal/provider/taxonomy/hugo/`
 
 **接口：**
-- 产出：`taxonomy.LoadAuthoritative`、`taxonomy.ApproveTerm`、`editorial.CheckArticle`、`editorial.ReviewArticle`。
+- 产出：`taxonomy.Service`、`contracts.TaxonomyProvider`、`editorial.CheckArticle`、`editorial.ReviewArticle`。
 
 - [ ] **步骤 1：编写失败的 taxonomy 与检查器测试**
 

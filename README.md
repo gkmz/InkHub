@@ -53,7 +53,7 @@ INKHUB_LOG_CONSOLE=true
 
 标准 frontmatter 字段：`id`、`title`、`description`、`tags`、`keywords`、`publish.category`、`publish.series`、`publish.slug` 和 `publish.cover`。
 
-Hugo 使用 staging、真实构建和原子替换，同一文章会稳定更新同一 page bundle。Taxonomy 以 Hugo `data/taxonomy.yaml` 为权威来源。
+Hugo 使用 staging、真实构建和原子替换，同一文章会稳定更新同一 page bundle。Taxonomy 以 Hugo 配置、文章 frontmatter 和 term 页面为权威来源，InkHub 在 SQLite 中保存最近成功快照。
 
 微信公众号提供 `InkHub Default` 和 `InkHub Minimal` 两个同规格模板。流程严格区分准备内容、复制格式化 HTML 和人工确认草稿；含本地图片的文章需要先配置图片托管。
 

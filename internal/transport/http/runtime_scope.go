@@ -12,7 +12,6 @@ import (
 
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/provider/source/folder"
-	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
 )
 
 type directoryInspectRequest struct {
@@ -147,7 +146,7 @@ func (h *runtimeHandler) saveContentScope(response http.ResponseWriter, request 
 		mapError(response, err)
 		return
 	}
-	report, err := scanInitialWorkspace(request, sourceID, workspaceID, root, scope.ContentRoots(), scope.IgnoredFolders(), scope.IgnoredFileNames(), h.db)
+	report, err := h.scanWorkspace(request.Context(), sourceID, workspaceID, configJSON)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -169,12 +168,13 @@ func (h *runtimeHandler) previewContentScope(response http.ResponseWriter, reque
 		writeError(response, http.StatusBadRequest, "workspace.scope_invalid", "内容目录规则无效")
 		return
 	}
-	var sourceID, root string
-	if err := h.db.QueryRowContext(request.Context(), `SELECT sources.id,sources.root_path FROM sources JOIN workspaces ON workspaces.id=sources.workspace_id ORDER BY workspaces.last_used_at DESC LIMIT 1`).Scan(&sourceID, &root); err != nil {
+	var sourceID string
+	if err := h.db.QueryRowContext(request.Context(), `SELECT sources.id FROM sources JOIN workspaces ON workspaces.id=sources.workspace_id ORDER BY workspaces.last_used_at DESC LIMIT 1`).Scan(&sourceID); err != nil {
 		mapError(response, ErrNotFound)
 		return
 	}
-	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: root, ContentRoots: scope.ContentRoots(), IgnoredFolders: scope.IgnoredFolders(), IgnoredFileNames: scope.IgnoredFileNames()})
+	configJSON, _ := json.Marshal(storedSourceScope{ContentRoots: scope.ContentRoots(), IgnoredFolders: scope.IgnoredFolders(), IgnoredFileNames: scope.IgnoredFileNames()})
+	source, err := h.buildSource(request.Context(), sourceID, configJSON)
 	if err != nil {
 		mapError(response, err)
 		return

@@ -37,7 +37,7 @@ func TestRuntimeHandlerRendersAndServesReferencedVaultImages(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := bytes.Repeat([]byte{1}, 32)
-	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{AssetTokenKey: key})
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{AssetTokenKey: key, SourceRuntime: testSourceRuntime(t)})
 	createBody := `{"name":"图片空间","vault_path":"` + filepath.ToSlash(vault) + `","content_roots":["Areas"],"ignored_folders":[],"wechat_template":"default","ai_enabled":false}`
 	create := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/workspaces", strings.NewReader(createBody))
 	create.Header.Set("Content-Type", "application/json")

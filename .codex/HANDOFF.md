@@ -25,8 +25,8 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 ## Done
 
 - 已完成产品定位和需求讨论。
-- 已创建并审核 PRD：`docs/PRD.md` 1.2。
-- 已创建架构设计：`docs/design/architecture.md` 1.1。
+- 已创建并审核 PRD：`docs/PRD.md` 1.6。
+- 已创建架构设计：`docs/design/architecture.md` 1.2。
 - 已创建并完成 reflection 审查：
   - `docs/design/data-model.md`。
   - `docs/design/provider-contracts.md`。
@@ -36,7 +36,7 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 - 架构设计包含：
   - 模块化单体和分层依赖。
   - Core、Application、Domain、Infrastructure、Transport 边界。
-  - Source、AI、Publish Provider Port 和 MVP 实现；Taxonomy Provider 是当前重构阶段。
+  - Source、AI、Publish、Taxonomy 四类 Provider Port 和 MVP 实现。
   - SQLite、任务、文件监听、原子写入和 Hugo staging。
   - AI、Hugo、微信完整数据流。
   - 微信模板安全、版本和仓库分发原则。
@@ -46,7 +46,7 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 
 ## Next
 
-任务 1 至任务 11 已完成实现、代码审查和全量验证。下一步按实施计划执行任务 12：React 基础、初始化与内容库。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁；每个任务完成后立即提交。
+Provider 抽象重构已经完成。下一步设计并实现类目管理页面：从 SQLite 快照立即展示，手工刷新调用 Taxonomy Service，新增 term 先展示 Hugo 原生变更再应用。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁；每个阶段完成后立即提交。
 
 ## Important Decisions
 
@@ -59,6 +59,8 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 - 模板使用 target/format/renderer/compatibility 通用模型；MVP 的 `InkHub Default` 和 `InkHub Minimal` 目标均为 `wechat-html`。
 - 现有 Hugo 导入脚本不作为 InkHub 运行依赖；Hugo 逻辑归入内部 Hugo Publish Provider。
 - 不建立动态插件系统，Provider 先编译期注册。
+- Application 和 Transport 的文章运行链路通过 Provider Runtime 构建 Source/Publish/Taxonomy；具体工厂只在 bootstrap 注册。
+- `markdown-folder` 只读 Source 用于验证扩展契约，MVP UI 暂不开放配置入口。
 
 ## Files
 
@@ -68,19 +70,16 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 
 ## Verification
 
-- 已对 PRD 和架构文档运行 `git diff --check`，无空白错误。
-- 文档仅新增 `docs/`，尚未提交 Git。
+- Provider Runtime、Hugo 标准 taxonomy、SQLite 快照、模板 target 和第二 Source 均有单元测试。
+- 每阶段已运行全量 `go test ./...`、`go vet ./...` 和相关 race 测试。
 - 当前项目实际路径：`/Users/hank/workspace/mine/InkHub`。
-- 旧项目原始代码仍在仓库中，尚未开始迁移实现。
 
 ## Risks / Open Questions
 
-- SQLite 具体驱动尚未确定；优先选择不依赖 CGO 的实现。
-- Hugo staging 的完整站点构建策略需要在 Provider 设计中通过临时 fixture 验证。
 - 微信 CSS 允许列表和内联结果需要用真实公众号后台粘贴验证。
 - Keychain 在 macOS/Linux/Windows 的统一实现需要在平台层确定降级策略。
 - 模板索引默认使用 `https://raw.githubusercontent.com/gkmz/InkHub/main/templates/index.json`；MVP 由当前仓库 PR 和 CI 维护。
 
 ## Fresh Session Prompt
 
-请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、四份专项设计、`docs/plans/mvp-implementation-plan.md` 和本 handoff。不要依赖旧聊天历史；开始前先运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`，并从实施计划 Task 1 开始。
+请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计、`docs/plans/provider-runtime-taxonomy-plan.md` 和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象已完成，从类目管理页面设计开始。

@@ -30,8 +30,16 @@ func TestOpenMigratesEmptyDatabaseAndIsRepeatable(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatalf("query migration version: %v", err)
 	}
-	if version != 4 {
-		t.Fatalf("migration version = %d, want 4", version)
+	if version != 5 {
+		t.Fatalf("migration version = %d, want 5", version)
+	}
+}
+
+func TestSchemaAllowsAdditionalSourceProvider(t *testing.T) {
+	t.Parallel()
+	db := openTestDB(t)
+	if _, err := db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','test','/tmp','2026-01-01','2026-01-01','2026-01-01'); INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES('s1','w1','markdown-folder','/tmp/markdown','2026-01-01','2026-01-01'); INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,indexed_at,created_at,updated_at) VALUES('a1','w1','s1','','one.md','2026-01-01','2026-01-01','2026-01-01')`); err != nil {
+		t.Fatalf("新增 Source Provider 无法进入数据主链路: %v", err)
 	}
 }
 

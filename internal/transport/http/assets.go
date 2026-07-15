@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/gkmz/InkHub/internal/provider/contracts"
-	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
@@ -37,10 +36,14 @@ func newAssetTokenKey() []byte {
 	return key
 }
 
-func (h *runtimeHandler) renderArticlePreview(ctx context.Context, source *obsidian.Provider, document contracts.SourceDocument, articleID string) (string, error) {
+func (h *runtimeHandler) renderArticlePreview(ctx context.Context, source contracts.SourceProvider, document contracts.SourceDocument, articleID string) (string, error) {
+	resolver, canResolve := source.(contracts.ResourceResolver)
 	body := wikiImagePattern.ReplaceAllStringFunc(document.Body, func(match string) string {
+		if !canResolve {
+			return "![图片不可用]()"
+		}
 		reference := wikiImagePattern.FindStringSubmatch(match)[1]
-		asset, err := source.ResolveAsset(ctx, document.Ref, reference, obsidian.AssetWikiEmbed)
+		asset, err := resolver.ResolveResource(ctx, document.Ref, reference, contracts.ResourceWikiEmbed)
 		if err != nil {
 			return "![图片不可用]()"
 		}
@@ -61,7 +64,10 @@ func (h *runtimeHandler) renderArticlePreview(ctx context.Context, source *obsid
 		if strings.HasPrefix(destination, "/api/v1/articles/") {
 			return ast.WalkContinue, nil
 		}
-		asset, err := source.ResolveAsset(ctx, document.Ref, destination, obsidian.AssetMarkdownImage)
+		if !canResolve {
+			return ast.WalkContinue, nil
+		}
+		asset, err := resolver.ResolveResource(ctx, document.Ref, destination, contracts.ResourceMarkdownImage)
 		if err != nil {
 			image.Destination = nil
 			return ast.WalkContinue, nil
@@ -128,13 +134,13 @@ func (h *runtimeHandler) articleAsset(response http.ResponseWriter, request *htt
 		writeError(response, http.StatusNotFound, "resource.not_found", "请求的资源不存在")
 		return
 	}
-	var sourceID, relative, fingerprint, root string
-	err = h.db.QueryRowContext(request.Context(), `SELECT articles.source_id,articles.relative_path,articles.source_fingerprint,sources.root_path FROM articles JOIN sources ON sources.id=articles.source_id WHERE articles.id=? AND articles.deleted_at IS NULL`, payload.ArticleID).Scan(&sourceID, &relative, &fingerprint, &root)
+	var sourceID, relative, fingerprint string
+	err = h.db.QueryRowContext(request.Context(), `SELECT articles.source_id,articles.relative_path,articles.source_fingerprint FROM articles WHERE articles.id=? AND articles.deleted_at IS NULL`, payload.ArticleID).Scan(&sourceID, &relative, &fingerprint)
 	if err != nil || fingerprint != payload.Fingerprint {
 		writeError(response, http.StatusNotFound, "resource.not_found", "请求的资源不存在")
 		return
 	}
-	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: root})
+	source, err := h.buildSource(request.Context(), sourceID, nil)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -144,7 +150,12 @@ func (h *runtimeHandler) articleAsset(response http.ResponseWriter, request *htt
 		writeError(response, http.StatusNotFound, "resource.not_found", "请求的资源不存在")
 		return
 	}
-	asset, err := source.ResolveAsset(request.Context(), document.Ref, payload.Relative, obsidian.AssetWikiEmbed)
+	resolver, ok := source.(contracts.ResourceResolver)
+	if !ok {
+		writeError(response, http.StatusNotFound, "resource.not_found", "请求的资源不存在")
+		return
+	}
+	asset, err := resolver.ResolveResource(request.Context(), document.Ref, payload.Relative, contracts.ResourceWikiEmbed)
 	if err != nil || asset.AbsolutePath == "" {
 		writeError(response, http.StatusNotFound, "resource.not_found", "请求的资源不存在")
 		return
@@ -167,9 +178,13 @@ func (h *runtimeHandler) articleAsset(response http.ResponseWriter, request *htt
 	_, _ = response.Write(content)
 }
 
-func articleReferencesAsset(ctx context.Context, source *obsidian.Provider, document contracts.SourceDocument, relative string) bool {
+func articleReferencesAsset(ctx context.Context, source contracts.SourceProvider, document contracts.SourceDocument, relative string) bool {
+	resolver, ok := source.(contracts.ResourceResolver)
+	if !ok {
+		return false
+	}
 	for _, match := range wikiImagePattern.FindAllStringSubmatch(document.Body, -1) {
-		if asset, err := source.ResolveAsset(ctx, document.Ref, match[1], obsidian.AssetWikiEmbed); err == nil && asset.RelativePath == relative {
+		if asset, err := resolver.ResolveResource(ctx, document.Ref, match[1], contracts.ResourceWikiEmbed); err == nil && asset.RelativePath == relative {
 			return true
 		}
 	}
@@ -179,7 +194,7 @@ func articleReferencesAsset(ctx context.Context, source *obsidian.Provider, docu
 	_ = ast.Walk(node, func(current ast.Node, entering bool) (ast.WalkStatus, error) {
 		image, ok := current.(*ast.Image)
 		if entering && ok {
-			if asset, err := source.ResolveAsset(ctx, document.Ref, string(image.Destination), obsidian.AssetMarkdownImage); err == nil && asset.RelativePath == relative {
+			if asset, err := resolver.ResolveResource(ctx, document.Ref, string(image.Destination), contracts.ResourceMarkdownImage); err == nil && asset.RelativePath == relative {
 				found = true
 			}
 		}

@@ -55,6 +55,26 @@ type ResourceRef struct {
 	Kind     string
 }
 
+// ResourceResolver 是 Source Provider 可选实现的本地/远程资源解析能力。
+type ResourceResolver interface {
+	ResolveResource(ctx context.Context, ref SourceRef, raw string, kind ResourceKind) (ResolvedResource, error)
+}
+
+// ResourceKind 描述 Source 方言中的资源引用语义。
+type ResourceKind string
+
+const (
+	ResourceMarkdownImage ResourceKind = "markdown"
+	ResourceWikiEmbed     ResourceKind = "wiki"
+)
+
+// ResolvedResource 是经过 Source 授权边界校验的资源定位结果。
+type ResolvedResource struct {
+	RelativePath string
+	AbsolutePath string
+	RemoteURL    string
+}
+
 // Diagnostic 描述解析或扫描发现的问题。
 type Diagnostic struct {
 	Code     string

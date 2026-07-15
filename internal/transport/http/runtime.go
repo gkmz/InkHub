@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,7 +16,6 @@ import (
 	"github.com/gkmz/InkHub/internal/platform/dialog"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/provider/source/folder"
-	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
 )
 
@@ -27,6 +25,7 @@ type RuntimeOptions struct {
 	DirectoryPicker       dialog.DirectoryPicker
 	AssetTokenKey         []byte
 	AfterWorkspaceCreated func(context.Context) (string, error)
+	SourceRuntime         contracts.ProviderRuntime
 }
 
 // NewRuntimeHandler 提供首次初始化和页面查询端点，并把领域命令交给核心 API。
@@ -44,10 +43,12 @@ func NewRuntimeHandler(db *sql.DB, core http.Handler, options ...RuntimeOptions)
 		assetTokenKey = append([]byte(nil), options[0].AssetTokenKey...)
 	}
 	var afterWorkspaceCreated func(context.Context) (string, error)
+	var sourceRuntime contracts.ProviderRuntime
 	if len(options) > 0 {
 		afterWorkspaceCreated = options[0].AfterWorkspaceCreated
+		sourceRuntime = options[0].SourceRuntime
 	}
-	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey, afterWorkspaceCreated: afterWorkspaceCreated}
+	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey, afterWorkspaceCreated: afterWorkspaceCreated, sourceRuntime: sourceRuntime}
 	return localOnly(handler)
 }
 
@@ -58,6 +59,7 @@ type runtimeHandler struct {
 	directoryPicker       dialog.DirectoryPicker
 	assetTokenKey         []byte
 	afterWorkspaceCreated func(context.Context) (string, error)
+	sourceRuntime         contracts.ProviderRuntime
 }
 
 func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -168,19 +170,19 @@ func (h *runtimeHandler) writeMetadata(response http.ResponseWriter, request *ht
 		writeError(response, http.StatusBadRequest, "request.invalid", "元数据请求无效")
 		return
 	}
-	var workspaceID, sourceID, stableID, relative, fingerprint, root string
-	err := h.db.QueryRowContext(request.Context(), `SELECT articles.workspace_id,articles.source_id,articles.stable_id,articles.relative_path,articles.source_fingerprint,sources.root_path FROM articles JOIN sources ON sources.id=articles.source_id WHERE articles.id=?`, articleID).Scan(&workspaceID, &sourceID, &stableID, &relative, &fingerprint, &root)
+	var workspaceID, sourceID, stableID, relative, fingerprint string
+	err := h.db.QueryRowContext(request.Context(), `SELECT articles.workspace_id,articles.source_id,articles.stable_id,articles.relative_path,articles.source_fingerprint FROM articles WHERE articles.id=?`, articleID).Scan(&workspaceID, &sourceID, &stableID, &relative, &fingerprint)
 	if err != nil {
 		mapError(response, ErrNotFound)
 		return
 	}
-	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: root})
+	source, err := h.buildSource(request.Context(), sourceID, nil)
 	if err != nil {
 		mapError(response, err)
 		return
 	}
 	_, err = source.WriteMetadata(request.Context(), contracts.MetadataWriteCommand{Ref: contracts.SourceRef{SourceID: sourceID, RelativePath: relative, StableID: stableID}, ExpectedFingerprint: fingerprint, Patch: contracts.MetadataPatch{Title: &input.Metadata.Title, Description: &input.Metadata.Description, Category: &input.Metadata.Category, Series: &input.Metadata.Series, Tags: &input.Metadata.Tags, Keywords: &input.Metadata.Keywords, Slug: &input.Metadata.Slug, Cover: &input.Metadata.Cover}})
-	if errors.Is(err, obsidian.ErrSourceChanged) {
+	if sourceConflict(err) {
 		mapError(response, ErrStaleContent)
 		return
 	}
@@ -227,12 +229,7 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 		mapError(response, ErrNotFound)
 		return
 	}
-	var root string
-	if err := h.db.QueryRowContext(request.Context(), `SELECT root_path FROM sources WHERE id=?`, sourceID).Scan(&root); err != nil {
-		mapError(response, err)
-		return
-	}
-	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: root})
+	source, err := h.buildSource(request.Context(), sourceID, nil)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -414,7 +411,7 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 		mapError(response, err)
 		return
 	}
-	report, scanErr := scanInitialWorkspace(request, sourceID, workspaceID, vault, scope.ContentRoots(), scope.IgnoredFolders(), scope.IgnoredFileNames(), h.db)
+	report, scanErr := h.scanWorkspace(request.Context(), sourceID, workspaceID, nil)
 	state := "succeeded"
 	progress := 100
 	if scanErr != nil {
@@ -435,12 +432,12 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 	writeJSON(response, http.StatusCreated, map[string]any{"workspace": map[string]string{"id": workspaceID, "name": input.Name}, "job_id": jobID, "taxonomy_state": taxonomyState})
 }
 
-func scanInitialWorkspace(request *http.Request, sourceID, workspaceID, vault string, contentRoots, ignoredFolders, ignoredFileNames []string, db *sql.DB) (workspaceapp.ScanReport, error) {
-	source, err := obsidian.New(obsidian.Config{SourceID: sourceID, Root: vault, ContentRoots: contentRoots, IgnoredFolders: ignoredFolders, IgnoredFileNames: ignoredFileNames})
+func (h *runtimeHandler) scanWorkspace(ctx context.Context, sourceID, workspaceID string, overrideConfig []byte) (workspaceapp.ScanReport, error) {
+	source, err := h.buildSource(ctx, sourceID, overrideConfig)
 	if err != nil {
 		return workspaceapp.ScanReport{}, err
 	}
-	return workspaceapp.ScanWorkspace(request.Context(), source, repository.NewArticleRepository(db), workspaceapp.ScanOptions{WorkspaceID: workspaceID, SourceID: sourceID}, contracts.ScanCursor{})
+	return workspaceapp.ScanWorkspace(ctx, source, repository.NewArticleRepository(h.db), workspaceapp.ScanOptions{WorkspaceID: workspaceID, SourceID: sourceID}, contracts.ScanCursor{})
 }
 
 func nullableText(err error, value string) any {

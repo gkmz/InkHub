@@ -9,10 +9,11 @@ import (
 type ProviderType string
 
 const (
-	ProviderObsidian ProviderType = "obsidian"
-	ProviderOpenAI   ProviderType = "openai-compatible"
-	ProviderHugo     ProviderType = "hugo"
-	ProviderWeChat   ProviderType = "wechat"
+	ProviderObsidian       ProviderType = "obsidian"
+	ProviderMarkdownFolder ProviderType = "markdown-folder"
+	ProviderOpenAI         ProviderType = "openai-compatible"
+	ProviderHugo           ProviderType = "hugo"
+	ProviderWeChat         ProviderType = "wechat"
 )
 
 // ProviderRef 标识一个已配置的 Provider 实例。
