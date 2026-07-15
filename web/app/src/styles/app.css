@@ -185,9 +185,9 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .metadata-form > label, .field-pair label { display: grid; gap: 6px; margin-bottom: 13px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .metadata-form input, .metadata-form textarea, .metadata-form select { width: 100%; border: 1px solid var(--line); border-radius: 4px; padding: 8px 9px; background: var(--surface); color: var(--ink); font-size: 12px; resize: vertical; }
 .field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.category-field { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 34px; align-items: start; gap: 5px; }
-.category-field label { min-width: 0; margin-bottom: 0; }.category-field button { width: 34px; height: 34px; align-self: end; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--action); cursor: pointer; }
-.category-field small { grid-column: 1 / -1; color: var(--muted); font-size: 9px; font-weight: 500; }
+.taxonomy-field { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 5px; }.taxonomy-field.has-create { grid-template-columns: minmax(0, 1fr) 34px; }
+.taxonomy-field label { min-width: 0; margin-bottom: 0; }.taxonomy-field button { width: 34px; height: 34px; align-self: end; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--action); cursor: pointer; }
+.taxonomy-field small { grid-column: 1 / -1; color: var(--muted); font-size: 9px; font-weight: 500; }
 .compact-button { width: 100%; min-height: 38px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 12px; }
 .inline-warning { display: grid; gap: 5px; margin-bottom: 14px; padding: 11px; border-left: 3px solid var(--warning); background: #fff8ee; font-size: 11px; }
 .inline-warning span { color: var(--muted); }
@@ -382,6 +382,7 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 @media (max-width: 420px) {
   .topbar { padding-inline: 14px; }
   #main-content { padding-inline: 12px; }
+  .metadata-form .field-pair { grid-template-columns: 1fr; }
   .template-options { grid-template-columns: 1fr; }
   .template-preview { height: 88px; }
   .button-row { align-items: stretch; flex-direction: column-reverse; }
