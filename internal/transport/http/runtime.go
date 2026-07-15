@@ -93,6 +93,14 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.refreshTaxonomyOverview(response, request)
 		}
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/taxonomy/terms/preview":
+		if validateWriteRequest(response, request) {
+			h.previewTaxonomyTerm(response, request)
+		}
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/taxonomy/terms/apply":
+		if validateWriteRequest(response, request) {
+			h.applyTaxonomyTerm(response, request)
+		}
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/settings":
 		h.settings(response, request)
 	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/content-scope":

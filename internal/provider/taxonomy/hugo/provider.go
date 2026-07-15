@@ -126,14 +126,14 @@ func (p *Provider) Discover(ctx context.Context, cursor contracts.TaxonomyCursor
 // PlanChange 为新 term 生成标准 Hugo branch bundle 变更，不写文件。
 func (p *Provider) PlanChange(ctx context.Context, command contracts.TaxonomyCommand) (contracts.TaxonomyChangeSet, error) {
 	if command.Kind != contracts.TaxonomyCreateTerm {
-		return contracts.TaxonomyChangeSet{}, fmt.Errorf("Hugo MVP 只支持创建 taxonomy term")
+		return contracts.TaxonomyChangeSet{}, taxonomyError("hugo.taxonomy_command_unsupported", "Hugo 当前只支持创建类目", contracts.ErrorValidation, nil)
 	}
 	current, err := p.Discover(ctx, contracts.TaxonomyCursor{})
 	if err != nil {
 		return contracts.TaxonomyChangeSet{}, err
 	}
 	if command.ExpectedRevision == "" || command.ExpectedRevision != current.Revision {
-		return contracts.TaxonomyChangeSet{}, fmt.Errorf("Hugo taxonomy revision 已变化")
+		return contracts.TaxonomyChangeSet{}, taxonomyError("hugo.taxonomy_revision_changed", "Hugo 类目已在外部变化，请刷新后重试", contracts.ErrorConflict, nil)
 	}
 	mappings, contentDir, _, _, err := p.loadMappings()
 	if err != nil {
@@ -141,11 +141,11 @@ func (p *Provider) PlanChange(ctx context.Context, command contracts.TaxonomyCom
 	}
 	plural, exists := mappings[command.Term.Kind]
 	if !exists || !safeTermKey(command.Term.Key) || strings.TrimSpace(command.Term.Name) == "" {
-		return contracts.TaxonomyChangeSet{}, fmt.Errorf("Hugo taxonomy term 无效")
+		return contracts.TaxonomyChangeSet{}, taxonomyError("hugo.taxonomy_term_invalid", "Hugo 类目内容无效", contracts.ErrorValidation, nil)
 	}
 	for _, term := range current.Terms {
 		if term.Kind == command.Term.Kind && term.Key == strings.ToLower(command.Term.Key) {
-			return contracts.TaxonomyChangeSet{}, fmt.Errorf("Hugo taxonomy term 已存在")
+			return contracts.TaxonomyChangeSet{}, taxonomyError("hugo.taxonomy_term_exists", "Hugo 类目已存在", contracts.ErrorConflict, nil)
 		}
 	}
 	frontmatter := struct {
@@ -177,7 +177,7 @@ func (p *Provider) ApplyChange(ctx context.Context, change contracts.TaxonomyCha
 		return contracts.TaxonomySnapshot{}, err
 	}
 	if change.ExpectedRevision == "" || current.Revision != change.ExpectedRevision {
-		return contracts.TaxonomySnapshot{}, fmt.Errorf("Hugo taxonomy 已被外部修改")
+		return contracts.TaxonomySnapshot{}, taxonomyError("hugo.taxonomy_revision_changed", "Hugo 类目已在外部变化，请刷新后重试", contracts.ErrorConflict, nil)
 	}
 	fileChange := change.Files[0]
 	target, err := p.resolveChangePath(fileChange.RelativePath)
@@ -207,6 +207,10 @@ func (p *Provider) ApplyChange(ctx context.Context, change contracts.TaxonomyCha
 		return contracts.TaxonomySnapshot{}, err
 	}
 	return p.Discover(ctx, contracts.TaxonomyCursor{})
+}
+
+func taxonomyError(code, message string, category contracts.ErrorCategory, cause error) *contracts.ProviderError {
+	return &contracts.ProviderError{Code: code, Message: message, Category: category, Cause: cause}
 }
 
 // Watch 轮询权威 revision，并在变化时通知 Application 重新发现。

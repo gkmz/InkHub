@@ -1,13 +1,16 @@
 package httptransport
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
 
+	appTaxonomy "github.com/gkmz/InkHub/internal/app/taxonomy"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
 )
@@ -18,6 +21,22 @@ type taxonomyTermView struct {
 	Name       string            `json:"name"`
 	UsageCount int               `json:"usage_count"`
 	Metadata   map[string]string `json:"metadata"`
+}
+
+type taxonomyTermCommandRequest struct {
+	ProviderID       string   `json:"provider_id"`
+	Kind             string   `json:"kind"`
+	Key              string   `json:"key"`
+	Name             string   `json:"name"`
+	Description      string   `json:"description"`
+	Aliases          []string `json:"aliases"`
+	ExpectedRevision string   `json:"expected_revision"`
+}
+
+type taxonomyFileChangeView struct {
+	RelativePath string `json:"relative_path"`
+	Before       string `json:"before"`
+	After        string `json:"after"`
 }
 
 type taxonomyOverviewView struct {
@@ -54,6 +73,112 @@ func (h *runtimeHandler) refreshTaxonomyOverview(response http.ResponseWriter, r
 		return
 	}
 	h.taxonomyOverview(response, request)
+}
+
+func (h *runtimeHandler) previewTaxonomyTerm(response http.ResponseWriter, request *http.Request) {
+	input, command, ok := decodeTaxonomyTermCommand(response, request)
+	if !ok {
+		return
+	}
+	_, ref, provider, err := h.configuredTaxonomyProvider(request.Context(), input.ProviderID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			mapError(response, ErrNotFound)
+		} else {
+			writeTaxonomyError(response, err)
+		}
+		return
+	}
+	change, err := appTaxonomy.NewService(repository.NewTaxonomyRepository(h.db), time.Now).PlanChange(request.Context(), ref, provider, command)
+	if err != nil {
+		writeTaxonomyError(response, err)
+		return
+	}
+	files := make([]taxonomyFileChangeView, 0, len(change.Files))
+	for _, file := range change.Files {
+		files = append(files, taxonomyFileChangeView{RelativePath: file.RelativePath, Before: file.Before, After: file.After})
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"provider_id": ref.ID, "expected_revision": change.ExpectedRevision, "files": files})
+}
+
+func (h *runtimeHandler) applyTaxonomyTerm(response http.ResponseWriter, request *http.Request) {
+	input, command, ok := decodeTaxonomyTermCommand(response, request)
+	if !ok {
+		return
+	}
+	workspaceID, ref, provider, err := h.configuredTaxonomyProvider(request.Context(), input.ProviderID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			mapError(response, ErrNotFound)
+		} else {
+			writeTaxonomyError(response, err)
+		}
+		return
+	}
+	if _, err := appTaxonomy.NewService(repository.NewTaxonomyRepository(h.db), time.Now).ApplyChange(request.Context(), workspaceID, ref, provider, command); err != nil {
+		writeTaxonomyError(response, err)
+		return
+	}
+	h.taxonomyOverview(response, request)
+}
+
+func decodeTaxonomyTermCommand(response http.ResponseWriter, request *http.Request) (taxonomyTermCommandRequest, contracts.TaxonomyCommand, bool) {
+	var input taxonomyTermCommandRequest
+	if decodeJSON(request, &input) != nil || input.ProviderID == "" || input.Kind == "" || input.Name == "" || input.ExpectedRevision == "" || len(input.Name) > 160 || len(input.Key) > 160 || len(input.Description) > 1000 || len(input.Aliases) > 20 {
+		writeError(response, http.StatusBadRequest, "taxonomy.command_invalid", "类目变更内容无效")
+		return input, contracts.TaxonomyCommand{}, false
+	}
+	for index, alias := range input.Aliases {
+		input.Aliases[index] = strings.TrimSpace(alias)
+		if input.Aliases[index] == "" || len(input.Aliases[index]) > 160 || strings.ContainsAny(alias, "\r\n") {
+			writeError(response, http.StatusBadRequest, "taxonomy.command_invalid", "类目别名无效")
+			return input, contracts.TaxonomyCommand{}, false
+		}
+	}
+	input.Key = strings.TrimSpace(input.Key)
+	if input.Key == "" {
+		input.Key = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(input.Name), " ", "-"))
+	}
+	metadata := map[string]string{}
+	if description := strings.TrimSpace(input.Description); description != "" {
+		metadata["description"] = description
+	}
+	if len(input.Aliases) > 0 {
+		metadata["aliases"] = strings.Join(input.Aliases, "\n")
+	}
+	command := contracts.TaxonomyCommand{Kind: contracts.TaxonomyCreateTerm, ExpectedRevision: input.ExpectedRevision, Term: contracts.TaxonomyTerm{Kind: input.Kind, Key: input.Key, Name: strings.TrimSpace(input.Name), CanonicalName: strings.TrimSpace(input.Name), Metadata: metadata}}
+	return input, command, true
+}
+
+func (h *runtimeHandler) configuredTaxonomyProvider(ctx context.Context, providerID string) (string, contracts.ProviderRef, contracts.TaxonomyProvider, error) {
+	if h.providerRuntime == nil {
+		return "", contracts.ProviderRef{}, nil, ErrNotFound
+	}
+	var workspaceID, providerType, configJSON string
+	err := h.db.QueryRowContext(ctx, `SELECT provider_instances.workspace_id,provider_instances.provider_type,provider_instances.config_json FROM provider_instances JOIN workspaces ON workspaces.id=provider_instances.workspace_id WHERE provider_instances.id=? AND provider_instances.enabled=1 AND workspaces.id=(SELECT id FROM workspaces ORDER BY last_used_at DESC LIMIT 1)`, providerID).Scan(&workspaceID, &providerType, &configJSON)
+	if err != nil || !h.providerRuntime.SupportsTaxonomy(contracts.ProviderType(providerType)) {
+		return "", contracts.ProviderRef{}, nil, ErrNotFound
+	}
+	view, err := taxonomyProviderConfigView([]byte(configJSON))
+	if err != nil {
+		return "", contracts.ProviderRef{}, nil, err
+	}
+	ref := contracts.ProviderRef{ID: providerID, Type: contracts.ProviderType(providerType)}
+	provider, err := h.providerRuntime.BuildTaxonomy(ctx, ref, view)
+	return workspaceID, ref, provider, err
+}
+
+func writeTaxonomyError(response http.ResponseWriter, err error) {
+	var providerErr *contracts.ProviderError
+	if errors.As(err, &providerErr) {
+		if providerErr.Category == contracts.ErrorConflict {
+			writeError(response, http.StatusConflict, providerErr.Code, providerErr.Message)
+			return
+		}
+		writeError(response, http.StatusUnprocessableEntity, providerErr.Code, providerErr.Message)
+		return
+	}
+	writeError(response, http.StatusUnprocessableEntity, "taxonomy.change_failed", "类目变更失败，请检查 Hugo 配置")
 }
 
 func (h *runtimeHandler) loadTaxonomyOverview(request *http.Request) (taxonomyOverviewView, error) {

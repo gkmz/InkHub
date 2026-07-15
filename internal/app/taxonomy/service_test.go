@@ -35,6 +35,26 @@ func TestRefreshFailureKeepsCachedSnapshotAndRecordsDiagnostic(t *testing.T) {
 	}
 }
 
+func TestPlanAndApplyChangePersistProviderSnapshot(t *testing.T) {
+	t.Parallel()
+	ref := contracts.ProviderRef{ID: "h1", Type: contracts.ProviderHugo}
+	store := &memoryStore{}
+	provider := &fakeProvider{
+		change:  contracts.TaxonomyChangeSet{ProviderRef: ref, ExpectedRevision: "r1", Files: []contracts.TaxonomyFileChange{{RelativePath: "content/categories/go/_index.md", After: "---\ntitle: Go\n---\n"}}},
+		applied: contracts.TaxonomySnapshot{ProviderRef: ref, Revision: "r2", Complete: true, Terms: []contracts.TaxonomyTerm{{Kind: "category", Key: "go", Name: "Go", CanonicalName: "Go"}}},
+	}
+	service := NewService(store, time.Now)
+	command := contracts.TaxonomyCommand{Kind: contracts.TaxonomyCreateTerm, ExpectedRevision: "r1", Term: contracts.TaxonomyTerm{Kind: "category", Key: "go", Name: "Go"}}
+	change, err := service.PlanChange(context.Background(), ref, provider, command)
+	if err != nil || len(change.Files) != 1 {
+		t.Fatalf("规划 taxonomy 变更: change=%+v err=%v", change, err)
+	}
+	snapshot, err := service.ApplyChange(context.Background(), "w1", ref, provider, command)
+	if err != nil || !store.replaced || snapshot.Revision != "r2" || provider.planCalls != 2 || provider.applyCalls != 1 {
+		t.Fatalf("应用 taxonomy 变更: snapshot=%+v err=%v store=%+v provider=%+v", snapshot, err, store, provider)
+	}
+}
+
 type memoryStore struct {
 	snapshot    contracts.TaxonomySnapshot
 	found       bool
@@ -60,23 +80,29 @@ func (s *memoryStore) MarkRefreshFailed(_ context.Context, _, _, code, _ string,
 }
 
 type fakeProvider struct {
-	snapshot contracts.TaxonomySnapshot
-	err      error
-	cursor   contracts.TaxonomyCursor
+	snapshot   contracts.TaxonomySnapshot
+	err        error
+	cursor     contracts.TaxonomyCursor
+	change     contracts.TaxonomyChangeSet
+	applied    contracts.TaxonomySnapshot
+	planCalls  int
+	applyCalls int
 }
 
 func (p *fakeProvider) Descriptor() contracts.TaxonomyDescriptor {
-	return contracts.TaxonomyDescriptor{Descriptor: contracts.Descriptor{Type: contracts.ProviderHugo}}
+	return contracts.TaxonomyDescriptor{Descriptor: contracts.Descriptor{Type: contracts.ProviderHugo}, Writable: true}
 }
 func (*fakeProvider) Validate(context.Context) error { return nil }
 func (p *fakeProvider) Discover(_ context.Context, cursor contracts.TaxonomyCursor) (contracts.TaxonomySnapshot, error) {
 	p.cursor = cursor
 	return p.snapshot, p.err
 }
-func (*fakeProvider) PlanChange(context.Context, contracts.TaxonomyCommand) (contracts.TaxonomyChangeSet, error) {
-	return contracts.TaxonomyChangeSet{}, nil
+func (p *fakeProvider) PlanChange(context.Context, contracts.TaxonomyCommand) (contracts.TaxonomyChangeSet, error) {
+	p.planCalls++
+	return p.change, nil
 }
-func (*fakeProvider) ApplyChange(context.Context, contracts.TaxonomyChangeSet) (contracts.TaxonomySnapshot, error) {
-	return contracts.TaxonomySnapshot{}, nil
+func (p *fakeProvider) ApplyChange(context.Context, contracts.TaxonomyChangeSet) (contracts.TaxonomySnapshot, error) {
+	p.applyCalls++
+	return p.applied, nil
 }
 func (*fakeProvider) Watch(context.Context, chan<- contracts.TaxonomyChange) error { return nil }
