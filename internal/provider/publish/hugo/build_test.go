@@ -27,7 +27,7 @@ func TestCLIBuilderBuildsPreparedAndDeliveredSite(t *testing.T) {
 		t.Fatalf("创建 Hugo Provider: %v", err)
 	}
 	input := contracts.PublishInput{
-		OperationID: "integration_1", ContentHash: "hash-integration", Body: "这是真实 Hugo 构建正文。",
+		OperationID: "integration_1", ContentHash: "hash-integration", TargetSection: "posts", Body: "这是真实 Hugo 构建正文。",
 		Article: article.Article{
 			StableID: "article_INTEGRATION", RelativePath: "集成.md", Title: "集成测试",
 			Category: "AI应用开发", Tags: []string{"go"}, Slug: "integration-test",

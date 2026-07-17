@@ -36,18 +36,22 @@ const demoAPI: Plugin = {
       else if (/^\/articles\/[^/]+$/.test(url.pathname)) body = demoArticle;
       else if (/^\/articles\/[^/]+\/metadata$/.test(url.pathname)) body = demoArticle;
       else if (/^\/articles\/[^/]+\/review$/.test(url.pathname)) body = { state: "approved" };
+      else if (/^\/articles\/[^/]+\/hugo-sections$/.test(url.pathname)) body = { sections: [{ name: "notes", article_count: 12 }, { name: "posts", article_count: 28 }], existing_section: "", selection_locked: false };
+      else if (/^\/articles\/[^/]+\/hugo-previews$/.test(url.pathname)) body = { id: "preview-demo", job_id: "preview-demo", state: "queued" };
+      else if (url.pathname === "/hugo-previews/preview-demo") body = { id: "preview-demo", content_hash: "demo-current-version", section: "posts", target_path: "content/posts/wechat-template-design", change: "added", files: [{ relative_path: "index.md", media_type: "text/markdown", size: 1842 }], diagnostics: [{ code: "hugo.build_ready", level: "passed", message: "Hugo staging 构建通过" }], state: "ready", job_id: "preview-demo" };
+      else if (url.pathname === "/hugo-previews/preview-demo/confirm") body = { job_id: "delivery-demo", state: "queued" };
       else if (url.pathname === "/publications") body = { job_id: "demo-publication" };
       else if (url.pathname === "/wechat/confirm") body = { state: "confirmed" };
       else if (url.pathname === "/wechat/copied") body = { state: "copied" };
       else if (url.pathname.startsWith("/wechat/content/")) body = { html: demoArticle.preview_html };
-      else if (url.pathname === "/taxonomy") body = { source: "data/taxonomy.yaml", loaded_at: "刚刚", readonly: false, issues: [{ id: "t1", kind: "alias", term: "local-first", similar: ["本地优先"], affected: ["内容工作流.md", "架构设计.md"] }, { id: "t2", kind: "low_frequency", term: "desktop-app", similar: [], affected: ["SQLite 取舍.md"] }] };
+      else if (url.pathname === "/taxonomy") body = { source: "data/taxonomy.yaml", state: "ready", revision: "demo-revision", loaded_at: "刚刚", readonly: false, terms: [], issues: [{ id: "t1", kind: "alias", term: "local-first", similar: ["本地优先"], affected: ["内容工作流.md", "架构设计.md"] }, { id: "t2", kind: "low_frequency", term: "desktop-app", similar: [], affected: ["SQLite 取舍.md"] }] };
       else if (/^\/taxonomy\/issues\/[^/]+\/approve$/.test(url.pathname)) body = { state: "approved" };
       else if (url.pathname === "/settings") body = { workspace_name: "我的写作空间", vault_path: "/Users/me/Documents/Writing", content_roots: ["Areas"], ignored_folders: ["Areas/私人记录"], ignored_file_names: ["index.md", "_index.md"], directories: [{ path: "Areas", markdown_count: 42 }, { path: "Areas/私人记录", markdown_count: 8 }], ai_enabled: true, ai_secret_saved: true, hugo_enabled: true, wechat_enabled: true, wechat_secret_saved: false, default_template: "default", templates: [{ id: "default", name: "InkHub Default", version: "1.0.0", compatible: true }, { id: "minimal", name: "InkHub Minimal", version: "1.0.0", compatible: true }], diagnostics: [{ name: "Obsidian Vault", state: "正常", message: "路径可读，已建立索引" }, { name: "Hugo CLI", state: "正常", message: "0.163.0 extended" }, { name: "图片托管", state: "未启用", message: "含本地图片的微信内容将无法准备" }] };
       else if (url.pathname === "/settings/content-scope/preview") body = { added: 3, removed: 1 };
       else if (url.pathname === "/settings/content-scope") body = { indexed: 42, failed: 1 };
       else if (url.pathname === "/directories/inspect") body = { directories: [{ path: "Areas", markdown_count: 42 }, { path: "Areas/私人记录", markdown_count: 8 }] };
       else if (url.pathname === "/directories/pick") body = { path: "/Users/you/Documents/Vault" };
-      else if (url.pathname.startsWith("/jobs/")) body = { id: "demo-scan", state: "succeeded", progress: 100, indexed: 42, failed: 1 };
+      else if (url.pathname.startsWith("/jobs/")) body = { id: url.pathname.split("/").pop(), state: "succeeded", progress: 100, indexed: 42, failed: 1 };
       else { response.statusCode = 404; body = { error: { code: "route.not_found", message: "接口不存在" } }; }
       response.setHeader("Content-Type", "application/json; charset=utf-8");
       response.end(JSON.stringify(body));

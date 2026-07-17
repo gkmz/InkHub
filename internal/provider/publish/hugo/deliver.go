@@ -19,6 +19,12 @@ type deliveryManifest struct {
 	Result      contracts.DeliveryResult `json:"result"`
 }
 
+// ValidatePreparedArtifact 验证 staging manifest、目标边界和 Artifact 身份，不修改正式 Hugo 内容。
+func (p *Provider) ValidatePreparedArtifact(_ context.Context, artifact contracts.PreparedArtifact) error {
+	_, _, err := p.validateArtifact(artifact)
+	return err
+}
+
 // Deliver 原子替换真实 bundle，并在真实站点构建失败时恢复旧内容。
 func (p *Provider) Deliver(ctx context.Context, artifact contracts.PreparedArtifact) (contracts.DeliveryResult, error) {
 	prepared, operationRoot, err := p.validateArtifact(artifact)
@@ -89,9 +95,18 @@ func (p *Provider) validateArtifact(artifact contracts.PreparedArtifact) (contra
 		return contracts.PreparedArtifact{}, "", providerError("hugo.artifact_conflict", "Hugo artifact 与已准备记录不一致", contracts.ErrorConflict, false, nil)
 	}
 	stagedSite := filepath.Join(operationRoot, "site")
-	contentRoot := filepath.Join(p.config.Root, "content", p.config.Section)
+	contentRoot := filepath.Join(p.config.Root, "content")
 	if !withinOrEqual(prepared.Location, stagedSite) || !withinOrEqual(prepared.TargetPath, contentRoot) {
 		return contracts.PreparedArtifact{}, "", providerError("hugo.artifact_unauthorized", "Hugo artifact 路径越界", contracts.ErrorUnauthorizedResource, false, nil)
+	}
+	resolvedTarget := filepath.Join(p.config.Root, filepath.FromSlash(prepared.TargetRelativePath))
+	if prepared.TargetRelativePath == "" || resolvedTarget != prepared.TargetPath {
+		return contracts.PreparedArtifact{}, "", providerError("hugo.artifact_conflict", "Hugo artifact 相对目标不匹配", contracts.ErrorConflict, false, nil)
+	}
+	for _, file := range prepared.Files {
+		if file.RelativePath == "" || !withinOrEqual(filepath.Join(prepared.Location, filepath.FromSlash(file.RelativePath)), prepared.Location) {
+			return contracts.PreparedArtifact{}, "", providerError("hugo.artifact_unauthorized", "Hugo artifact 文件路径越界", contracts.ErrorUnauthorizedResource, false, nil)
+		}
 	}
 	return prepared, operationRoot, nil
 }

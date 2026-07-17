@@ -17,7 +17,10 @@ import (
 func newPublicationRunner(db *sql.DB, logger *zap.Logger, runtime contracts.ProviderRuntime) *appjob.Runner {
 	runner := appjob.NewRunner(repository.NewJobRepository(db), appjob.Config{Workers: 2, PollInterval: 200 * time.Millisecond, Logger: logger})
 	handler := publicationJobHandler{db: db, publications: repository.NewPublicationRepository(db), runtime: runtime}
+	hugoHandler := hugoPreviewJobHandler{publicationJobHandler: handler, jobs: repository.NewJobRepository(db)}
 	runner.Register("publication", appjob.HandlerOptions{Handle: handler.handle, MaxAttempts: 3, RetrySafe: true})
+	runner.Register("hugo_preview", appjob.HandlerOptions{Handle: hugoHandler.handlePreview, MaxAttempts: 3, RetrySafe: true})
+	runner.Register("hugo_deliver", appjob.HandlerOptions{Handle: hugoHandler.handleDeliver, MaxAttempts: 3, RetrySafe: true})
 	// 保留旧任务类型，仅用于升级后恢复已经持久化的任务。
 	runner.Register("hugo_sync", appjob.HandlerOptions{Handle: handler.handle, MaxAttempts: 1})
 	runner.Register("wechat_prepare", appjob.HandlerOptions{Handle: handler.handle, MaxAttempts: 3, RetrySafe: true})
@@ -56,6 +59,13 @@ func (h publicationJobHandler) handle(ctx context.Context, execution *appjob.Exe
 	if err != nil {
 		return "", err
 	}
+	// 升级前已持久化的 Hugo publication 任务没有目标字段，只在兼容 Handler 中沿用旧配置默认 Section。
+	if providerType == string(contracts.ProviderHugo) && input.TargetSection == "" {
+		input.TargetSection, err = configuredHugoSection(config)
+		if err != nil {
+			return "", err
+		}
+	}
 	preflight, err := provider.Preflight(ctx, input)
 	if err != nil {
 		return "", err
@@ -91,6 +101,16 @@ func (h publicationJobHandler) handle(ctx context.Context, execution *appjob.Exe
 	}
 	result, _ := json.Marshal(map[string]string{"state": eventType, "location": artifact.Location})
 	return string(result), nil
+}
+
+func configuredHugoSection(data []byte) (string, error) {
+	var config struct {
+		Section string `json:"section"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return "", fmt.Errorf("解析 Hugo Section 配置: %w", err)
+	}
+	return config.Section, nil
 }
 
 func (h publicationJobHandler) loadInput(ctx context.Context, operationID string, payload publicationPayload) (contracts.PublishInput, string, []byte, error) {

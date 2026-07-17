@@ -366,6 +366,7 @@ type PublishInput struct {
     TemplateRef      *TemplateRef
     ExpectedRevision string
     PreviewOnly      bool
+    TargetSection    string
 }
 
 // TemplateRef 标识已通过模板校验的模板版本。
@@ -416,14 +417,16 @@ type ArtifactFile struct {
 }
 
 type PreparedArtifact struct {
-    ArtifactID   string
-    ContentHash  string
-    ProviderType ProviderType
-    OperationID  string
-    ExpiresAt    time.Time
-    PreviewURL   string
-    Files        []ArtifactFile
-    Metadata     map[string]string
+    OperationID        string
+    ProviderRevision   string
+    ContentHash        string
+    Location           string
+    TargetPath         string
+    TargetRelativePath string
+    Change             string
+    PreviewURL         string
+    ExpiresAt          *time.Time
+    Files              []ArtifactFile
 }
 
 type DeliveryResult struct {
@@ -446,16 +449,35 @@ const (
 
 Provider 不更新 `publications`。Application 在 `Prepare`、`Deliver` 返回后，以实际使用的 `ContentHash` 和 Provider revision 写入 Publication/Event。`PreparedArtifact` 只能引用 Provider 自己的 job staging 目录，不能携带用户输入的任意绝对路径。Provider 必须在成功、失败、取消和启动恢复时提供幂等清理；超过 `ExpiresAt` 且没有运行中任务引用的 artifact 可以删除。
 
+需要受控发布目录的 Provider 可以实现以下可选能力：
+
+```go
+type SectionAwarePublishProvider interface {
+    PublishProvider
+    DiscoverSections(ctx context.Context, sourceID string) (SectionDiscovery, error)
+}
+
+type PreparedArtifactValidator interface {
+    ValidatePreparedArtifact(ctx context.Context, artifact PreparedArtifact) error
+}
+```
+
+`SectionDiscovery` 只枚举 Provider 权威内容根下的真实一级目录，并返回文章数量、已有文章所在 Section 和是否锁定选择。绝对目标路径只在 Provider 与 Application 内部使用，Transport 必须逐字段构造安全视图，不得序列化 `ExistingTarget`、`Location` 或 `TargetPath`。
+
+`PreparedArtifactValidator` 必须无副作用地校验 operation、content hash、staging manifest、目标授权边界和文件清单。Application 只有在文章版本、工作区、Provider、有效期和该校验全部通过后才能创建 Deliver 任务。
+
 ### 6.2 Hugo Publish Provider
 
 输入为标准 Article、正文和资源引用；输出为 Hugo staging bundle、目标路径、预览地址和构建诊断。Provider 内部完成：
 
-1. Hugo 根目录和 section 探测。
+1. 扫描 Hugo `content` 下的真实一级 Section，过滤隐藏目录、符号链接和非法路径；已有文章跨全部 Section 按 `source_id` 唯一定位。
 2. Obsidian Markdown 到 Hugo 内容的转换。
 3. page bundle 和图片路径规划。
 4. taxonomy 校验和 Hugo frontmatter 映射。
 5. `Prepare` 在临时站点完成转换、taxonomy 校验和 Hugo build，只生成可预览 artifact。
 6. `Deliver` 原子替换真实 bundle，并执行真实站点快速构建；失败时恢复原 bundle。
+
+新文章必须选择扫描结果中的 Section；已有文章锁定原 Section。Prepare 生成按相对路径排序的文件 manifest，包含 MIME、大小和 SHA-256，并记录安全相对目标与 `added`/`updated`。确认流程必须把该完整 Artifact 保存在服务端 Job 结果中，HTTP 只返回脱敏摘要；Deliver 直接消费该 Artifact，不得再次 Prepare。
 
 构建或替换任一步失败都返回结构化错误并保留原 bundle。重复同步以稳定 `source_id`/Article ID 定位同一 bundle，不创建重复页面。Provider 不执行 Git commit、push 或部署。
 

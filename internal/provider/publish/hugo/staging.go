@@ -2,6 +2,8 @@ package hugo
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -53,13 +56,23 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 		return contracts.PreparedArtifact{}, providerError("hugo.staging_failed", "创建 Hugo staging 失败", contracts.ErrorInternal, false, err)
 	}
 
-	target, found, err := findBundle(p.config.Root, p.config.Section, string(input.Article.StableID))
+	discovery, err := p.DiscoverSections(ctx, string(input.Article.StableID))
 	if err != nil {
 		return contracts.PreparedArtifact{}, providerError("hugo.bundle_invalid", "定位 Hugo bundle 失败", contracts.ErrorValidation, false, err)
 	}
-	if !found {
+	target, section, change := discovery.ExistingTarget, discovery.ExistingSection, "updated"
+	if discovery.SelectionLocked {
+		if input.TargetSection != "" && input.TargetSection != section {
+			return contracts.PreparedArtifact{}, providerError("hugo.section_locked", "文章必须继续更新原 Hugo Section", contracts.ErrorConflict, false, nil)
+		}
+	} else {
+		section = input.TargetSection
+		if !containsSection(discovery.Sections, section) {
+			return contracts.PreparedArtifact{}, providerError("hugo.section_invalid", "请选择已有的 Hugo Section", contracts.ErrorValidation, false, nil)
+		}
 		segment := bundleSegment(input)
-		target = filepath.Join(p.config.Root, "content", p.config.Section, segment)
+		target = filepath.Join(p.config.Root, "content", section, segment)
+		change = "added"
 		if _, statErr := os.Stat(target); statErr == nil {
 			return contracts.PreparedArtifact{}, providerError("hugo.bundle_conflict", "Hugo bundle 路径已被其他文章占用", contracts.ErrorConflict, false, nil)
 		} else if !os.IsNotExist(statErr) {
@@ -95,6 +108,10 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 			return contracts.PreparedArtifact{}, providerError("hugo.resource_copy_failed", "复制 Hugo 资源失败", contracts.ErrorInternal, false, err)
 		}
 	}
+	files, err := artifactFiles(stagedBundle)
+	if err != nil {
+		return contracts.PreparedArtifact{}, providerError("hugo.artifact_invalid", "生成 Hugo 文件清单失败", contracts.ErrorInternal, false, err)
+	}
 	revision, err := p.builder.Build(ctx, stagedSite)
 	if err != nil {
 		return contracts.PreparedArtifact{}, providerError("hugo.build_failed", "Hugo staging 构建失败", contracts.ErrorPermanent, false, err)
@@ -102,7 +119,8 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 	expiresAt := time.Now().UTC().Add(p.config.ArtifactTTL)
 	artifact := contracts.PreparedArtifact{
 		OperationID: input.OperationID, ProviderRevision: revision, ContentHash: input.ContentHash,
-		Location: stagedBundle, TargetPath: target, PreviewURL: p.previewURL(filepath.Base(target)), ExpiresAt: &expiresAt,
+		Location: stagedBundle, TargetPath: target, PreviewURL: p.previewURL(section, filepath.Base(target)), ExpiresAt: &expiresAt,
+		TargetRelativePath: filepath.ToSlash(relativeTarget), Change: change, Files: files,
 	}
 	manifest, _ := json.Marshal(artifactManifest{Artifact: artifact})
 	if err := filesystem.AtomicWrite(manifestPath, manifest, nil); err != nil {
@@ -111,11 +129,49 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 	return artifact, nil
 }
 
-func (p *Provider) previewURL(bundle string) string {
+func (p *Provider) previewURL(section, bundle string) string {
 	if p.config.BaseURL == "" {
 		return ""
 	}
-	return strings.TrimRight(p.config.BaseURL, "/") + "/" + p.config.Section + "/" + bundle + "/"
+	return strings.TrimRight(p.config.BaseURL, "/") + "/" + section + "/" + bundle + "/"
+}
+
+func containsSection(sections []contracts.PublishSection, name string) bool {
+	for _, section := range sections {
+		if section.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func artifactFiles(root string) ([]contracts.ArtifactFile, error) {
+	var files []contracts.ArtifactFile
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		digest := sha256.Sum256(content)
+		mediaType := "application/octet-stream"
+		if strings.EqualFold(filepath.Ext(path), ".md") {
+			mediaType = "text/markdown"
+		}
+		files = append(files, contracts.ArtifactFile{RelativePath: filepath.ToSlash(relative), MediaType: mediaType, SHA256: hex.EncodeToString(digest[:]), Size: int64(len(content))})
+		return nil
+	})
+	sort.Slice(files, func(i, j int) bool { return files[i].RelativePath < files[j].RelativePath })
+	return files, err
 }
 
 var unsafeBundleChars = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)

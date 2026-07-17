@@ -78,6 +78,51 @@ func findBundle(root, section, sourceID string) (string, bool, error) {
 	return found, found != "", nil
 }
 
+func findBundleBySourceID(root, sourceID string) (string, string, bool, error) {
+	contentRoot := filepath.Join(root, "content")
+	if _, err := os.Stat(contentRoot); os.IsNotExist(err) {
+		return "", "", false, nil
+	} else if err != nil {
+		return "", "", false, fmt.Errorf("读取 Hugo content: %w", err)
+	}
+	var found, foundSection string
+	err := filepath.WalkDir(contentRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() || entry.Name() != "index.md" {
+			return nil
+		}
+		matched, err := fileHasSourceID(path, sourceID)
+		if err != nil || !matched {
+			return err
+		}
+		relative, err := filepath.Rel(contentRoot, filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		parts := strings.Split(filepath.ToSlash(relative), "/")
+		if len(parts) < 2 || !safeSegment(parts[0]) || strings.HasPrefix(parts[0], ".") {
+			return fmt.Errorf("Hugo bundle 不在合法 Section 下: %s", relative)
+		}
+		if found != "" {
+			return fmt.Errorf("多个 Hugo bundle 使用相同 source_id: %s", sourceID)
+		}
+		found, foundSection = filepath.Dir(path), parts[0]
+		return nil
+	})
+	if err != nil {
+		return "", "", false, err
+	}
+	return found, foundSection, found != "", nil
+}
+
 func fileHasSourceID(path, sourceID string) (bool, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {

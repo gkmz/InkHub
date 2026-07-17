@@ -60,6 +60,49 @@ func TestPrepareBuildsStagingWithoutChangingRealBundleAndIsIdempotent(t *testing
 	}
 }
 
+func TestPrepareUsesSelectedSectionAndBuildsFileManifest(t *testing.T) {
+	root := copyHugoFixture(t)
+	if err := os.MkdirAll(filepath.Join(root, "content", "notes"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(Config{Root: root, StagingRoot: filepath.Join(t.TempDir(), "staging")}, &fakeBuilder{revision: "revision"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := provider.Prepare(context.Background(), contracts.PublishInput{
+		OperationID: "operation_notes", ContentHash: "hash", TargetSection: "notes", Body: "正文",
+		Article: article.Article{StableID: "article_NEW", Title: "新文章", Slug: "new-article"},
+	})
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if artifact.TargetPath != filepath.Join(root, "content", "notes", "new-article") || artifact.TargetRelativePath != "content/notes/new-article" || artifact.Change != "added" {
+		t.Fatalf("目标 Section 或变更类型错误: %+v", artifact)
+	}
+	if len(artifact.Files) != 1 || artifact.Files[0].RelativePath != "index.md" || artifact.Files[0].Size == 0 || artifact.Files[0].SHA256 == "" || artifact.Files[0].MediaType != "text/markdown" {
+		t.Fatalf("Artifact manifest 错误: %+v", artifact.Files)
+	}
+	if _, err := os.Stat(filepath.Join(root, "content", "notes", "new-article")); !os.IsNotExist(err) {
+		t.Fatal("Prepare 不应修改正式 content")
+	}
+}
+
+func TestPrepareLocksExistingArticleToOriginalSection(t *testing.T) {
+	root := copyHugoFixture(t)
+	if err := os.MkdirAll(filepath.Join(root, "content", "notes"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(Config{Root: root, StagingRoot: filepath.Join(t.TempDir(), "staging")}, &fakeBuilder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := existingArticleInput()
+	input.TargetSection = "notes"
+	if _, err := provider.Prepare(context.Background(), input); err == nil {
+		t.Fatal("已有文章不应跨 Section 移动")
+	}
+}
+
 func TestPreflightAcceptsTermsManagedByHugoStandardTaxonomy(t *testing.T) {
 	t.Parallel()
 
@@ -115,7 +158,7 @@ func TestPrepareRejectsSlugOwnedByDifferentSourceID(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = provider.Prepare(context.Background(), contracts.PublishInput{
-		OperationID: "operation_conflict", ContentHash: "hash", Body: "正文",
+		OperationID: "operation_conflict", ContentHash: "hash", TargetSection: "posts", Body: "正文",
 		Article: article.Article{
 			StableID: "article_DIFFERENT", Title: "另一篇文章", Slug: "existing",
 			Category: "AI应用开发", Tags: []string{"go"},
@@ -146,6 +189,28 @@ func TestPrepareRejectsOperationIDReusedForDifferentContent(t *testing.T) {
 	var providerErr *contracts.ProviderError
 	if !errors.As(err, &providerErr) || providerErr.Category != contracts.ErrorConflict {
 		t.Fatalf("OperationID 复用不同内容应冲突: %T %v", err, err)
+	}
+}
+
+func TestValidatePreparedArtifactRejectsTamperedIdentity(t *testing.T) {
+	t.Parallel()
+
+	provider, err := New(Config{Root: copyHugoFixture(t), StagingRoot: filepath.Join(t.TempDir(), "staging"), Section: "posts"}, &fakeBuilder{revision: "revision"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := existingArticleInput()
+	input.OperationID = "operation_validate"
+	artifact, err := provider.Prepare(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.ValidatePreparedArtifact(context.Background(), artifact); err != nil {
+		t.Fatalf("有效 Artifact 未通过校验: %v", err)
+	}
+	artifact.ContentHash = "tampered"
+	if err := provider.ValidatePreparedArtifact(context.Background(), artifact); err == nil {
+		t.Fatal("篡改后的 Artifact 仍通过校验")
 	}
 }
 

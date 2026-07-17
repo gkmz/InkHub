@@ -238,6 +238,22 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .job-status b { font-size: 12px; }.job-status p { margin: 4px 0; color: var(--muted); font-size: 10px; }
 .job-status .progress-track { margin: 8px 0 0; }.job-status .progress-track i { display: block; height: 100%; background: var(--action); }
 .job-status button { display: flex; align-items: center; gap: 4px; }
+.hugo-publish-flow { min-width: 0; display: grid; gap: 12px; margin: 0 0 28px 24px; padding: 14px; border: 1px solid var(--line); background: var(--surface); font-size: 11px; }
+.hugo-publish-flow > label { display: grid; gap: 6px; color: var(--muted); }
+.hugo-publish-flow select { width: 100%; min-height: 38px; border: 1px solid var(--line); border-radius: 4px; padding: 0 9px; background: var(--surface); color: var(--ink); }
+.hugo-publish-flow p { margin: 0; color: var(--muted); line-height: 1.5; }
+.hugo-section-lock { padding: 8px; border-left: 2px solid var(--action); background: #f4f8f6; }
+.hugo-preview-state { display: flex; align-items: center; gap: 7px; }
+.hugo-artifact-summary { min-width: 0; display: grid; gap: 10px; }
+.hugo-artifact-summary > div { min-width: 0; display: grid; gap: 5px; }
+.hugo-artifact-summary > div span { width: fit-content; padding: 2px 5px; border: 1px solid #bdd5cf; border-radius: 3px; color: var(--action); font-size: 9px; }
+.hugo-artifact-summary code { overflow-wrap: anywhere; color: var(--ink); font-size: 10px; }
+.hugo-artifact-summary ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.hugo-artifact-summary li { min-width: 0; display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 6px; color: var(--muted); }
+.hugo-artifact-summary li span { overflow-wrap: anywhere; color: var(--ink); }
+.hugo-artifact-summary li small { white-space: nowrap; }
+.spin { animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .mobile-tabs { display: none; }
 .wechat-page { min-height: 100vh; background: #eef1ee; }
 .wechat-page > header { position: sticky; z-index: 2; top: 0; min-height: 68px; display: flex; align-items: center; gap: 24px; padding: 10px 24px; border-bottom: 1px solid var(--line); background: var(--surface); }
@@ -420,6 +436,7 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
   .review-panel.mobile-publish .primary-action { display: grid; min-height: 220px; place-content: center; }
   .tool-section { padding-left: 0; }
   .primary-action { padding-left: 0; }
+  .hugo-publish-flow { margin-left: 0; }
   .wechat-page > header { align-items: stretch; flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
   .wechat-page header label { margin-left: auto; }
   .wechat-actions { width: 100%; }

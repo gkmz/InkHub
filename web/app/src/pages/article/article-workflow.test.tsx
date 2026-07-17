@@ -207,6 +207,21 @@ test("Hugo 任务失败时显示失败步骤和重试且不宣称成功", () => 
   expect(screen.queryByText("同步完成")).not.toBeInTheDocument();
 });
 
+test("文章页同步 Hugo 时展开预览流程而不调用旧发布接口", async () => {
+  const requests: string[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    requests.push(url);
+    if (url.endsWith("/taxonomy")) return Response.json(taxonomy);
+    if (url.endsWith("/hugo-sections")) return Response.json({ sections: [{ name: "posts", article_count: 8 }], existing_section: "", selection_locked: false });
+    return Response.json({ ...article, review_state: "已通过", hugo_state: "需要同步" });
+  });
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  await userEvent.click(await screen.findByRole("button", { name: "同步到 Hugo" }));
+  expect(await screen.findByRole("combobox", { name: "发布目录" })).toHaveValue("posts");
+  expect(requests.some((url) => url.endsWith("/publications"))).toBe(false);
+});
+
 test("微信必须先复制当前内容才能人工确认草稿", async () => {
   const copy = vi.fn().mockResolvedValue(undefined);
   const confirm = vi.fn();

@@ -46,7 +46,7 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 
 ## Next
 
-Provider 抽象、类目管理闭环、文章 Category/Series 单值选择，以及 Tags 多选与 AI 建议闭环已经完成。下一步按 PRD 优先级推进发布前检查或 Hugo 同步闭环；Tags 是多值集合，继续保持独立组件，不复用单值 taxonomy 字段。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁；每个阶段完成后立即提交。
+Hugo Section 发现、真实 Artifact 预览、用户确认和同 Artifact 原子交付闭环已经完成。下一步按 PRD 优先级补齐页面刷新后的运行任务恢复与发布历史，或推进微信图片处理的真实渠道验证；Tags 是多值集合，继续保持独立组件，不复用单值 taxonomy 字段。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁。
 
 ## Important Decisions
 
@@ -65,6 +65,8 @@ Provider 抽象、类目管理闭环、文章 Category/Series 单值选择，以
 - 文章审核页 Category/Series 通过共用的单值字段从 Taxonomy Provider 快照选择；快照外旧值明确保留，同页创建 term 后只回填发起字段的草稿，仍需用户保存文章。
 - 文章 Tags 使用独立的可创建多选器，从 SQLite taxonomy 投影查询候选和文章数量；AI 使用现有候选生成结构化建议，使用次数由 Application 从快照补充，不能信任模型输出。
 - OpenAI-compatible 设置已接入系统 Secret Store；API Key 不进入 SQLite、HTTP 响应或日志。
+- Hugo 新文章从已扫描的一级 Section 中选择目标；已有文章按 `source_id` 锁定原 Section，本阶段不支持跨 Section 移动或目录管理。
+- Hugo 发布使用 `hugo_preview` 与 `hugo_deliver` 两类确定性任务：Preview 只写 staging 并保存完整 Artifact，确认重新校验后 Deliver 同一个 Artifact；HTTP 只返回相对目标和文件摘要。
 
 ## Files
 
@@ -86,4 +88,4 @@ Provider 抽象、类目管理闭环、文章 Category/Series 单值选择，以
 
 ## Fresh Session Prompt
 
-请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计、`docs/plans/provider-runtime-taxonomy-plan.md` 和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象、类目管理、文章 Category/Series/Tags 编辑和 AI Tag 建议已完成，下一步按 PRD 优先级推进发布前检查或 Hugo 同步闭环。
+请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象、类目管理、文章元数据与 AI Tag、Hugo 发布预览确认闭环已完成，下一步按 PRD 优先级补齐任务恢复与发布历史，或推进微信真实渠道验证。

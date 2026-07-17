@@ -11,7 +11,11 @@ test("文章可手工审核、采用 AI 字段并进入 Hugo 同步", async ({ p
   await page.getByRole("button", { name: "审核通过" }).click();
   await expect(page.getByRole("button", { name: "同步到 Hugo" })).toBeVisible();
   await page.getByRole("button", { name: "同步到 Hugo" }).click();
-  await expect(page.getByText("正在同步")).toBeVisible();
+  await page.getByRole("combobox", { name: "发布目录" }).selectOption("posts");
+  await page.getByRole("button", { name: "生成发布预览" }).click();
+  await expect(page.getByText("content/posts/wechat-template-design")).toBeVisible();
+  await page.getByRole("button", { name: "确认同步到 Hugo" }).click();
+  await expect(page.getByText("文章已同步到 Hugo")).toBeVisible();
 });
 
 test("标签治理先展示差异再执行明确操作", async ({ page }) => {

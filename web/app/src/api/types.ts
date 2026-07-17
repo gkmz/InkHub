@@ -50,6 +50,27 @@ export interface JobStatus {
   failed?: number;
 }
 
+export interface HugoSectionView {
+  sections: Array<{ name: string; article_count: number }>;
+  existing_section: string;
+  selection_locked: boolean;
+}
+
+export interface HugoPreviewView {
+  id: string;
+  content_hash: string;
+  section: string;
+  target_path: string;
+  change: "added" | "updated";
+  files: Array<{ relative_path: string; media_type: string; size: number }>;
+  diagnostics: Array<{ code: string; level: string; message: string }>;
+  preview_url?: string;
+  expires_at?: string;
+  state: "preparing" | "ready" | "expired" | "failed";
+  job_id: string;
+  error?: string;
+}
+
 export interface ArticleMetadata {
   title: string;
   description: string;

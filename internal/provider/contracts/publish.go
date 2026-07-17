@@ -51,6 +51,7 @@ type PublishInput struct {
 	TemplateRef      *TemplateRef
 	ExpectedRevision string
 	PreviewOnly      bool
+	TargetSection    string
 }
 
 // TemplateRef 标识已通过模板校验的不可变模板版本。
@@ -69,13 +70,49 @@ type PreflightResult struct {
 
 // PreparedArtifact 是有明确内容版本和有效期的渠道产物。
 type PreparedArtifact struct {
-	OperationID      string
-	ProviderRevision string
-	ContentHash      string
-	Location         string
-	TargetPath       string
-	PreviewURL       string
-	ExpiresAt        *time.Time
+	OperationID        string
+	ProviderRevision   string
+	ContentHash        string
+	Location           string
+	TargetPath         string
+	PreviewURL         string
+	ExpiresAt          *time.Time
+	TargetRelativePath string
+	Change             string
+	Files              []ArtifactFile
+}
+
+// ArtifactFile 描述已准备产物中的一个可审阅文件。
+type ArtifactFile struct {
+	RelativePath string
+	MediaType    string
+	SHA256       string
+	Size         int64
+}
+
+// PublishSection 是 Publish Provider 暴露的受控一级目标目录。
+type PublishSection struct {
+	Name         string
+	ArticleCount int
+}
+
+// SectionDiscovery 返回可选 Section 和已有文章的锁定目标。
+type SectionDiscovery struct {
+	Sections        []PublishSection
+	ExistingSection string
+	ExistingTarget  string
+	SelectionLocked bool
+}
+
+// SectionAwarePublishProvider 为需要受控目标目录的发布渠道提供发现能力。
+type SectionAwarePublishProvider interface {
+	PublishProvider
+	DiscoverSections(ctx context.Context, sourceID string) (SectionDiscovery, error)
+}
+
+// PreparedArtifactValidator 在交付前验证持久化 Artifact 仍属于当前 Provider 实例且未被篡改。
+type PreparedArtifactValidator interface {
+	ValidatePreparedArtifact(ctx context.Context, artifact PreparedArtifact) error
 }
 
 // DeliveryResult 保存一次幂等渠道交付结果。

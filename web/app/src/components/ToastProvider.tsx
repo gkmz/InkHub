@@ -18,7 +18,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   return <ToastContext.Provider value={api}>
     {children}
-    <div className="toast-region" aria-label="操作提示">
+    <div className="toast-region" role="region" aria-label="操作提示">
       {messages.map((message) => <ToastItem key={message.id} message={message} onDismiss={dismiss} />)}
     </div>
   </ToastContext.Provider>;

@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, DirectoryCandidate, JobStatus, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WorkspaceDraft } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WorkspaceDraft } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -62,6 +62,26 @@ export function getJob(jobID: string, signal?: AbortSignal) {
 /** getArticle 读取文章详情和当前审核、渠道状态。 */
 export function getArticle(articleID: string, signal?: AbortSignal) {
   return request<ArticleDetail>(`/articles/${encodeURIComponent(articleID)}`, { signal });
+}
+
+/** getHugoSections 读取 Hugo 当前可选一级发布目录。 */
+export function getHugoSections(articleID: string, signal?: AbortSignal) {
+  return request<HugoSectionView>(`/articles/${encodeURIComponent(articleID)}/hugo-sections`, { signal });
+}
+
+/** createHugoPreview 为指定内容版本生成可确认的 staging Artifact。 */
+export function createHugoPreview(articleID: string, contentHash: string, section: string) {
+  return request<{ id: string; job_id: string; state: string }>(`/articles/${encodeURIComponent(articleID)}/hugo-previews`, { method: "POST", body: JSON.stringify({ content_hash: contentHash, section }) });
+}
+
+/** getHugoPreview 读取脱敏后的 Artifact 摘要。 */
+export function getHugoPreview(previewID: string, signal?: AbortSignal) {
+  return request<HugoPreviewView>(`/hugo-previews/${encodeURIComponent(previewID)}`, { signal });
+}
+
+/** confirmHugoPreview 确认交付已经审阅的同一 Artifact。 */
+export function confirmHugoPreview(previewID: string) {
+  return request<{ job_id: string; state: string }>(`/hugo-previews/${encodeURIComponent(previewID)}/confirm`, { method: "POST", body: "{}" });
 }
 
 /** generateArticleSuggestions 主动请求当前文章的结构化 AI 建议。 */

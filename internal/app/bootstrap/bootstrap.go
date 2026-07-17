@@ -170,6 +170,7 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 		DataDir:         config.DataDir,
 		ProviderRuntime: providerRuntime,
 		AISecrets:       secretStore,
+		HugoPreviews:    newHugoPreviewAPI(db, providerRuntime),
 		RefreshTaxonomy: func(refreshCtx context.Context) error {
 			_, refreshErr := RefreshRecentTaxonomy(refreshCtx, db, providerRuntime)
 			return refreshErr

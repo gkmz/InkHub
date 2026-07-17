@@ -28,6 +28,7 @@ type RuntimeOptions struct {
 	ProviderRuntime       contracts.ProviderRuntime
 	RefreshTaxonomy       func(context.Context) error
 	AISecrets             AISecretStore
+	HugoPreviews          HugoPreviewAPI
 }
 
 // NewRuntimeHandler 提供首次初始化和页面查询端点，并把领域命令交给核心 API。
@@ -48,13 +49,15 @@ func NewRuntimeHandler(db *sql.DB, core http.Handler, options ...RuntimeOptions)
 	var providerRuntime contracts.ProviderRuntime
 	var refreshTaxonomy func(context.Context) error
 	var aiSecrets AISecretStore
+	var hugoPreviews HugoPreviewAPI
 	if len(options) > 0 {
 		afterWorkspaceCreated = options[0].AfterWorkspaceCreated
 		providerRuntime = options[0].ProviderRuntime
 		refreshTaxonomy = options[0].RefreshTaxonomy
 		aiSecrets = options[0].AISecrets
+		hugoPreviews = options[0].HugoPreviews
 	}
-	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey, afterWorkspaceCreated: afterWorkspaceCreated, providerRuntime: providerRuntime, refreshTaxonomy: refreshTaxonomy, aiSecrets: aiSecrets}
+	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey, afterWorkspaceCreated: afterWorkspaceCreated, providerRuntime: providerRuntime, refreshTaxonomy: refreshTaxonomy, aiSecrets: aiSecrets, hugoPreviews: hugoPreviews}
 	return localOnly(handler)
 }
 
@@ -68,6 +71,7 @@ type runtimeHandler struct {
 	providerRuntime       contracts.ProviderRuntime
 	refreshTaxonomy       func(context.Context) error
 	aiSecrets             AISecretStore
+	hugoPreviews          HugoPreviewAPI
 }
 
 func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -89,6 +93,18 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		}
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/jobs/"):
 		h.job(response, request)
+	case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/hugo-sections") && strings.HasPrefix(request.URL.Path, "/api/v1/articles/"):
+		h.hugoSections(response, request)
+	case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/hugo-previews") && strings.HasPrefix(request.URL.Path, "/api/v1/articles/"):
+		if validateWriteRequest(response, request) {
+			h.createHugoPreview(response, request)
+		}
+	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/hugo-previews/"):
+		h.hugoPreview(response, request)
+	case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/confirm") && strings.HasPrefix(request.URL.Path, "/api/v1/hugo-previews/"):
+		if validateWriteRequest(response, request) {
+			h.confirmHugoPreview(response, request)
+		}
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/dashboard":
 		writeJSON(response, http.StatusOK, map[string]any{"items": []any{}})
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/taxonomy":
