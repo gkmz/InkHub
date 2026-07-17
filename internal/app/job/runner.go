@@ -54,12 +54,20 @@ type EnqueueRequest struct {
 // Handler 执行单个已领取任务，返回可持久化的有限结果。
 type Handler func(ctx context.Context, execution *Execution) (resultJSON string, err error)
 
+// Failure 是任务最终失败后可交给业务层持久化的安全摘要。
+type Failure struct {
+	Code    string
+	Message string
+	Attempt int
+}
+
 // HandlerOptions 定义任务处理器的重试安全边界。
 type HandlerOptions struct {
-	Handle      Handler
-	MaxAttempts int
-	RetrySafe   bool
-	Backoff     func(attempt int) time.Duration
+	Handle            Handler
+	MaxAttempts       int
+	RetrySafe         bool
+	Backoff           func(attempt int) time.Duration
+	OnTerminalFailure func(context.Context, domainjob.Job, Failure) error
 }
 
 // Execution 向 Handler 暴露任务快照和受控进度更新。
@@ -264,7 +272,17 @@ func (r *Runner) RunOne(ctx context.Context) (bool, error) {
 	}
 	err = r.store.Fail(ctx, value.ID, code, message, r.config.Now())
 	r.logger.Error("后台任务执行失败", append(fields, zap.String("error_code", code), zap.Int("attempt", value.Attempts), elapsedField(start))...)
-	return true, err
+	if err != nil {
+		return true, err
+	}
+	if options.OnTerminalFailure != nil {
+		failure := Failure{Code: code, Message: message, Attempt: value.Attempts}
+		if callbackErr := options.OnTerminalFailure(ctx, value, failure); callbackErr != nil {
+			r.logger.Error("保存任务失败事实失败", append(fields, zap.String("error_code", "job.failure_event_failed"), zap.Error(callbackErr))...)
+			return true, callbackErr
+		}
+	}
+	return true, nil
 }
 
 func requestLogFields(request EnqueueRequest) []zap.Field {

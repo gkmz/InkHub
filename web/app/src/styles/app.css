@@ -238,6 +238,23 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .job-status b { font-size: 12px; }.job-status p { margin: 4px 0; color: var(--muted); font-size: 10px; }
 .job-status .progress-track { margin: 8px 0 0; }.job-status .progress-track i { display: block; height: 100%; background: var(--action); }
 .job-status button { display: flex; align-items: center; gap: 4px; }
+.publication-history { margin: 0 0 28px 24px; border-bottom: 1px solid var(--line); }
+.publication-history summary { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; list-style: none; }
+.publication-history summary::-webkit-details-marker { display: none; }
+.publication-history summary > span { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; }
+.publication-history summary > small { color: var(--muted); font-size: 9px; }
+.publication-history-body { padding: 4px 0 20px; }
+.publication-history ol { margin: 0; padding: 0; list-style: none; }
+.publication-history li { position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 8px; padding: 0 0 18px; }
+.publication-history li:not(:last-child)::before { content: ""; position: absolute; top: 10px; bottom: -2px; left: 4px; border-left: 1px solid var(--line); }
+.publication-history li > i { width: 9px; height: 9px; margin-top: 3px; border: 2px solid var(--surface); border-radius: 50%; background: var(--action); box-shadow: 0 0 0 1px var(--action); z-index: 1; }
+.publication-history li.history-failed > i { background: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+.publication-history li b { display: block; font-size: 11px; }
+.publication-history li p { margin: 3px 0; color: var(--muted); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.publication-history li small { color: var(--muted); font-size: 9px; }
+.history-state { display: flex; align-items: center; gap: 6px; margin: 6px 0; color: var(--muted); font-size: 10px; }
+.history-error { display: grid; gap: 7px; color: var(--danger); font-size: 10px; }
+.history-error button, .history-more { width: fit-content; display: inline-flex; align-items: center; gap: 5px; }
 .hugo-publish-flow { min-width: 0; display: grid; gap: 12px; margin: 0 0 28px 24px; padding: 14px; border: 1px solid var(--line); background: var(--surface); font-size: 11px; }
 .hugo-publish-flow > label { display: grid; gap: 6px; color: var(--muted); }
 .hugo-publish-flow select { width: 100%; min-height: 38px; border: 1px solid var(--line); border-radius: 4px; padding: 0 9px; background: var(--surface); color: var(--ink); }
@@ -437,6 +454,7 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
   .tool-section { padding-left: 0; }
   .primary-action { padding-left: 0; }
   .hugo-publish-flow { margin-left: 0; }
+  .publication-history { margin-left: 0; }
   .wechat-page > header { align-items: stretch; flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
   .wechat-page header label { margin-left: auto; }
   .wechat-actions { width: 100%; }

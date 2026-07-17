@@ -166,11 +166,14 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 		defer cancel()
 		_ = runner.Shutdown(shutdownCtx)
 	}()
+	hugoPreviews := newHugoPreviewAPI(db, providerRuntime)
+	publicationWorkflows := newPublicationWorkflowAPI(db, hugoPreviews)
 	api := httptransport.NewRuntimeHandler(db, httptransport.NewRouter(newDatabaseAPI(db)), httptransport.RuntimeOptions{
-		DataDir:         config.DataDir,
-		ProviderRuntime: providerRuntime,
-		AISecrets:       secretStore,
-		HugoPreviews:    newHugoPreviewAPI(db, providerRuntime),
+		DataDir:              config.DataDir,
+		ProviderRuntime:      providerRuntime,
+		AISecrets:            secretStore,
+		HugoPreviews:         hugoPreviews,
+		PublicationWorkflows: publicationWorkflows,
 		RefreshTaxonomy: func(refreshCtx context.Context) error {
 			_, refreshErr := RefreshRecentTaxonomy(refreshCtx, db, providerRuntime)
 			return refreshErr

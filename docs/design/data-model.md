@@ -393,6 +393,8 @@ draft → incomplete → pending_review → approved
 
 每个 Article 与 Provider Instance 只有一条当前投影记录，所有变化追加到 `publication_events`。
 
+`publications` 是渠道当前状态投影，`publication_events` 是发布成功和最终失败的审计事实。任务自动重试的中间失败不追加事件；耗尽重试或不可重试错误按 `job_id + attempt` 生成幂等失败事件，并将当前投影更新为 `failed`。失败写入不得清空最后一次成功的 `provider_revision`。
+
 - `never`：从未处理。
 - `prepared`：已生成渠道结果，但尚未复制/写入目标。
 - `copied`：结果已交付到剪贴板或目标 staging。
@@ -405,7 +407,7 @@ draft → incomplete → pending_review → approved
 
 ## 8. 任务模型
 
-任务种类包括 `scan`、`analyze`、`taxonomy_refresh`、`hugo_sync`、`hugo_build`、`wechat_prepare` 和 `template_install`。任务 payload 只保存可重建参数和目标 ID，不保存正文或 Secret。
+任务种类包括 `scan`、`analyze`、`taxonomy_refresh`、`hugo_preview`、`hugo_deliver`、`wechat_prepare` 和 `template_install`；`hugo_sync` 仅用于兼容升级前已持久化的任务。任务 payload 只保存可重建参数和目标 ID，不保存正文或 Secret。
 
 任务执行规则：
 
@@ -415,6 +417,9 @@ draft → incomplete → pending_review → approved
 4. 成功结果与 Publication/Event 更新在一个短事务中提交。
 5. 应用启动时，超时的 `running` 任务转为可恢复的 `queued`；无法安全恢复的任务标记 `failed`。
 6. `dedupe_key` 防止同一文章、Provider 和 hash 同时执行冲突任务。
+7. 用户重试最终失败的 Hugo Preview/Deliver 时，只允许匹配任务 ID、工作区、类型和 `failed` 状态的原任务原子重排为 `queued`；保留 attempts、payload 和确定性 ID，清理本次运行时间与错误，不创建第二个 Deliver。
+
+文章级当前工作流查询只匹配最近工作区、请求文章、启用的 Hugo Provider 和当前内容 hash，Deliver 状态优先于 Preview。统一发布历史按 `created_at DESC, id DESC` 排序并使用绑定工作区与文章的不可见 cursor；非法、跨工作区或跨文章 cursor 必须拒绝。对外 DTO 只返回领域预览 ID、相对路径、阶段、进度和安全摘要，不返回 Job ID、数据库事件 ID、内容 hash、`result_json` 或绝对路径。
 
 MVP 每个工作区每种 Provider 类型最多一个实例；该限制适用于 Obsidian、AI、Hugo 和 WeChat，后续多实例扩展需单独放宽唯一约束和默认实例规则。
 

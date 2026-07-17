@@ -46,7 +46,7 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 
 ## Next
 
-Hugo Section 发现、真实 Artifact 预览、用户确认和同 Artifact 原子交付闭环已经完成。下一步按 PRD 优先级补齐页面刷新后的运行任务恢复与发布历史，或推进微信图片处理的真实渠道验证；Tags 是多值集合，继续保持独立组件，不复用单值 taxonomy 字段。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁。
+Hugo 发布任务恢复与 Hugo/微信统一发布历史已经完成。下一步按 PRD 优先级推进微信图片处理的真实渠道验证；Tags 是多值集合，继续保持独立组件，不复用单值 taxonomy 字段。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁。
 
 ## Important Decisions
 
@@ -67,6 +67,9 @@ Hugo Section 发现、真实 Artifact 预览、用户确认和同 Artifact 原�
 - OpenAI-compatible 设置已接入系统 Secret Store；API Key 不进入 SQLite、HTTP 响应或日志。
 - Hugo 新文章从已扫描的一级 Section 中选择目标；已有文章按 `source_id` 锁定原 Section，本阶段不支持跨 Section 移动或目录管理。
 - Hugo 发布使用 `hugo_preview` 与 `hugo_deliver` 两类确定性任务：Preview 只写 staging 并保存完整 Artifact，确认重新校验后 Deliver 同一个 Artifact；HTTP 只返回相对目标和文件摘要。
+- 页面刷新或应用重启后，通过文章级 Workflow 按当前工作区、文章、Provider 和内容 hash 恢复 Preview/Deliver；前端不持久化 Job ID，旧 hash 不进入当前流程。
+- 发布最终失败写入 attempt 级幂等事件，自动重试的中间失败不污染历史；失败 Preview/Deliver 只重排原确定性任务。
+- 文章页统一发布历史从 `publication_events` 稳定分页读取 Hugo 与微信事件，只展示自然语言安全摘要。
 
 ## Files
 
@@ -76,7 +79,7 @@ Hugo Section 发现、真实 Artifact 预览、用户确认和同 Artifact 原�
 
 ## Verification
 
-- Provider Runtime、Hugo 标准 taxonomy、SQLite 快照、类目查询/刷新/预览/应用 API、类目管理页面、文章 Category/Series/Tags 编辑、AI Tag 建议、模板 target 和第二 Source 均有单元测试。
+- Provider Runtime、Hugo 标准 taxonomy、SQLite 快照、类目查询/刷新/预览/应用 API、类目管理页面、文章 Category/Series/Tags 编辑、AI Tag 建议、模板 target、第二 Source、发布任务恢复和统一发布历史均有自动化测试。
 - 每阶段已运行全量 `go test ./...`、`go vet ./...` 和相关 race 测试。
 - 当前项目实际路径：`/Users/hank/workspace/mine/InkHub`。
 
@@ -88,4 +91,4 @@ Hugo Section 发现、真实 Artifact 预览、用户确认和同 Artifact 原�
 
 ## Fresh Session Prompt
 
-请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象、类目管理、文章元数据与 AI Tag、Hugo 发布预览确认闭环已完成，下一步按 PRD 优先级补齐任务恢复与发布历史，或推进微信真实渠道验证。
+请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象、类目管理、文章元数据与 AI Tag、Hugo 发布预览确认、任务恢复和统一发布历史已完成，下一步按 PRD 优先级推进微信图片处理的真实渠道验证。

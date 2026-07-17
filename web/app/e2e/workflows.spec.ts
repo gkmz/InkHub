@@ -1,13 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-test("文章可手工审核、采用 AI 字段并进入 Hugo 同步", async ({ page }) => {
+test("文章可手工审核并进入 Hugo 同步", async ({ page }) => {
   await page.goto("/articles/a4");
   await expect(page.getByRole("heading", { name: "公众号排版模板设计记录" })).toBeVisible();
   const reviewTab = page.getByRole("tab", { name: "审核" });
   if (await reviewTab.isVisible()) await reviewTab.click();
-  await page.getByRole("button", { name: "采用 Description 建议" }).click();
-  await expect(page.getByRole("textbox", { name: "Description" })).toHaveValue(/拆解安全模板/);
   await page.getByRole("button", { name: "审核通过" }).click();
   await expect(page.getByRole("button", { name: "同步到 Hugo" })).toBeVisible();
   await page.getByRole("button", { name: "同步到 Hugo" }).click();
@@ -18,11 +16,28 @@ test("文章可手工审核、采用 AI 字段并进入 Hugo 同步", async ({ p
   await expect(page.getByText("文章已同步到 Hugo")).toBeVisible();
 });
 
-test("标签治理先展示差异再执行明确操作", async ({ page }) => {
+test("刷新文章页后恢复 Hugo 预览并展示统一发布历史", async ({ page }) => {
+  await page.goto("/articles/a2");
+  const openPublishTab = async () => {
+    if ((page.viewportSize()?.width ?? 1000) <= 420) await page.getByRole("tab", { name: "发布" }).click();
+  };
+  await openPublishTab();
+  await expect(page.getByText("content/posts/restored-writing-system")).toBeVisible();
+  await expect(page.getByRole("button", { name: "确认同步到 Hugo" })).toBeVisible();
+
+  await page.reload();
+  await openPublishTab();
+  await expect(page.getByText("content/posts/restored-writing-system")).toBeVisible();
+  await page.getByText("发布历史").click();
+  await expect(page.getByText("已同步到 Hugo")).toBeVisible();
+  await expect(page.getByText("已确认保存微信草稿")).toBeVisible();
+});
+
+test("类目管理展示 Hugo 标签及文章数量", async ({ page }) => {
   await page.goto("/taxonomy");
-  await page.getByRole("button", { name: "批准新 Tag" }).first().click();
-  await expect(page.getByText("+ local-first")).toBeVisible();
-  await expect(page.getByRole("button", { name: "批准并更新 2 篇文章" })).toBeVisible();
+  await page.getByRole("tab", { name: "标签" }).click();
+  await expect(page.getByRole("strong").filter({ hasText: "local-first" })).toBeVisible();
+  await expect(page.getByText("2 篇文章")).toBeVisible();
 });
 
 test("微信模板切换、复制和人工确认保持独立", async ({ page }) => {

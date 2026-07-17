@@ -33,9 +33,17 @@ const demoAPI: Plugin = {
         const state = url.searchParams.get("state") ?? "";
         body = { items: demoArticles.filter((item) => (!query || item.title.toLowerCase().includes(query)) && (!state || item.state === state)) };
       } else if (url.pathname === "/workspaces") body = { workspace: { id: "demo", name: "我的写作空间" }, job_id: "demo-scan" };
-      else if (/^\/articles\/[^/]+$/.test(url.pathname)) body = demoArticle;
+      else if (/^\/articles\/[^/]+$/.test(url.pathname)) {
+        const articleID = url.pathname.split("/").pop() ?? demoArticle.id;
+        body = { ...demoArticle, id: articleID, review_state: articleID === "a2" ? "已通过" : demoArticle.review_state, hugo_state: articleID === "a2" ? "需要同步" : demoArticle.hugo_state };
+      }
       else if (/^\/articles\/[^/]+\/metadata$/.test(url.pathname)) body = demoArticle;
       else if (/^\/articles\/[^/]+\/review$/.test(url.pathname)) body = { state: "approved" };
+      else if (/^\/articles\/[^/]+\/publication-workflow$/.test(url.pathname)) {
+        const articleID = url.pathname.split("/")[2];
+        body = articleID === "a2" ? { article_id: articleID, hugo: { state: "ready", progress: 100, stage: "预览已准备", preview: { preview_id: "preview-restored", section: "posts", target_path: "content/posts/restored-writing-system", change: "updated", files: [{ relative_path: "index.md", media_type: "text/markdown", size: 1674 }], diagnostics: [{ code: "hugo.build_ready", level: "passed", message: "Hugo staging 构建通过" }], state: "ready" } } } : { article_id: articleID, hugo: null };
+      }
+      else if (/^\/articles\/[^/]+\/publication-history$/.test(url.pathname)) body = { items: [{ id: "history-hugo", channel: "hugo", state: "published", title: "已同步到 Hugo", detail: "文章内容已写入 Hugo 发布目录", occurred_at: "2026-07-16T09:30:00Z" }, { id: "history-wechat", channel: "wechat", state: "confirmed", title: "已确认保存微信草稿", detail: "已由用户确认保存到微信草稿箱", occurred_at: "2026-07-15T11:20:00Z" }] };
       else if (/^\/articles\/[^/]+\/hugo-sections$/.test(url.pathname)) body = { sections: [{ name: "notes", article_count: 12 }, { name: "posts", article_count: 28 }], existing_section: "", selection_locked: false };
       else if (/^\/articles\/[^/]+\/hugo-previews$/.test(url.pathname)) body = { id: "preview-demo", job_id: "preview-demo", state: "queued" };
       else if (url.pathname === "/hugo-previews/preview-demo") body = { id: "preview-demo", content_hash: "demo-current-version", section: "posts", target_path: "content/posts/wechat-template-design", change: "added", files: [{ relative_path: "index.md", media_type: "text/markdown", size: 1842 }], diagnostics: [{ code: "hugo.build_ready", level: "passed", message: "Hugo staging 构建通过" }], state: "ready", job_id: "preview-demo" };
@@ -44,7 +52,7 @@ const demoAPI: Plugin = {
       else if (url.pathname === "/wechat/confirm") body = { state: "confirmed" };
       else if (url.pathname === "/wechat/copied") body = { state: "copied" };
       else if (url.pathname.startsWith("/wechat/content/")) body = { html: demoArticle.preview_html };
-      else if (url.pathname === "/taxonomy") body = { source: "data/taxonomy.yaml", state: "ready", revision: "demo-revision", loaded_at: "刚刚", readonly: false, terms: [], issues: [{ id: "t1", kind: "alias", term: "local-first", similar: ["本地优先"], affected: ["内容工作流.md", "架构设计.md"] }, { id: "t2", kind: "low_frequency", term: "desktop-app", similar: [], affected: ["SQLite 取舍.md"] }] };
+      else if (url.pathname === "/taxonomy") body = { source: "data/taxonomy.yaml", provider_id: "demo-hugo", provider_type: "hugo", state: "ready", revision: "demo-revision", loaded_at: "刚刚", readonly: false, terms: [{ kind: "category", key: "engineering", name: "工程实践", usage_count: 8, metadata: {} }, { kind: "tag", key: "local-first", name: "local-first", usage_count: 2, metadata: {} }], issues: [] };
       else if (/^\/taxonomy\/issues\/[^/]+\/approve$/.test(url.pathname)) body = { state: "approved" };
       else if (url.pathname === "/settings") body = { workspace_name: "我的写作空间", vault_path: "/Users/me/Documents/Writing", content_roots: ["Areas"], ignored_folders: ["Areas/私人记录"], ignored_file_names: ["index.md", "_index.md"], directories: [{ path: "Areas", markdown_count: 42 }, { path: "Areas/私人记录", markdown_count: 8 }], ai_enabled: true, ai_secret_saved: true, hugo_enabled: true, wechat_enabled: true, wechat_secret_saved: false, default_template: "default", templates: [{ id: "default", name: "InkHub Default", version: "1.0.0", compatible: true }, { id: "minimal", name: "InkHub Minimal", version: "1.0.0", compatible: true }], diagnostics: [{ name: "Obsidian Vault", state: "正常", message: "路径可读，已建立索引" }, { name: "Hugo CLI", state: "正常", message: "0.163.0 extended" }, { name: "图片托管", state: "未启用", message: "含本地图片的微信内容将无法准备" }] };
       else if (url.pathname === "/settings/content-scope/preview") body = { added: 3, removed: 1 };

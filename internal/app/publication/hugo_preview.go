@@ -76,6 +76,7 @@ type PreviewView struct {
 type HugoPreviewJobStore interface {
 	Enqueue(ctx context.Context, value domainjob.Job) (domainjob.Job, bool, error)
 	FindByID(ctx context.Context, id string) (domainjob.Job, error)
+	RequeueFailed(ctx context.Context, id, workspaceID, kind string, now time.Time) (domainjob.Job, error)
 }
 
 // PreviewDependencies 解析当前文章并验证服务端 Artifact 是否仍可交付。
@@ -117,6 +118,9 @@ func (s *HugoPreviewService) Queue(ctx context.Context, request PreviewRequest) 
 	id := previewID(current.ArticleID, current.ProviderID, request.ContentHash, request.Section)
 	payload, _ := json.Marshal(map[string]string{"preview_id": id, "article_id": current.ArticleID, "provider_instance_id": current.ProviderID, "content_hash": request.ContentHash, "section": request.Section})
 	if existing, found, err := s.findDeterministicJob(ctx, id, current.WorkspaceID, "hugo_preview", string(payload)); found || err != nil {
+		if err == nil && existing.State == domainjob.StateFailed {
+			return s.jobs.RequeueFailed(ctx, id, current.WorkspaceID, "hugo_preview", s.now().UTC())
+		}
 		return existing, err
 	}
 	value, _, err := s.jobs.Enqueue(ctx, domainjob.Job{ID: id, WorkspaceID: current.WorkspaceID, Kind: "hugo_preview", DedupeKey: "hugo-preview:" + id, PayloadJSON: string(payload), AvailableAt: s.now().UTC()})
@@ -187,6 +191,9 @@ func (s *HugoPreviewService) Confirm(ctx context.Context, request ConfirmPreview
 	id := deliveryID(result.PreviewID)
 	payload, _ := json.Marshal(map[string]string{"preview_id": result.PreviewID, "article_id": result.ArticleID, "provider_instance_id": result.ProviderID, "content_hash": result.Artifact.ContentHash})
 	if existing, found, err := s.findDeterministicJob(ctx, id, result.WorkspaceID, "hugo_deliver", string(payload)); found || err != nil {
+		if err == nil && existing.State == domainjob.StateFailed {
+			return s.jobs.RequeueFailed(ctx, id, result.WorkspaceID, "hugo_deliver", s.now().UTC())
+		}
 		return existing, err
 	}
 	value, _, err := s.jobs.Enqueue(ctx, domainjob.Job{ID: id, WorkspaceID: result.WorkspaceID, Kind: "hugo_deliver", DedupeKey: "hugo-deliver:" + result.PreviewID, PayloadJSON: string(payload), AvailableAt: s.now().UTC()})

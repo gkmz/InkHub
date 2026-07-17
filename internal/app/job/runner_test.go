@@ -140,6 +140,43 @@ func TestRunnerRetriesOnlyRetrySafeJobs(t *testing.T) {
 	}
 }
 
+func TestRunnerCallsTerminalFailureOnlyAfterRetriesExhausted(t *testing.T) {
+	t.Parallel()
+
+	store := openJobStore(t)
+	now := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
+	var failures []Failure
+	runner := NewRunner(store, Config{Now: func() time.Time { return now }})
+	runner.Register("publish", HandlerOptions{
+		MaxAttempts: 2,
+		RetrySafe:   true,
+		Backoff:     func(int) time.Duration { return time.Second },
+		Handle: func(context.Context, *Execution) (string, error) {
+			return "", &contracts.ProviderError{Code: "hugo.temporary", Category: contracts.ErrorTemporary, Message: "Hugo 暂时不可用", Retryable: true}
+		},
+		OnTerminalFailure: func(_ context.Context, _ domainjob.Job, failure Failure) error {
+			failures = append(failures, failure)
+			return nil
+		},
+	})
+	if _, _, err := runner.Enqueue(context.Background(), EnqueueRequest{ID: "job_failure", WorkspaceID: "w1", Kind: "publish"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.RunOne(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(failures) != 0 {
+		t.Fatalf("自动重试阶段写入了失败事实: %+v", failures)
+	}
+	now = now.Add(time.Second)
+	if _, err := runner.RunOne(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(failures) != 1 || failures[0].Code != "hugo.temporary" || failures[0].Message != "Hugo 暂时不可用" || failures[0].Attempt != 2 {
+		t.Fatalf("终态失败回调错误: %+v", failures)
+	}
+}
+
 func TestRunnerRejectsInvalidPayloadAndResultJSON(t *testing.T) {
 	t.Parallel()
 

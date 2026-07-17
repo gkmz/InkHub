@@ -222,6 +222,18 @@ test("文章页同步 Hugo 时展开预览流程而不调用旧发布接口", as
   expect(requests.some((url) => url.endsWith("/publications"))).toBe(false);
 });
 
+test("文章页刷新后自动展开 Ready Hugo 预览", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/taxonomy")) return Response.json(taxonomy);
+    if (url.endsWith("/publication-workflow")) return Response.json({ article_id: "article-1", hugo: { state: "ready", progress: 100, stage: "预览已准备", preview: { preview_id: "preview_ready", section: "posts", target_path: "content/posts/restored", change: "updated", files: [], diagnostics: [], state: "ready" } } });
+    return Response.json({ ...article, review_state: "已通过", hugo_state: "需要同步" });
+  });
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  expect(await screen.findByText("content/posts/restored")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "确认同步到 Hugo" })).toBeInTheDocument();
+});
+
 test("微信必须先复制当前内容才能人工确认草稿", async () => {
   const copy = vi.fn().mockResolvedValue(undefined);
   const confirm = vi.fn();

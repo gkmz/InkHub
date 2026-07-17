@@ -71,6 +71,45 @@ export interface HugoPreviewView {
   error?: string;
 }
 
+export interface RecoveredHugoPreviewView {
+  preview_id: string;
+  section: string;
+  target_path: string;
+  change: "added" | "updated";
+  files: Array<{ relative_path: string; media_type: string; size: number }>;
+  diagnostics: Array<{ code: string; level: string; message: string }>;
+  preview_url?: string;
+  expires_at?: string;
+  state: "preparing" | "ready" | "expired" | "failed";
+  error?: string;
+}
+
+export interface PublicationWorkflowView {
+  article_id: string;
+  hugo: null | {
+    state: "preparing" | "ready" | "expired" | "failed" | "delivering" | "published";
+    progress: number;
+    stage: string;
+    error?: string;
+    preview?: RecoveredHugoPreviewView;
+    delivery?: { state: string; progress: number; stage: string; error?: string };
+  };
+}
+
+export interface PublicationHistoryItem {
+  id: string;
+  channel: "hugo" | "wechat";
+  state: "prepared" | "copied" | "confirmed" | "published" | "failed";
+  title: string;
+  detail: string;
+  occurred_at: string;
+}
+
+export interface PublicationHistoryPage {
+  items: PublicationHistoryItem[];
+  next_cursor?: string;
+}
+
 export interface ArticleMetadata {
   title: string;
   description: string;

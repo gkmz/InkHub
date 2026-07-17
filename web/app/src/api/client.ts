@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WorkspaceDraft } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WorkspaceDraft } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -67,6 +67,18 @@ export function getArticle(articleID: string, signal?: AbortSignal) {
 /** getHugoSections 读取 Hugo 当前可选一级发布目录。 */
 export function getHugoSections(articleID: string, signal?: AbortSignal) {
   return request<HugoSectionView>(`/articles/${encodeURIComponent(articleID)}/hugo-sections`, { signal });
+}
+
+/** getPublicationWorkflow 恢复当前文章版本的 Hugo 发布状态。 */
+export function getPublicationWorkflow(articleID: string, signal?: AbortSignal) {
+  return request<PublicationWorkflowView>(`/articles/${encodeURIComponent(articleID)}/publication-workflow`, { signal });
+}
+
+/** getPublicationHistory 稳定分页读取 Hugo 与微信统一历史。 */
+export function getPublicationHistory(articleID: string, cursor = "", signal?: AbortSignal) {
+  const query = new URLSearchParams({ limit: "20" });
+  if (cursor) query.set("cursor", cursor);
+  return request<PublicationHistoryPage>(`/articles/${encodeURIComponent(articleID)}/publication-history?${query.toString()}`, { signal });
 }
 
 /** createHugoPreview 为指定内容版本生成可确认的 staging Artifact。 */

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,6 +82,51 @@ func TestHugoPreviewJobPreparesThenDeliverJobPublishesSameArtifact(t *testing.T)
 	var state string
 	if err := db.QueryRow(`SELECT state FROM publications WHERE article_id='a1' AND provider_instance_id='h1'`).Scan(&state); err != nil || state != "published" {
 		t.Fatalf("交付后 publication 状态错误: state=%s err=%v", state, err)
+	}
+}
+
+func TestHugoPreviewJobPersistsTerminalFailureEvent(t *testing.T) {
+	ctx := context.Background()
+	site := t.TempDir()
+	if err := os.CopyFS(site, os.DirFS(filepath.Join("..", "..", "..", "testdata", "hugo", "site"))); err != nil {
+		t.Fatal(err)
+	}
+	vault := t.TempDir()
+	if err := os.Mkdir(filepath.Join(vault, ".obsidian"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vault, "preview.md"), []byte("---\nid: article_PREVIEW\ntitle: Preview\npublish:\n  slug: preview\n---\n正文"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := inksqlite.Open(ctx, filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	insertHugoPreviewFixture(t, db, site, vault, filepath.Join(t.TempDir(), "staging"))
+	payload := `{"preview_id":"preview_invalid","article_id":"a1","provider_instance_id":"h1","content_hash":"hash-current","section":"missing"}`
+	jobs := repository.NewJobRepository(db)
+	if _, _, err := jobs.Enqueue(ctx, domainjob.Job{ID: "preview_invalid", WorkspaceID: "w1", Kind: "hugo_preview", PayloadJSON: payload, AvailableAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := newProviderRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if worked, err := newPublicationRunner(db, nil, runtime).RunOne(ctx); err != nil || !worked {
+		t.Fatalf("执行失败预览: worked=%v err=%v", worked, err)
+	}
+	var state string
+	if err := db.QueryRow(`SELECT state FROM publications WHERE article_id='a1' AND provider_instance_id='h1'`).Scan(&state); err != nil || state != "failed" {
+		t.Fatalf("终态失败投影错误: state=%s err=%v", state, err)
+	}
+	var count int
+	var eventPayload string
+	if err := db.QueryRow(`SELECT COUNT(*),MAX(payload_json) FROM publication_events WHERE event_type='failed'`).Scan(&count, &eventPayload); err != nil || count != 1 {
+		t.Fatalf("终态失败事件错误: count=%d payload=%s err=%v", count, eventPayload, err)
+	}
+	if strings.Contains(eventPayload, site) || strings.Contains(eventPayload, vault) || !strings.Contains(eventPayload, `"error_code"`) {
+		t.Fatalf("终态失败事件未脱敏: %s", eventPayload)
 	}
 }
 

@@ -121,6 +121,42 @@ func TestHugoPreviewReusesCompletedDeterministicJobs(t *testing.T) {
 	}
 }
 
+func TestHugoPreviewRequeuesFailedDeterministicJobs(t *testing.T) {
+	now := time.Date(2026, 7, 17, 8, 0, 0, 0, time.UTC)
+	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{}}
+	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash"}}
+	service := NewHugoPreviewService(store, resolver, func() time.Time { return now })
+	preview, err := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedPreview := store.jobs[preview.ID]
+	failedPreview.State = domainjob.StateFailed
+	store.jobs[preview.ID] = failedPreview
+	requeuedPreview, err := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts"})
+	if err != nil || requeuedPreview.State != domainjob.StateQueued || requeuedPreview.ID != preview.ID {
+		t.Fatalf("失败 Preview 未重排: %+v err=%v", requeuedPreview, err)
+	}
+
+	expires := now.Add(time.Hour)
+	result := HugoPreviewResult{PreviewID: preview.ID, ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", Section: "posts", Artifact: contracts.PreparedArtifact{OperationID: preview.ID, ContentHash: "hash", ExpiresAt: &expires}}
+	encoded, _ := json.Marshal(result)
+	succeededPreview := store.jobs[preview.ID]
+	succeededPreview.State, succeededPreview.ResultJSON = domainjob.StateSucceeded, string(encoded)
+	store.jobs[preview.ID] = succeededPreview
+	delivery, err := service.Confirm(context.Background(), ConfirmPreviewRequest{PreviewID: preview.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedDelivery := store.jobs[delivery.ID]
+	failedDelivery.State = domainjob.StateFailed
+	store.jobs[delivery.ID] = failedDelivery
+	requeuedDelivery, err := service.Confirm(context.Background(), ConfirmPreviewRequest{PreviewID: preview.ID})
+	if err != nil || requeuedDelivery.State != domainjob.StateQueued || requeuedDelivery.ID != delivery.ID {
+		t.Fatalf("失败 Deliver 未重排: %+v err=%v", requeuedDelivery, err)
+	}
+}
+
 type memoryPreviewJobStore struct{ jobs map[string]domainjob.Job }
 
 func (s *memoryPreviewJobStore) Enqueue(_ context.Context, value domainjob.Job) (domainjob.Job, bool, error) {
@@ -145,6 +181,15 @@ func (s *memoryPreviewJobStore) FindByID(_ context.Context, id string) (domainjo
 	if !ok {
 		return domainjob.Job{}, errors.New("not found")
 	}
+	return value, nil
+}
+func (s *memoryPreviewJobStore) RequeueFailed(_ context.Context, id, workspaceID, kind string, _ time.Time) (domainjob.Job, error) {
+	value, ok := s.jobs[id]
+	if !ok || value.WorkspaceID != workspaceID || value.Kind != kind || value.State != domainjob.StateFailed {
+		return domainjob.Job{}, errors.New("failed job mismatch")
+	}
+	value.State, value.Progress, value.ErrorCode, value.ErrorMessage = domainjob.StateQueued, 0, "", ""
+	s.jobs[id] = value
 	return value, nil
 }
 

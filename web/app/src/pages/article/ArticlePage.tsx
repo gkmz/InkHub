@@ -1,6 +1,6 @@
 import { ArrowLeft, Bot, Check, CloudUpload, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { generateArticleSuggestions, getArticle, getTaxonomyOverview, reviewArticle, saveMetadata } from "../../api/client";
+import { generateArticleSuggestions, getArticle, getPublicationWorkflow, getTaxonomyOverview, reviewArticle, saveMetadata } from "../../api/client";
 import { sanitizePreviewHTML } from "../../api/safeHTML";
 import type { ArticleDetail, ArticleMetadata, TaxonomyOverview } from "../../api/types";
 import { AISuggestions } from "../../components/AISuggestions";
@@ -9,6 +9,7 @@ import { HugoPublishFlow } from "../../components/HugoPublishFlow";
 import { MetadataForm } from "../../components/MetadataForm";
 import type { TaxonomyFieldState } from "../../components/SingleTaxonomyField";
 import { PublicationTrack } from "../../components/PublicationTrack";
+import { PublicationHistory } from "../../components/PublicationHistory";
 import { CreateTaxonomyTermDialog } from "../taxonomy/CreateTaxonomyTermDialog";
 
 type MobileTab = "content" | "review" | "publish";
@@ -26,8 +27,20 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   const [generatingAI, setGeneratingAI] = useState(false);
   const [externalSuggestion, setExternalSuggestion] = useState<{ id: string; field: keyof ArticleMetadata; value: string } | null>(null);
   const [showHugoFlow, setShowHugoFlow] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const load = useCallback(() => getArticle(articleID).then(setArticle).catch((reason: Error) => setNotice(reason.message)), [articleID]);
   useEffect(() => { void load(); }, [load]);
+  // 工作流读取属于增强能力：恢复未完成任务，但失败时不能阻断文章详情。
+  useEffect(() => {
+    const controller = new AbortController();
+    setShowHugoFlow(false);
+    void getPublicationWorkflow(articleID, controller.signal).then((workflow) => {
+      if (workflow.hugo && workflow.hugo.state !== "published") setShowHugoFlow(true);
+    }).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+    });
+    return () => controller.abort();
+  }, [articleID]);
   // Taxonomy 是文章编辑的增强数据，加载失败不能阻断文章详情或清空旧 Category/Series。
   useEffect(() => {
     const controller = new AbortController();
@@ -61,7 +74,8 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
         <Checks items={article.checks} />
         {article.ai_configured ? <AISuggestions stale={article.suggestions_stale} suggestions={article.suggestions} generating={generatingAI} onAccept={(suggestion) => setExternalSuggestion({ id: `${suggestion.id}:${Date.now()}`, field: suggestion.field, value: suggestion.name })} onGenerate={async () => { setGeneratingAI(true); try { const result = await generateArticleSuggestions(article.id); setArticle({ ...article, ...result }); setNotice("AI Tag 已生成"); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "AI Tag 生成失败"); } finally { setGeneratingAI(false); } }} /> : <section className="tool-section ai-unconfigured"><Bot size={17} /><span><b>AI 建议未启用</b><small>不影响手工审核</small></span><button onClick={() => onNavigate("/settings")}>配置 AI</button></section>}
         {!hidePrimaryForHugoFlow && <div className="primary-action"><button className="primary" onClick={() => void primary.action()}><PrimaryIcon size={17} />{primary.label}</button>{notice && <span role="status">{notice}</span>}</div>}
-        {showHugoFlow && article.hugo_state !== "已同步" && <HugoPublishFlow articleID={article.id} contentHash={article.content_version} onPublished={async () => { setShowHugoFlow(false); await load(); }} />}
+        {showHugoFlow && article.hugo_state !== "已同步" && <HugoPublishFlow articleID={article.id} contentHash={article.content_version} onPublished={async () => { setShowHugoFlow(false); setHistoryRefreshKey((value) => value + 1); await load(); }} />}
+        <PublicationHistory articleID={article.id} refreshKey={historyRefreshKey} />
       </aside>
     </div>
     {taxonomy && taxonomySelection && <CreateTaxonomyTermDialog overview={taxonomy} kind={taxonomySelection.kind} noun={taxonomySelection.kind === "category" ? "类目" : "系列"} onClose={() => setTaxonomySelection(null)} onApplied={setTaxonomy} onCreated={(name) => { taxonomySelection.select(name); setTaxonomySelection(null); }} />}

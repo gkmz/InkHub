@@ -81,3 +81,60 @@ func TestJobRepositoryClaimsQueuedJobOnlyOnce(t *testing.T) {
 		t.Fatalf("领取后的任务状态不正确: %+v", stored)
 	}
 }
+
+func TestJobRepositoryRequeuesOnlyMatchingFailedJob(t *testing.T) {
+	t.Parallel()
+
+	db := openRepositoryTestDB(t)
+	seedWorkspace(t, db)
+	repository := NewJobRepository(db)
+	now := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
+	if _, _, err := repository.Enqueue(context.Background(), domainjob.Job{ID: "preview_1", WorkspaceID: "w1", Kind: "hugo_preview", PayloadJSON: `{"article_id":"a1"}`, AvailableAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, claimed, err := repository.ClaimNext(context.Background(), now); err != nil || !claimed {
+		t.Fatalf("领取任务: claimed=%v err=%v", claimed, err)
+	}
+	if err := repository.Fail(context.Background(), "preview_1", "hugo.failed", "构建失败", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.RequeueFailed(context.Background(), "preview_1", "other", "hugo_preview", now.Add(time.Second)); err == nil {
+		t.Fatal("工作区不匹配时仍重排任务")
+	}
+	requeued, err := repository.RequeueFailed(context.Background(), "preview_1", "w1", "hugo_preview", now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requeued.State != domainjob.StateQueued || requeued.Attempts != 1 || requeued.PayloadJSON != `{"article_id":"a1"}` || requeued.StartedAt != nil || requeued.FinishedAt != nil || requeued.ErrorCode != "" {
+		t.Fatalf("重排任务状态错误: %+v", requeued)
+	}
+	if _, err := repository.RequeueFailed(context.Background(), "preview_1", "w1", "hugo_preview", now.Add(2*time.Second)); err == nil {
+		t.Fatal("queued 任务被重复重排")
+	}
+}
+
+func TestJobRepositoryFindsLatestTargetJobByCurrentIdentity(t *testing.T) {
+	t.Parallel()
+
+	db := openRepositoryTestDB(t)
+	seedPublicationParents(t, db)
+	repository := NewJobRepository(db)
+	now := time.Date(2026, 7, 17, 12, 0, 0, 0, time.UTC)
+	jobs := []domainjob.Job{
+		{ID: "preview_old_hash", WorkspaceID: "w1", Kind: "hugo_preview", PayloadJSON: `{"article_id":"a1","provider_instance_id":"provider1","content_hash":"old"}`, AvailableAt: now},
+		{ID: "preview_current", WorkspaceID: "w1", Kind: "hugo_preview", PayloadJSON: `{"article_id":"a1","provider_instance_id":"provider1","content_hash":"hash"}`, AvailableAt: now.Add(time.Second)},
+		{ID: "preview_other_article", WorkspaceID: "w1", Kind: "hugo_preview", PayloadJSON: `{"article_id":"other","provider_instance_id":"provider1","content_hash":"hash"}`, AvailableAt: now.Add(2 * time.Second)},
+	}
+	for _, job := range jobs {
+		if _, _, err := repository.Enqueue(context.Background(), job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	found, ok, err := repository.FindLatestTargetJob(context.Background(), "w1", "a1", "provider1", "hash", "hugo_preview")
+	if err != nil || !ok || found.ID != "preview_current" {
+		t.Fatalf("当前目标任务查询错误: job=%+v found=%v err=%v", found, ok, err)
+	}
+	if _, ok, err := repository.FindLatestTargetJob(context.Background(), "w1", "a1", "provider1", "missing", "hugo_preview"); err != nil || ok {
+		t.Fatalf("不存在的内容版本返回了任务: found=%v err=%v", ok, err)
+	}
+}

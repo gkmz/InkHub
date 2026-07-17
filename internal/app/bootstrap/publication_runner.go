@@ -8,6 +8,7 @@ import (
 	"time"
 
 	appjob "github.com/gkmz/InkHub/internal/app/job"
+	domainjob "github.com/gkmz/InkHub/internal/domain/job"
 	domainpublication "github.com/gkmz/InkHub/internal/domain/publication"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
@@ -18,12 +19,12 @@ func newPublicationRunner(db *sql.DB, logger *zap.Logger, runtime contracts.Prov
 	runner := appjob.NewRunner(repository.NewJobRepository(db), appjob.Config{Workers: 2, PollInterval: 200 * time.Millisecond, Logger: logger})
 	handler := publicationJobHandler{db: db, publications: repository.NewPublicationRepository(db), runtime: runtime}
 	hugoHandler := hugoPreviewJobHandler{publicationJobHandler: handler, jobs: repository.NewJobRepository(db)}
-	runner.Register("publication", appjob.HandlerOptions{Handle: handler.handle, MaxAttempts: 3, RetrySafe: true})
-	runner.Register("hugo_preview", appjob.HandlerOptions{Handle: hugoHandler.handlePreview, MaxAttempts: 3, RetrySafe: true})
-	runner.Register("hugo_deliver", appjob.HandlerOptions{Handle: hugoHandler.handleDeliver, MaxAttempts: 3, RetrySafe: true})
+	runner.Register("publication", appjob.HandlerOptions{Handle: handler.handle, MaxAttempts: 3, RetrySafe: true, OnTerminalFailure: handler.recordTerminalFailure})
+	runner.Register("hugo_preview", appjob.HandlerOptions{Handle: hugoHandler.handlePreview, MaxAttempts: 3, RetrySafe: true, OnTerminalFailure: handler.recordTerminalFailure})
+	runner.Register("hugo_deliver", appjob.HandlerOptions{Handle: hugoHandler.handleDeliver, MaxAttempts: 3, RetrySafe: true, OnTerminalFailure: handler.recordTerminalFailure})
 	// 保留旧任务类型，仅用于升级后恢复已经持久化的任务。
-	runner.Register("hugo_sync", appjob.HandlerOptions{Handle: handler.handle, MaxAttempts: 1})
-	runner.Register("wechat_prepare", appjob.HandlerOptions{Handle: handler.handle, MaxAttempts: 3, RetrySafe: true})
+	runner.Register("hugo_sync", appjob.HandlerOptions{Handle: handler.handle, MaxAttempts: 1, OnTerminalFailure: handler.recordTerminalFailure})
+	runner.Register("wechat_prepare", appjob.HandlerOptions{Handle: handler.handle, MaxAttempts: 3, RetrySafe: true, OnTerminalFailure: handler.recordTerminalFailure})
 	return runner
 }
 
@@ -36,6 +37,29 @@ type publicationPayload struct {
 	ArticleID   string `json:"article_id"`
 	ProviderID  string `json:"provider_instance_id"`
 	ContentHash string `json:"content_hash"`
+}
+
+func (h publicationJobHandler) recordTerminalFailure(ctx context.Context, job domainjob.Job, failure appjob.Failure) error {
+	var payload publicationPayload
+	if err := json.Unmarshal([]byte(job.PayloadJSON), &payload); err != nil || payload.ArticleID == "" || payload.ProviderID == "" || payload.ContentHash == "" {
+		return fmt.Errorf("解析失败发布任务")
+	}
+	var providerType string
+	if err := h.db.QueryRowContext(ctx, `SELECT provider_type FROM provider_instances WHERE id=? AND workspace_id=?`, payload.ProviderID, job.WorkspaceID).Scan(&providerType); err != nil {
+		return fmt.Errorf("查询失败任务 Provider: %w", err)
+	}
+	channel := providerType
+	if channel != string(contracts.ProviderHugo) && channel != string(contracts.ProviderWeChat) {
+		return fmt.Errorf("发布失败事件渠道无效")
+	}
+	recordID := stableAPIID("publication", payload.ArticleID, payload.ProviderID)
+	return h.publications.SaveWithEvent(ctx, repository.PublicationRecord{
+		ID: recordID, ArticleID: payload.ArticleID, ProviderInstanceID: payload.ProviderID,
+		WorkspaceID: job.WorkspaceID, State: domainpublication.StateFailed, ContentHash: payload.ContentHash,
+	}, repository.PublicationEvent{
+		ID: stableAPIID("event", recordID, "failed", job.ID, fmt.Sprint(failure.Attempt)), Type: "failed", ContentHash: payload.ContentHash,
+		Payload: map[string]string{"channel": channel, "error_code": failure.Code, "message": failure.Message},
+	})
 }
 
 func (h publicationJobHandler) handle(ctx context.Context, execution *appjob.Execution) (string, error) {

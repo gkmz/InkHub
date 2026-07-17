@@ -91,6 +91,25 @@ attempts,available_at,started_at,finished_at,created_at,updated_at FROM jobs WHE
 	return value, nil
 }
 
+// FindLatestTargetJob 按工作区、文章、Provider、内容版本和类型查询最新任务。
+func (r *JobRepository) FindLatestTargetJob(ctx context.Context, workspaceID, articleID, providerID, contentHash, kind string) (domainjob.Job, bool, error) {
+	value, err := scanJob(r.db.QueryRowContext(ctx, `SELECT
+id,workspace_id,kind,dedupe_key,state,progress,payload_json,result_json,error_code,error_message,
+attempts,available_at,started_at,finished_at,created_at,updated_at FROM jobs
+WHERE workspace_id=? AND kind=?
+  AND json_extract(payload_json,'$.article_id')=?
+  AND json_extract(payload_json,'$.provider_instance_id')=?
+  AND json_extract(payload_json,'$.content_hash')=?
+ORDER BY created_at DESC,id DESC LIMIT 1`, workspaceID, kind, articleID, providerID, contentHash))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domainjob.Job{}, false, nil
+	}
+	if err != nil {
+		return domainjob.Job{}, false, fmt.Errorf("查询目标最新任务: %w", err)
+	}
+	return value, true, nil
+}
+
 // UpdateProgress 更新运行中任务的有限进度值。
 func (r *JobRepository) UpdateProgress(ctx context.Context, id string, progress int, now time.Time) error {
 	if progress < 0 || progress > 99 {
@@ -170,6 +189,23 @@ WHERE state='running' AND started_at<? ORDER BY started_at,id`, formatJobTime(be
 func (r *JobRepository) RequeueRecovered(ctx context.Context, id string, availableAt, now time.Time) error {
 	return r.updateRunning(ctx, id, `state='queued',error_code='job.recovered',error_message='应用重启后重新排队',
 available_at=?,started_at=NULL,updated_at=?`, formatJobTime(availableAt), formatJobTime(now))
+}
+
+// RequeueFailed 按任务身份原子重排一个最终失败的确定性任务。
+func (r *JobRepository) RequeueFailed(ctx context.Context, id, workspaceID, kind string, now time.Time) (domainjob.Job, error) {
+	value, err := scanJob(r.db.QueryRowContext(ctx, `UPDATE jobs SET
+state='queued',progress=0,error_code=NULL,error_message=NULL,available_at=?,started_at=NULL,finished_at=NULL,updated_at=?
+WHERE id=? AND workspace_id=? AND kind=? AND state='failed'
+RETURNING id,workspace_id,kind,dedupe_key,state,progress,payload_json,result_json,error_code,error_message,
+attempts,available_at,started_at,finished_at,created_at,updated_at`,
+		formatJobTime(now), formatJobTime(now), id, workspaceID, kind))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domainjob.Job{}, fmt.Errorf("失败任务身份或状态不匹配: %s", id)
+	}
+	if err != nil {
+		return domainjob.Job{}, fmt.Errorf("重排失败任务: %w", err)
+	}
+	return value, nil
 }
 
 // FailRecovered 将无法安全恢复的遗留任务标记失败。
