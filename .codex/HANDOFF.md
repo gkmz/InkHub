@@ -46,7 +46,7 @@ Obsidian Vault → InkHub 审核/AI/SEO/Taxonomy → Hugo + 微信公众号
 
 ## Next
 
-Hugo 发布任务恢复与 Hugo/微信统一发布历史已经完成。下一步按 PRD 优先级推进微信图片处理的真实渠道验证；Tags 是多值集合，继续保持独立组件，不复用单值 taxonomy 字段。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁。
+微信公开 GitHub 图片托管、确认前图片计划和人工复制流程已经完成。下一步使用专用公开测试仓库和最小权限 Token 做真实 GitHub/微信公众号粘贴验收，或继续补齐 Mermaid 生产转换器；Tags 是多值集合，继续保持独立组件。继续遵循每个功能先写失败测试、实现后 reflection、公开方法中文文档注释和关键代码中文注释的质量门禁。
 
 ## Important Decisions
 
@@ -70,6 +70,9 @@ Hugo 发布任务恢复与 Hugo/微信统一发布历史已经完成。下一步
 - 页面刷新或应用重启后，通过文章级 Workflow 按当前工作区、文章、Provider 和内容 hash 恢复 Preview/Deliver；前端不持久化 Job ID，旧 hash 不进入当前流程。
 - 发布最终失败写入 attempt 级幂等事件，自动重试的中间失败不污染历史；失败 Preview/Deliver 只重排原确定性任务。
 - 文章页统一发布历史从 `publication_events` 稳定分页读取 Hugo 与微信事件，只展示自然语言安全摘要。
+- Obsidian Read 会解析 Markdown 图片和 Wiki Embed 为授权 `ResourceRefs`；远程 HTTPS 图片保持不变，缺失或 Vault 越界形成微信阻断诊断。
+- 微信图片使用通用 `AssetUploader` 与公开 GitHub Contents API；摘要路径幂等，Token 只在系统 Secret Store，私有仓库不支持。
+- 微信准备使用 AES-GCM opaque token，用户确认前只 Inspect 不上传；确认后才执行 `wechat_prepare`，复制和草稿确认仍是独立人工操作。
 
 ## Files
 
@@ -91,4 +94,4 @@ Hugo 发布任务恢复与 Hugo/微信统一发布历史已经完成。下一步
 
 ## Fresh Session Prompt
 
-请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象、类目管理、文章元数据与 AI Tag、Hugo 发布预览确认、任务恢复和统一发布历史已完成，下一步按 PRD 优先级推进微信图片处理的真实渠道验证。
+请先阅读项目指令文件、`docs/PRD.md`、`docs/design/architecture.md`、专项设计和本 handoff。开始前运行 `git status --short`，确认当前项目是 `/Users/hank/workspace/mine/InkHub`；Provider 抽象、Hugo 恢复历史和微信 GitHub 图片准备闭环已完成，下一步使用专用公开仓库与真实微信公众号后台做渠道验收，或推进 Mermaid 生产转换器。

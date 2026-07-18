@@ -3,6 +3,7 @@ package bootstrap
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
@@ -168,12 +169,22 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 	}()
 	hugoPreviews := newHugoPreviewAPI(db, providerRuntime)
 	publicationWorkflows := newPublicationWorkflowAPI(db, hugoPreviews)
+	planKey := make([]byte, 32)
+	if _, err := rand.Read(planKey); err != nil {
+		return fmt.Errorf("生成微信计划签名密钥: %w", err)
+	}
+	wechatPlans, err := newWeChatPlanAPI(db, providerRuntime, planKey)
+	if err != nil {
+		return fmt.Errorf("装配微信准备计划: %w", err)
+	}
 	api := httptransport.NewRuntimeHandler(db, httptransport.NewRouter(newDatabaseAPI(db)), httptransport.RuntimeOptions{
 		DataDir:              config.DataDir,
 		ProviderRuntime:      providerRuntime,
 		AISecrets:            secretStore,
 		HugoPreviews:         hugoPreviews,
 		PublicationWorkflows: publicationWorkflows,
+		WeChatPlans:          wechatPlans,
+		AssetTokenKey:        planKey,
 		RefreshTaxonomy: func(refreshCtx context.Context) error {
 			_, refreshErr := RefreshRecentTaxonomy(refreshCtx, db, providerRuntime)
 			return refreshErr

@@ -46,6 +46,9 @@ test("微信模板切换、复制和人工确认保持独立", async ({ page }) 
   await page.getByLabel(/模板/).selectOption("minimal");
   await expect(page.locator(".wechat-document")).toHaveClass(/template-minimal/);
   await expect(page.getByRole("button", { name: "草稿已保存" })).toHaveCount(0);
+  await expect(page.getByText("images/cover.png")).toBeVisible();
+  await page.getByRole("button", { name: "确认并准备" }).click();
+  await expect(page.getByRole("button", { name: "复制格式化内容" })).toBeVisible();
   await page.getByRole("button", { name: "复制格式化内容" }).click();
   await expect(page.getByRole("button", { name: "草稿已保存" })).toBeVisible();
 });

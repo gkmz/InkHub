@@ -18,6 +18,8 @@ const demoArticle = {
   ai_configured: true, suggestions: [{ field: "description", original: "从安全约束、模板变量和复制流程出发，记录一套可分享的公众号排版方案。", suggested: "拆解安全模板、CSS 内联与人工确认，构建可靠的公众号内容交付流程。", reason: "突出文章覆盖的工程环节" }], suggestions_stale: false, wechat_copied: false,
 };
 
+let demoWeChatPrepared = false;
+
 // 开发服务器只提供可重复的页面验收数据；生产构建不会包含这段中间件。
 const demoAPI: Plugin = {
   name: "inkhub-demo-api",
@@ -35,7 +37,7 @@ const demoAPI: Plugin = {
       } else if (url.pathname === "/workspaces") body = { workspace: { id: "demo", name: "我的写作空间" }, job_id: "demo-scan" };
       else if (/^\/articles\/[^/]+$/.test(url.pathname)) {
         const articleID = url.pathname.split("/").pop() ?? demoArticle.id;
-        body = { ...demoArticle, id: articleID, review_state: articleID === "a2" ? "已通过" : demoArticle.review_state, hugo_state: articleID === "a2" ? "需要同步" : demoArticle.hugo_state };
+        body = { ...demoArticle, id: articleID, review_state: articleID === "a2" ? "已通过" : demoArticle.review_state, hugo_state: articleID === "a2" ? "需要同步" : demoArticle.hugo_state, wechat_state: demoWeChatPrepared ? "已准备" : demoArticle.wechat_state };
       }
       else if (/^\/articles\/[^/]+\/metadata$/.test(url.pathname)) body = demoArticle;
       else if (/^\/articles\/[^/]+\/review$/.test(url.pathname)) body = { state: "approved" };
@@ -44,6 +46,8 @@ const demoAPI: Plugin = {
         body = articleID === "a2" ? { article_id: articleID, hugo: { state: "ready", progress: 100, stage: "预览已准备", preview: { preview_id: "preview-restored", section: "posts", target_path: "content/posts/restored-writing-system", change: "updated", files: [{ relative_path: "index.md", media_type: "text/markdown", size: 1674 }], diagnostics: [{ code: "hugo.build_ready", level: "passed", message: "Hugo staging 构建通过" }], state: "ready" } } } : { article_id: articleID, hugo: null };
       }
       else if (/^\/articles\/[^/]+\/publication-history$/.test(url.pathname)) body = { items: [{ id: "history-hugo", channel: "hugo", state: "published", title: "已同步到 Hugo", detail: "文章内容已写入 Hugo 发布目录", occurred_at: "2026-07-16T09:30:00Z" }, { id: "history-wechat", channel: "wechat", state: "confirmed", title: "已确认保存微信草稿", detail: "已由用户确认保存到微信草稿箱", occurred_at: "2026-07-15T11:20:00Z" }] };
+      else if (/^\/articles\/[^/]+\/wechat-plans$/.test(url.pathname)) body = { plan_token: "demo-opaque-plan", template_id: "default", ready: true, expires_at: "2026-07-18T12:00:00Z", diagnostics: [], images: [{ reference: "images/cover.png", media_type: "image/png", size: 1842, state: "upload" }] };
+      else if (/^\/articles\/[^/]+\/wechat-plans\/confirm$/.test(url.pathname)) { demoWeChatPrepared = true; body = { state: "queued" }; }
       else if (/^\/articles\/[^/]+\/hugo-sections$/.test(url.pathname)) body = { sections: [{ name: "notes", article_count: 12 }, { name: "posts", article_count: 28 }], existing_section: "", selection_locked: false };
       else if (/^\/articles\/[^/]+\/hugo-previews$/.test(url.pathname)) body = { id: "preview-demo", job_id: "preview-demo", state: "queued" };
       else if (url.pathname === "/hugo-previews/preview-demo") body = { id: "preview-demo", content_hash: "demo-current-version", section: "posts", target_path: "content/posts/wechat-template-design", change: "added", files: [{ relative_path: "index.md", media_type: "text/markdown", size: 1842 }], diagnostics: [{ code: "hugo.build_ready", level: "passed", message: "Hugo staging 构建通过" }], state: "ready", job_id: "preview-demo" };

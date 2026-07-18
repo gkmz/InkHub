@@ -5,6 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +18,28 @@ import (
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
 
+func TestValidateChecksConfiguredAssetUploader(t *testing.T) {
+	t.Parallel()
+	expected := errors.New("repository private")
+	provider, err := New(Config{StagingRoot: t.TempDir()}, staticLoader{}, validatingUploader{err: expected}, &memoryClipboard{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.Validate(context.Background()); !errors.Is(err, expected) {
+		t.Fatalf("Validate 未检查图片仓库: %v", err)
+	}
+}
+
+type validatingUploader struct{ err error }
+
+func (uploader validatingUploader) Validate(context.Context) error { return uploader.err }
+func (validatingUploader) Inspect(context.Context, AssetUploadRequest) (AssetUploadResult, bool, error) {
+	return AssetUploadResult{}, false, nil
+}
+func (validatingUploader) Upload(context.Context, AssetUploadRequest) (AssetUploadResult, error) {
+	return AssetUploadResult{}, nil
+}
+
 func TestPrepareRendersAndUploadsWithoutCopyingUntilDeliver(t *testing.T) {
 	t.Parallel()
 
@@ -24,7 +49,14 @@ func TestPrepareRendersAndUploadsWithoutCopyingUntilDeliver(t *testing.T) {
 		t.Fatal(err)
 	}
 	imagePath := filepath.Join(t.TempDir(), "cover.png")
-	if err := os.WriteFile(imagePath, []byte("image"), 0o644); err != nil {
+	imageFile, err := os.Create(imagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(imageFile, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	if err := imageFile.Close(); err != nil {
 		t.Fatal(err)
 	}
 	input := contracts.PublishInput{
@@ -130,6 +162,44 @@ func TestPreflightRejectsTemplateForAnotherTarget(t *testing.T) {
 	}
 }
 
+func TestInspectAssetsDoesNotUploadAndReturnsSafePlan(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "cover.png")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(file, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	_ = file.Close()
+	uploader := &countingUploader{}
+	provider, err := New(Config{StagingRoot: t.TempDir()}, staticLoader{}, uploader, &memoryClipboard{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, diagnostics, err := provider.InspectAssets(context.Background(), contracts.PublishInput{ResourceRefs: []contracts.ResourceRef{{Original: "images/cover.png", Resolved: path, Kind: "image"}}})
+	if err != nil || len(diagnostics) != 0 || len(items) != 1 || items[0].Reference != "images/cover.png" || items[0].State != "upload" {
+		t.Fatalf("图片计划错误: items=%+v diagnostics=%+v err=%v", items, diagnostics, err)
+	}
+	if uploader.inspectCalls != 1 || uploader.uploadCalls != 0 {
+		t.Fatalf("只读计划发生写入: inspect=%d upload=%d", uploader.inspectCalls, uploader.uploadCalls)
+	}
+}
+
+func TestInspectAssetsKeepsSourceImageDiagnostics(t *testing.T) {
+	t.Parallel()
+	provider, err := New(Config{StagingRoot: t.TempDir()}, staticLoader{}, nil, &memoryClipboard{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, diagnostics, err := provider.InspectAssets(context.Background(), contracts.PublishInput{Diagnostics: []contracts.Diagnostic{{Code: "source.image_unresolved", Message: "文章图片无法解析或超出 Vault", Blocking: true}}})
+	if err != nil || len(diagnostics) != 1 || !diagnostics[0].Blocking {
+		t.Fatalf("Source 图片诊断丢失: %+v err=%v", diagnostics, err)
+	}
+}
+
 type staticLoader struct{ template domaintemplate.Validated }
 
 func (l staticLoader) Load(context.Context, contracts.TemplateRef) (domaintemplate.Validated, error) {
@@ -138,8 +208,27 @@ func (l staticLoader) Load(context.Context, contracts.TemplateRef) (domaintempla
 
 type staticUploader struct{}
 
-func (staticUploader) Upload(_ context.Context, _ string, digest string) (string, error) {
-	return "https://cdn.example/" + digest + ".png", nil
+func (staticUploader) Inspect(_ context.Context, request AssetUploadRequest) (AssetUploadResult, bool, error) {
+	return AssetUploadResult{URL: "https://cdn.example/" + request.Digest + request.Extension, Reused: true}, true, nil
+}
+
+type countingUploader struct {
+	inspectCalls int
+	uploadCalls  int
+}
+
+func (uploader *countingUploader) Inspect(context.Context, AssetUploadRequest) (AssetUploadResult, bool, error) {
+	uploader.inspectCalls++
+	return AssetUploadResult{}, false, nil
+}
+
+func (uploader *countingUploader) Upload(context.Context, AssetUploadRequest) (AssetUploadResult, error) {
+	uploader.uploadCalls++
+	return AssetUploadResult{URL: "https://cdn.example/image.png"}, nil
+}
+
+func (staticUploader) Upload(_ context.Context, request AssetUploadRequest) (AssetUploadResult, error) {
+	return AssetUploadResult{URL: "https://cdn.example/" + request.Digest + request.Extension}, nil
 }
 
 type staticMermaid struct{}

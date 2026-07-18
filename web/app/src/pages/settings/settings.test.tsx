@@ -143,16 +143,24 @@ test("AI 设置保存到 Provider 且不要求重新输入已有 Secret", async 
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
-test("尚未开发的发布设置操作点击后明确提示", async () => {
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({
-    workspace_name: "极客老墨", vault_path: "/Users/me/Vault", content_roots: ["Areas"], ignored_folders: [], ignored_file_names: ["index.md"], directories: [], ai_enabled: false, ai_secret_saved: false, hugo_enabled: true, wechat_enabled: true, wechat_secret_saved: true, default_template: "default", templates: [], diagnostics: [],
-  }));
+test("微信图片仓库保存到 Provider 且 Token 不留在表单", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+    if (init?.method === "PUT") {
+      expect(init.body).toBe(JSON.stringify({ enabled: true, template: "default", github_owner: "gkmz", github_repository: "images", github_branch: "main", github_prefix: "inkhub", github_token: "secret-token" }));
+      return Response.json({ wechat_enabled: true, default_template: "default", github_owner: "gkmz", github_repository: "images", github_branch: "main", github_prefix: "inkhub", github_token_saved: true });
+    }
+    return Response.json({
+      workspace_name: "极客老墨", vault_path: "/Users/me/Vault", content_roots: ["Areas"], ignored_folders: [], ignored_file_names: ["index.md"], directories: [], ai_enabled: false, ai_secret_saved: false, hugo_enabled: true, wechat_enabled: true, wechat_secret_saved: false, github_token_saved: false, github_owner: "", github_repository: "", github_branch: "main", github_prefix: "inkhub", default_template: "default", templates: [], diagnostics: [],
+    });
+  });
   renderSettings();
 
   await screen.findByDisplayValue("极客老墨");
+  await userEvent.type(screen.getByRole("textbox", { name: "GitHub Owner" }), "gkmz");
+  await userEvent.type(screen.getByRole("textbox", { name: "Repository" }), "images");
+  await userEvent.type(screen.getByLabelText("GitHub Token"), "secret-token");
   await userEvent.click(screen.getByRole("button", { name: "保存发布设置" }));
-  expect(screen.getByText("发布设置保存功能尚未开放")).toBeInTheDocument();
-
-  await userEvent.click(screen.getByRole("button", { name: "删除 图片托管 Token" }));
-  expect(screen.getByText("图片托管 Token 删除功能尚未开放")).toBeInTheDocument();
+  expect(await screen.findByRole("status")).toHaveTextContent("发布设置已保存");
+  expect(screen.getByLabelText("GitHub Token")).toHaveValue("");
+  expect(fetchMock).toHaveBeenCalledTimes(2);
 });

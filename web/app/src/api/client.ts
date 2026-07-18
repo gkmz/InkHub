@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WorkspaceDraft } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -81,6 +81,16 @@ export function getPublicationHistory(articleID: string, cursor = "", signal?: A
   return request<PublicationHistoryPage>(`/articles/${encodeURIComponent(articleID)}/publication-history?${query.toString()}`, { signal });
 }
 
+/** getWeChatPlan 只读生成当前模板和本地图片准备清单。 */
+export function getWeChatPlan(articleID: string, templateID: string, signal?: AbortSignal) {
+  return request<WeChatPlanView>(`/articles/${encodeURIComponent(articleID)}/wechat-plans`, { method: "POST", body: JSON.stringify({ template_id: templateID }), signal });
+}
+
+/** confirmWeChatPlan 使用服务端签名计划创建准备任务。 */
+export function confirmWeChatPlan(articleID: string, planToken: string, signal?: AbortSignal) {
+  return request<{ state: "queued" }>(`/articles/${encodeURIComponent(articleID)}/wechat-plans/confirm`, { method: "POST", body: JSON.stringify({ plan_token: planToken }), signal });
+}
+
 /** createHugoPreview 为指定内容版本生成可确认的 staging Artifact。 */
 export function createHugoPreview(articleID: string, contentHash: string, section: string) {
   return request<{ id: string; job_id: string; state: string }>(`/articles/${encodeURIComponent(articleID)}/hugo-previews`, { method: "POST", body: JSON.stringify({ content_hash: contentHash, section }) });
@@ -159,6 +169,11 @@ export function getSettings(signal?: AbortSignal) {
 /** saveAISettings 保存 OpenAI-compatible 非敏感配置和可选的新 API Key。 */
 export function saveAISettings(input: { enabled: boolean; base_url: string; model: string; api_key: string }) {
   return request<{ ai_enabled: boolean; ai_secret_saved: boolean }>("/settings/ai", { method: "PUT", body: JSON.stringify(input) });
+}
+
+/** saveWeChatSettings 保存微信图片仓库非敏感配置和可选的新 Token。 */
+export function saveWeChatSettings(input: { enabled: boolean; template: string; github_owner: string; github_repository: string; github_branch: string; github_prefix: string; github_token: string }) {
+  return request<Partial<SettingsView>>("/settings/wechat", { method: "PUT", body: JSON.stringify(input) });
 }
 
 /** saveContentScope 保存当前 Source 的目录规则并返回重扫结果。 */

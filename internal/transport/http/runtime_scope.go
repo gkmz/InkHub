@@ -121,6 +121,29 @@ func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Re
 		settings["ai_model"] = aiConfig.Model
 		settings["ai_secret_saved"] = h.hasAISecret(request.Context(), aiConfig.SecretRef)
 	}
+	if wechatConfig, enabled, found := loadStoredWeChatConfig(request.Context(), h.db, workspaceID); found {
+		settings["wechat_enabled"] = enabled
+		settings["default_template"] = wechatConfig.Template
+		settings["github_owner"] = wechatConfig.GitHubOwner
+		settings["github_repository"] = wechatConfig.GitHubRepository
+		settings["github_branch"] = wechatConfig.GitHubBranch
+		settings["github_prefix"] = wechatConfig.GitHubPrefix
+		settings["github_token_saved"] = h.hasSecret(request.Context(), wechatConfig.GitHubSecretRef)
+		settings["wechat_secret_saved"] = settings["github_token_saved"]
+		diagnostics := settings["diagnostics"].([]map[string]string)
+		if wechatConfig.GitHubOwner == "" {
+			diagnostics = append(diagnostics, map[string]string{"name": "微信图片仓库", "state": "未启用", "message": "无本地图片的文章仍可准备"})
+		} else if h.providerRuntime != nil {
+			encoded, _ := json.Marshal(wechatConfig)
+			provider, buildErr := h.providerRuntime.BuildPublish(request.Context(), contracts.ProviderRef{ID: stableRuntimeID("wechat", workspaceID), Type: contracts.ProviderWeChat}, contracts.ConfigView{Data: encoded, AllowedRoots: []string{h.dataDir}})
+			if buildErr != nil || provider.Validate(request.Context()) != nil {
+				diagnostics = append(diagnostics, map[string]string{"name": "微信图片仓库", "state": "需要处理", "message": "请检查公开仓库、分支和 Token 写权限"})
+			} else {
+				diagnostics = append(diagnostics, map[string]string{"name": "微信图片仓库", "state": "正常", "message": "公开仓库可写且图片可匿名访问"})
+			}
+		}
+		settings["diagnostics"] = diagnostics
+	}
 	if inspectErr != nil {
 		settings["directories"] = []directoryCandidate{}
 		settings["diagnostics"] = []map[string]string{{"name": "内容目录", "state": "异常", "message": "无法读取 Vault 目录"}}

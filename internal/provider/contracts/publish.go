@@ -47,6 +47,7 @@ type PublishInput struct {
 	Article          article.Article
 	Body             string
 	ResourceRefs     []ResourceRef
+	Diagnostics      []Diagnostic
 	ContentHash      string
 	TemplateRef      *TemplateRef
 	ExpectedRevision string

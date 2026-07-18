@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	domaintemplate "github.com/gkmz/InkHub/internal/domain/template"
+	"github.com/gkmz/InkHub/internal/platform/githubassets"
 	openai "github.com/gkmz/InkHub/internal/provider/ai/openai"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/provider/publish/hugo"
@@ -14,6 +17,7 @@ import (
 	"github.com/gkmz/InkHub/internal/provider/registry"
 	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
 	taxonomyhugo "github.com/gkmz/InkHub/internal/provider/taxonomy/hugo"
+	"go.uber.org/zap"
 )
 
 type secretGetter interface {
@@ -50,7 +54,18 @@ func newProviderRuntime(resolvers ...contracts.SecretResolver) (*registry.Regist
 	if err := runtime.RegisterTaxonomy(taxonomyhugo.NewFactory()); err != nil {
 		return nil, err
 	}
-	if err := runtime.RegisterPublish(wechat.NewFactory(builtinTemplateLoader{}, nil, unusedClipboard{})); err != nil {
+	githubClient := &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(request *http.Request, via []*http.Request) error {
+		if len(via) > 0 && request.URL.Host != via[0].URL.Host {
+			return fmt.Errorf("GitHub 请求禁止跨域跳转")
+		}
+		return nil
+	}}
+	uploaderBuilder := func(_ context.Context, config wechat.AssetUploaderConfig, token []byte) (wechat.AssetUploader, error) {
+		return githubassets.New(githubassets.Config{
+			Owner: config.Owner, Repository: config.Repository, Branch: config.Branch, Prefix: config.Prefix, Token: string(token),
+		}, githubClient, zap.NewNop())
+	}
+	if err := runtime.RegisterPublish(wechat.NewFactoryWithUploaderBuilder(builtinTemplateLoader{}, unusedClipboard{}, uploaderBuilder)); err != nil {
 		return nil, err
 	}
 	return runtime, nil

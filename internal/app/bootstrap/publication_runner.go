@@ -165,5 +165,5 @@ func (h publicationJobHandler) loadInput(ctx context.Context, operationID string
 	document.Article.WorkspaceID = workspaceID
 	document.Article.ID = payload.ArticleID
 	document.Article.ContentHash = contentHash
-	return contracts.PublishInput{OperationID: operationID, Article: document.Article, Body: document.Body, ResourceRefs: document.ResourceRefs, ContentHash: contentHash}, providerType, []byte(config), nil
+	return contracts.PublishInput{OperationID: operationID, Article: document.Article, Body: document.Body, ResourceRefs: document.ResourceRefs, Diagnostics: document.Diagnostics, ContentHash: contentHash}, providerType, []byte(config), nil
 }

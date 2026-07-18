@@ -30,6 +30,7 @@ type RuntimeOptions struct {
 	AISecrets             AISecretStore
 	HugoPreviews          HugoPreviewAPI
 	PublicationWorkflows  PublicationWorkflowAPI
+	WeChatPlans           WeChatPlanAPI
 }
 
 // NewRuntimeHandler 提供首次初始化和页面查询端点，并把领域命令交给核心 API。
@@ -52,6 +53,7 @@ func NewRuntimeHandler(db *sql.DB, core http.Handler, options ...RuntimeOptions)
 	var aiSecrets AISecretStore
 	var hugoPreviews HugoPreviewAPI
 	var publicationWorkflows PublicationWorkflowAPI
+	var wechatPlans WeChatPlanAPI
 	if len(options) > 0 {
 		afterWorkspaceCreated = options[0].AfterWorkspaceCreated
 		providerRuntime = options[0].ProviderRuntime
@@ -59,8 +61,9 @@ func NewRuntimeHandler(db *sql.DB, core http.Handler, options ...RuntimeOptions)
 		aiSecrets = options[0].AISecrets
 		hugoPreviews = options[0].HugoPreviews
 		publicationWorkflows = options[0].PublicationWorkflows
+		wechatPlans = options[0].WeChatPlans
 	}
-	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey, afterWorkspaceCreated: afterWorkspaceCreated, providerRuntime: providerRuntime, refreshTaxonomy: refreshTaxonomy, aiSecrets: aiSecrets, hugoPreviews: hugoPreviews, publicationWorkflows: publicationWorkflows}
+	handler := &runtimeHandler{db: db, core: core, dataDir: dataDir, directoryPicker: directoryPicker, assetTokenKey: assetTokenKey, afterWorkspaceCreated: afterWorkspaceCreated, providerRuntime: providerRuntime, refreshTaxonomy: refreshTaxonomy, aiSecrets: aiSecrets, hugoPreviews: hugoPreviews, publicationWorkflows: publicationWorkflows, wechatPlans: wechatPlans}
 	return localOnly(handler)
 }
 
@@ -76,6 +79,7 @@ type runtimeHandler struct {
 	aiSecrets             AISecretStore
 	hugoPreviews          HugoPreviewAPI
 	publicationWorkflows  PublicationWorkflowAPI
+	wechatPlans           WeChatPlanAPI
 }
 
 func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -135,6 +139,10 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.saveAISettings(response, request)
 		}
+	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/wechat":
+		if validateWriteRequest(response, request) {
+			h.saveWeChatSettings(response, request)
+		}
 	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/content-scope":
 		if validateWriteRequest(response, request) {
 			h.saveContentScope(response, request)
@@ -142,6 +150,14 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/settings/content-scope/preview":
 		if validateWriteRequest(response, request) {
 			h.previewContentScope(response, request)
+		}
+	case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/wechat-plans/confirm"):
+		if validateWriteRequest(response, request) {
+			h.confirmWeChatPlan(response, request)
+		}
+	case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/wechat-plans"):
+		if validateWriteRequest(response, request) {
+			h.createWeChatPlan(response, request)
 		}
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/wechat/content/"):
 		h.wechatContent(response, request)
@@ -531,5 +547,5 @@ func stableRuntimeID(kind, key string) string {
 }
 
 func defaultSettings() map[string]any {
-	return map[string]any{"ai_enabled": false, "ai_secret_saved": false, "hugo_enabled": false, "wechat_enabled": true, "wechat_secret_saved": false, "default_template": "default", "templates": []map[string]any{{"id": "default", "name": "InkHub Default", "version": "1.0.0", "compatible": true}, {"id": "minimal", "name": "InkHub Minimal", "version": "1.0.0", "compatible": true}}, "diagnostics": []map[string]string{{"name": "工作区", "state": "正常", "message": "本地数据库可用"}, {"name": "AI", "state": "未启用", "message": "不影响手工审核"}}}
+	return map[string]any{"ai_enabled": false, "ai_secret_saved": false, "hugo_enabled": false, "wechat_enabled": true, "wechat_secret_saved": false, "github_token_saved": false, "github_owner": "", "github_repository": "", "github_branch": "main", "github_prefix": "inkhub", "default_template": "default", "templates": []map[string]any{{"id": "default", "name": "InkHub Default", "version": "1.0.0", "compatible": true}, {"id": "minimal", "name": "InkHub Minimal", "version": "1.0.0", "compatible": true}}, "diagnostics": []map[string]string{{"name": "工作区", "state": "正常", "message": "本地数据库可用"}, {"name": "AI", "state": "未启用", "message": "不影响手工审核"}}}
 }

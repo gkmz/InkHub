@@ -485,6 +485,8 @@ type PreparedArtifactValidator interface {
 
 输入为标准 Article、Markdown 正文、资源引用和已校验的 TemplateRef；输出为预览 HTML、复制所需 artifact 和图片处理结果。Provider 内部完成 Markdown 渲染、代码高亮、Mermaid 转换、图片上传、模板渲染、CSS 内联和 HTML 清理。图片上传按内容摘要生成目标键，相同 OperationID 重试不得重复上传；部分失败不生成可交付 artifact。
 
+`AssetPlanningProvider.InspectAssets` 是确认前的只读扩展，只返回相对引用、媒体类型、大小和 upload/reuse 状态；`AssetUploader.Inspect` 不产生外部写入，`Upload` 使用结构化请求执行幂等写入。GitHub uploader 位于 Infrastructure/Platform，目标固定为公开仓库和官方 API/Raw Host，微信 Provider 只依赖通用契约。
+
 能力声明包含 `preview`、`images` 和 `manual_confirmation`，不包含 `direct_publish`。`Deliver` 只执行剪贴板交付并返回 `copied`；用户确认草稿由 Application 单独记录为 `confirmed`，复制成功不等于发布成功。
 
 ## 7. Taxonomy Provider

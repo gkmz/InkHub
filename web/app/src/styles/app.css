@@ -284,6 +284,15 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .wechat-page main > aside { color: var(--muted); font-size: 12px; }
 .wechat-page aside h2 { color: var(--ink); font-size: 14px; }
 .wechat-page aside p { display: flex; align-items: center; gap: 6px; }
+.wechat-plan { min-width: 0; display: grid; gap: 12px; }
+.wechat-plan h2 { margin: 0; }
+.wechat-plan ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.wechat-plan li { min-width: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 7px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.wechat-plan li span { min-width: 0; overflow-wrap: anywhere; color: var(--ink); }
+.wechat-plan li small { display: block; margin-top: 3px; color: var(--muted); }
+.wechat-plan li b { grid-column: 2; color: var(--action); font-size: 10px; }
+.wechat-plan > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.wechat-plan-error { color: var(--danger); overflow-wrap: anywhere; }
 .wechat-document { min-height: 820px; padding: 58px 52px; background: white; box-shadow: 0 8px 28px rgba(32,36,34,.08); font-size: 15px; line-height: 1.9; }
 .wechat-document h1 { font-size: 26px; line-height: 1.4; }
 .wechat-document h2 { margin-top: 34px; color: var(--action); font-size: 19px; }

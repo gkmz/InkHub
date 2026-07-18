@@ -77,6 +77,8 @@ publish:
 
 Source Provider 读取文章后执行确定性规范化：统一换行符为 LF、去除 UTF-8 BOM、保留正文语义空白、规范 frontmatter 字段顺序和值类型，并将 tags、keywords、category、series、slug、cover 纳入发布 hash。图片和附件不纳入 MVP 内容版本。规范化结果只在内存或任务临时目录中使用。
 
+Source 读取时同时生成授权后的本地图片 `ResourceRefs` 和阻断诊断，但不把绝对路径写入 SQLite。微信准备计划不新增图片资产表：远端目标由图片 SHA-256、规范扩展和 GitHub 路径前缀确定，可在失败或重启后重新检查。AES-GCM 计划 token 只在浏览器短期持有，绑定当前内容版本、模板和资源集合，SQLite 不持久化 token 明文或密文。
+
 - `content_hash`：正文 + 影响所有渠道输出的标准元数据。
 - `frontmatter_hash`：标准 frontmatter 的规范化表示，用于检测元数据变化。
 - `source_fingerprint`：文件大小、修改时间和必要时的快速摘要，用于增量扫描优化。

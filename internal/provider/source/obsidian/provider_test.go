@@ -3,6 +3,8 @@ package obsidian
 import (
 	"context"
 	"errors"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,45 @@ import (
 
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
+
+func TestProviderReadCollectsLocalImagesAndKeepsRemoteImages(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".obsidian"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "notes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{"notes/local.png", "wiki.png"} {
+		file, err := os.Create(filepath.Join(root, relative))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := png.Encode(file, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+			t.Fatal(err)
+		}
+		_ = file.Close()
+	}
+	body := "![本地](local.png)\n\n![[wiki.png]]\n\n![远程](https://example.com/remote.png)"
+	if err := os.WriteFile(filepath.Join(root, "notes", "article.md"), []byte(body), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := provider.Read(context.Background(), contracts.SourceRef{RelativePath: "notes/article.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(document.ResourceRefs) != 2 || document.ResourceRefs[0].Original != "local.png" || document.ResourceRefs[1].Original != "wiki.png" {
+		t.Fatalf("本地图片引用错误: %+v", document.ResourceRefs)
+	}
+	if !strings.Contains(document.Body, "https://example.com/remote.png") {
+		t.Fatal("远程图片正文被修改")
+	}
+}
 
 func TestProviderReadsFixedFrontmatterAndChinesePath(t *testing.T) {
 	t.Parallel()

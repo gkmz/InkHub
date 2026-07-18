@@ -38,9 +38,16 @@ type TemplateLoader interface {
 	Load(ctx context.Context, ref contracts.TemplateRef) (domaintemplate.Validated, error)
 }
 
-// AssetUploader 按内容摘要上传文章图片并返回公网 URL。
+// AssetUploadRequest 是通用上传请求的微信包兼容别名。
+type AssetUploadRequest = contracts.AssetUploadRequest
+
+// AssetUploadResult 是通用上传结果的微信包兼容别名。
+type AssetUploadResult = contracts.AssetUploadResult
+
+// AssetUploader 按内容摘要检查或上传文章图片并返回公网 URL。
 type AssetUploader interface {
-	Upload(ctx context.Context, localPath, digest string) (string, error)
+	Inspect(ctx context.Context, request AssetUploadRequest) (AssetUploadResult, bool, error)
+	Upload(ctx context.Context, request AssetUploadRequest) (AssetUploadResult, error)
 }
 
 // Clipboard 只在用户显式交付时复制格式化 HTML。
@@ -87,15 +94,23 @@ func (p *Provider) Descriptor() contracts.PublishDescriptor {
 	}, DeliveryMode: contracts.DeliveryPrepareOnly}
 }
 
-// Validate 检查 Provider 的必要本地依赖。
-func (p *Provider) Validate(ctx context.Context) error { return ctx.Err() }
+// Validate 检查 Provider 的本地依赖和已配置图片仓库。
+func (p *Provider) Validate(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if validator, ok := p.uploader.(interface{ Validate(context.Context) error }); ok {
+		return validator.Validate(ctx)
+	}
+	return nil
+}
 
 // Preflight 检查文章、模板引用和本地图片上传能力。
 func (p *Provider) Preflight(ctx context.Context, input contracts.PublishInput) (contracts.PreflightResult, error) {
 	if err := ctx.Err(); err != nil {
 		return contracts.PreflightResult{}, err
 	}
-	var diagnostics []contracts.Diagnostic
+	diagnostics := append([]contracts.Diagnostic(nil), input.Diagnostics...)
 	if !wechatOperationPattern.MatchString(input.OperationID) || input.ContentHash == "" || input.TemplateRef == nil {
 		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.input_invalid", Message: "微信发布输入缺少 OperationID、内容版本或模板", Blocking: true})
 	} else if input.TemplateRef.Target != "" && input.TemplateRef.Target != domaintemplate.TargetWeChatHTML {
@@ -105,6 +120,36 @@ func (p *Provider) Preflight(ctx context.Context, input contracts.PublishInput) 
 		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.uploader_missing", Message: "文章包含本地图片但未配置图片上传", Blocking: true})
 	}
 	return contracts.PreflightResult{Diagnostics: diagnostics, Ready: !hasBlockingDiagnostic(diagnostics)}, nil
+}
+
+// InspectAssets 只读检查本地图片及远端复用状态，不产生外部写入。
+func (p *Provider) InspectAssets(ctx context.Context, input contracts.PublishInput) ([]contracts.AssetPlanItem, []contracts.Diagnostic, error) {
+	items := make([]contracts.AssetPlanItem, 0, len(input.ResourceRefs))
+	diagnostics := append([]contracts.Diagnostic(nil), input.Diagnostics...)
+	for _, resource := range input.ResourceRefs {
+		info, err := InspectImage(resource.Resolved)
+		if err != nil {
+			diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.image_invalid", Message: err.Error(), Blocking: true})
+			continue
+		}
+		item := contracts.AssetPlanItem{Reference: resource.Original, MediaType: info.MediaType, Size: info.Size, State: "upload"}
+		if p.uploader == nil {
+			diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.uploader_missing", Message: "文章包含本地图片，请先配置公开图片仓库", Blocking: true})
+			items = append(items, item)
+			continue
+		}
+		result, found, err := p.uploader.Inspect(ctx, contracts.AssetUploadRequest{LocalPath: resource.Resolved, Digest: info.Digest, MediaType: info.MediaType, Extension: info.Extension})
+		if err != nil {
+			diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.image_inspect_failed", Message: "暂时无法检查图片仓库", Blocking: true})
+			items = append(items, item)
+			continue
+		}
+		if found && result.URL != "" {
+			item.State = "reuse"
+		}
+		items = append(items, item)
+	}
+	return items, diagnostics, nil
 }
 
 type wechatManifest struct {
@@ -233,24 +278,37 @@ func (p *Provider) Deliver(ctx context.Context, artifact contracts.PreparedArtif
 }
 
 func (p *Provider) uploadResources(ctx context.Context, body string, resources []contracts.ResourceRef) (string, error) {
+	uploaded := make(map[string]string, len(resources))
 	for _, resource := range resources {
-		content, err := os.ReadFile(resource.Resolved)
+		info, err := InspectImage(resource.Resolved)
 		if err != nil {
-			return "", providerError("wechat.image_read_failed", "读取微信图片失败", contracts.ErrorValidation, err)
+			return "", err
 		}
-		sum := sha256.Sum256(content)
-		digest := hex.EncodeToString(sum[:])
-		remote, err := p.uploader.Upload(ctx, resource.Resolved, digest)
-		if err != nil {
-			return "", providerError("wechat.image_upload_failed", "上传微信图片失败", contracts.ErrorTemporary, err)
+		remote, exists := uploaded[info.Digest]
+		if !exists {
+			result, uploadErr := p.uploader.Upload(ctx, AssetUploadRequest{
+				LocalPath: resource.Resolved, Digest: info.Digest, MediaType: info.MediaType, Extension: info.Extension,
+			})
+			if uploadErr != nil {
+				return "", providerError("wechat.image_upload_failed", "上传微信图片失败", contracts.ErrorTemporary, uploadErr)
+			}
+			remote = result.URL
+			uploaded[info.Digest] = remote
 		}
 		parsed, err := url.Parse(remote)
 		if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 			return "", providerError("wechat.image_url_invalid", "图片上传返回了不安全 URL", contracts.ErrorValidation, err)
 		}
-		body = strings.ReplaceAll(body, resource.Original, remote)
+		body = rewriteImageReference(body, resource.Original, remote)
 	}
 	return body, nil
+}
+
+func rewriteImageReference(body, original, remote string) string {
+	// 只重写图片语法中的目标，避免相同文本出现在普通正文时被误改。
+	body = strings.ReplaceAll(body, "]("+original+")", "]("+remote+")")
+	body = strings.ReplaceAll(body, "![["+original+"]]", "![图片]("+remote+")")
+	return body
 }
 
 func loadWechatManifest(path, contentHash string) (wechatManifest, bool, bool) {

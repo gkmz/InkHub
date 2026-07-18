@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -20,6 +21,11 @@ var ErrSourceChanged = errors.New("源文件已变化")
 
 // ErrSourceConflict 表示路径和稳定 ID 指向的文章身份不一致。
 var ErrSourceConflict = errors.New("源文章身份冲突")
+
+var (
+	markdownImagePattern = regexp.MustCompile(`!\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)`)
+	wikiImagePattern     = regexp.MustCompile(`!\[\[([^\]]+)\]\]`)
+)
 
 // Config 定义 Obsidian Source Provider 配置。
 type Config struct {
@@ -106,12 +112,35 @@ func (p *Provider) Read(ctx context.Context, ref contracts.SourceRef) (contracts
 	}
 	document.Article.SourceID = p.config.SourceID
 	document.Article.RelativePath = filepath.ToSlash(ref.RelativePath)
+	document.ResourceRefs, document.Diagnostics = p.collectResources(ctx, document.Ref, document.Body, document.Diagnostics)
 	if strings.TrimSpace(document.Article.Title) == "" {
 		// 普通 Obsidian 笔记通常没有 title 属性，展示时使用文件名但不写回源文件。
 		base := filepath.Base(ref.RelativePath)
 		document.Article.Title = strings.TrimSuffix(base, filepath.Ext(base))
 	}
 	return document, nil
+}
+
+func (p *Provider) collectResources(ctx context.Context, ref contracts.SourceRef, body string, diagnostics []contracts.Diagnostic) ([]contracts.ResourceRef, []contracts.Diagnostic) {
+	var resources []contracts.ResourceRef
+	collect := func(raw string, kind contracts.ResourceKind) {
+		resolved, err := p.ResolveResource(ctx, ref, raw, kind)
+		if err != nil {
+			diagnostics = append(diagnostics, contracts.Diagnostic{Code: "source.image_unresolved", Message: "文章图片无法解析或超出 Vault", Blocking: true})
+			return
+		}
+		if resolved.RemoteURL != "" {
+			return
+		}
+		resources = append(resources, contracts.ResourceRef{Original: raw, Resolved: resolved.AbsolutePath, Kind: string(kind)})
+	}
+	for _, match := range markdownImagePattern.FindAllStringSubmatch(body, -1) {
+		collect(match[1], contracts.ResourceMarkdownImage)
+	}
+	for _, match := range wikiImagePattern.FindAllStringSubmatch(body, -1) {
+		collect(match[1], contracts.ResourceWikiEmbed)
+	}
+	return resources, diagnostics
 }
 
 // WriteMetadata 以乐观并发方式原子写回标准 frontmatter。

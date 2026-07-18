@@ -110,6 +110,15 @@ export interface PublicationHistoryPage {
   next_cursor?: string;
 }
 
+export interface WeChatPlanView {
+  plan_token: string;
+  template_id: string;
+  images: Array<{ reference: string; media_type: string; size: number; state: "upload" | "reuse" }>;
+  diagnostics: Array<{ code: string; message: string; blocking: boolean }>;
+  ready: boolean;
+  expires_at: string;
+}
+
 export interface ArticleMetadata {
   title: string;
   description: string;
@@ -226,6 +235,11 @@ export interface SettingsView {
   hugo_enabled: boolean;
   wechat_enabled: boolean;
   wechat_secret_saved: boolean;
+  github_token_saved?: boolean;
+  github_owner?: string;
+  github_repository?: string;
+  github_branch?: string;
+  github_prefix?: string;
   default_template: string;
   templates: TemplateSummary[];
   diagnostics: { name: string; state: "正常" | "需要处理" | "未启用"; message: string }[];

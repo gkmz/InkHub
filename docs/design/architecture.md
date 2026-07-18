@@ -485,6 +485,8 @@ Acquire article/provider lock
 
 ### 8.6 微信准备与确认
 
+本地图片由 Source Provider 在读取正文时解析为授权后的 `ResourceRefs`。微信图片上传通过通用 `AssetUploader` 契约实现，MVP 具体实现使用公开 GitHub 仓库的 Contents API；Token 来自系统 Secret Store，微信 Provider 不依赖 GitHub 具体类型。
+
 ```text
 Acquire lock
   → Verify content hash
@@ -500,6 +502,8 @@ Acquire lock
 ```
 
 准备、复制和确认是三个独立事件，均记录同一 content hash。
+
+图片清单使用 AES-GCM 加密认证的短期计划 token 绑定当前工作区、文章、Provider、内容版本、模板和资源集合。生成计划只调用上传器 `Inspect`，用户确认前不写 GitHub；确认时重新解析当前文章，计划仍一致才创建 `wechat_prepare`。
 
 ## 9. 运行时架构
 
