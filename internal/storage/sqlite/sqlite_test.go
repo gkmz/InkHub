@@ -30,9 +30,29 @@ func TestOpenMigratesEmptyDatabaseAndIsRepeatable(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatalf("query migration version: %v", err)
 	}
-	if version != 5 {
-		t.Fatalf("migration version = %d, want 5", version)
+	if version != 6 {
+		t.Fatalf("migration version = %d, want 6", version)
 	}
+}
+
+func TestArticleDispositionSchemaEnforcesKindsAndWorkspace(t *testing.T) {
+	t.Parallel()
+	db := openTestDB(t)
+	insertWorkspaceAndSource(t, db)
+	_, err := db.Exec(`INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,content_hash,indexed_at,created_at,updated_at) VALUES
+('a1','w1','s1','one','one.md','hash-1','2026-07-30','2026-07-30','2026-07-30'),
+('a2','w1','s1','two','two.md','hash-2','2026-07-30','2026-07-30','2026-07-30')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO article_dispositions(article_id,workspace_id,kind,content_hash,created_at,updated_at) VALUES('a1','w1','published','hash-1','2026-07-30','2026-07-30')`); err != nil {
+		t.Fatalf("写入有效文章处置: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO article_dispositions(article_id,workspace_id,kind,content_hash,created_at,updated_at) VALUES('a2','w1','unknown','hash-2','2026-07-30','2026-07-30')`); err == nil {
+		t.Fatal("未知文章处置类型必须被数据库拒绝")
+	}
+	assertCommentExists(t, db, "table", "article_dispositions")
+	assertCommentExists(t, db, "column", "article_dispositions.cleared_at")
 }
 
 func TestSchemaAllowsAdditionalSourceProvider(t *testing.T) {
