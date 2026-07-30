@@ -28,16 +28,19 @@ go build -o ./bin/inkhub ./cmd/inkhub
 ./bin/inkhub doctor
 ```
 
-## 日志配置
+## 启动与日志配置
 
 InkHub 启动时读取当前目录的 `.env`，进程环境变量优先于文件值。可以从 `.env.example` 开始配置：
 
 ```dotenv
+INKHUB_DATA_DIR="/Users/your-name/Library/Application Support/InkHub"
 INKHUB_LOG_LEVEL=info
 INKHUB_LOG_FILE=
 INKHUB_LOG_MAX_SIZE=100
 INKHUB_LOG_CONSOLE=true
 ```
+
+`INKHUB_DATA_DIR` 必须使用绝对路径，不支持 `~`。数据目录优先级为显式 `--data-dir`、`INKHUB_DATA_DIR`、操作系统默认目录；修改目录不会自动迁移旧数据库。启动日志会记录最终数据目录及其来源，便于确认当前实例使用的数据位置。
 
 日志文件为空时默认写入 `<data-dir>/logs/inkhub.log`。单文件默认最大 100 MiB，保留 5 个备份和 30 天并压缩；文件内容为 JSON，控制台为易读格式。日志记录请求、扫描、数据库和后台任务的稳定 ID、错误码与耗时，不记录文章正文、Secret、完整 AI 请求或微信 HTML。
 

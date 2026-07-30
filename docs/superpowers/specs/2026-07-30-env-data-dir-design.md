@@ -30,8 +30,8 @@ InkHub 默认将 SQLite、日志、备份和发布暂存文件保存在操作系
 
 ```dotenv
 # InkHub 数据目录，包含 SQLite、日志、备份和发布暂存文件；必须使用绝对路径
-# 示例（请替换为当前用户的实际路径）：/Users/your-name/Library/Application Support/InkHub
-INKHUB_DATA_DIR=/Users/your-name/Library/Application Support/InkHub
+# macOS 示例：/Users/your-name/Library/Application Support/InkHub
+INKHUB_DATA_DIR=
 ```
 
 空值等同于未配置。非空值必须是清理后的绝对路径。环境变量值不展开 `~`，避免 shell、dotenv 和不同操作系统产生不一致语义；文档示例使用完整绝对路径。

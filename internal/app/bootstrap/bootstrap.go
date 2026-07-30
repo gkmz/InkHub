@@ -51,12 +51,13 @@ func Run(ctx context.Context, args []string) error {
 		_, err := fmt.Fprintln(os.Stdout, buildinfo.Version)
 		return err
 	}
-	return serve(ctx, config.Config, config.Logging)
+	return serve(ctx, config.Config, config.Logging, config.Origins["data_dir"])
 }
 
 type parsedConfig struct {
 	Config
 	Logging     platformlogging.Config
+	Origins     map[string]string
 	ShowVersion bool
 }
 
@@ -65,13 +66,14 @@ func parseServerConfig(args []string) (parsedConfig, error) {
 	if err != nil {
 		return parsedConfig{}, fmt.Errorf("定位用户配置目录: %w", err)
 	}
+	defaults := Config{Host: "127.0.0.1", Port: 8080, DataDir: filepath.Join(userConfig, "InkHub")}
 	flags := flag.NewFlagSet("inkhub", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	showVersion := flags.Bool("version", false, "显示版本")
-	dataDir := flags.String("data-dir", filepath.Join(userConfig, "InkHub"), "覆盖数据目录")
+	dataDir := flags.String("data-dir", "", "覆盖数据目录")
 	workspace := flags.String("workspace", "", "选择工作区")
-	host := flags.String("host", "127.0.0.1", "监听地址")
-	port := flags.Int("port", 8080, "监听端口")
+	host := flags.String("host", "", "监听地址")
+	port := flags.Int("port", 0, "监听端口")
 	values := args
 	if len(values) > 0 {
 		values = values[1:]
@@ -79,16 +81,47 @@ func parseServerConfig(args []string) (parsedConfig, error) {
 	if err := flags.Parse(values); err != nil {
 		return parsedConfig{}, fmt.Errorf("解析启动参数: %w", err)
 	}
-	if *port < 0 || *port > 65535 {
+	cliFields := make(map[string]bool)
+	flags.Visit(func(value *flag.Flag) {
+		switch value.Name {
+		case "data-dir":
+			cliFields["data_dir"] = true
+		case "workspace", "host", "port":
+			cliFields[value.Name] = true
+		}
+	})
+	environment := Layer{Name: "environment", Set: make(map[string]bool)}
+	if environmentDataDir, ok := os.LookupEnv("INKHUB_DATA_DIR"); ok && strings.TrimSpace(environmentDataDir) != "" {
+		environment.Values.DataDir = strings.TrimSpace(environmentDataDir)
+		environment.Set["data_dir"] = true
+	}
+	merged := MergeConfig(
+		Layer{Name: "default", Values: defaults},
+		environment,
+		Layer{Name: "cli", Values: Config{Host: *host, Port: *port, DataDir: *dataDir, Workspace: *workspace}, Set: cliFields},
+	)
+	if !filepath.IsAbs(merged.Config.DataDir) {
+		setting := "数据目录"
+		switch merged.Origins["data_dir"] {
+		case "environment":
+			setting = "INKHUB_DATA_DIR"
+		case "cli":
+			setting = "--data-dir"
+		}
+		return parsedConfig{}, fmt.Errorf("%s 必须使用绝对路径", setting)
+	}
+	merged.Config.DataDir = filepath.Clean(merged.Config.DataDir)
+	if merged.Config.Port < 0 || merged.Config.Port > 65535 {
 		return parsedConfig{}, fmt.Errorf("端口超出有效范围")
 	}
-	logConfig, err := platformlogging.ParseConfig(*dataDir, os.LookupEnv)
+	logConfig, err := platformlogging.ParseConfig(merged.Config.DataDir, os.LookupEnv)
 	if err != nil {
 		return parsedConfig{}, fmt.Errorf("解析日志配置: %w", err)
 	}
 	return parsedConfig{
-		Config:      Config{Host: *host, Port: *port, DataDir: *dataDir, Workspace: *workspace},
+		Config:      merged.Config,
 		Logging:     logConfig,
+		Origins:     merged.Origins,
 		ShowVersion: *showVersion,
 	}, nil
 }
@@ -100,7 +133,7 @@ func loadDotEnv(path string) error {
 	return nil
 }
 
-func serve(ctx context.Context, config Config, logConfig platformlogging.Config) error {
+func serve(ctx context.Context, config Config, logConfig platformlogging.Config, dataDirSource string) error {
 	if err := os.MkdirAll(config.DataDir, 0o700); err != nil {
 		return fmt.Errorf("创建数据目录: %w", err)
 	}
@@ -114,12 +147,14 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 		return fmt.Errorf("初始化日志: %w", err)
 	}
 	defer func() { _ = closeLogger() }()
-	logger.Info("InkHub 启动",
+	logFields := startupConfigLogFields(config, dataDirSource)
+	logFields = append(logFields,
 		zap.String("component", "bootstrap"),
 		zap.String("log_level", logConfig.Level),
 		zap.Int("log_max_size_mib", logConfig.MaxSize),
 		zap.Bool("log_console", logConfig.Console),
 	)
+	logger.Info("InkHub 启动", logFields...)
 	assets, err := fs.Sub(webassets.Assets, "dist")
 	if err != nil {
 		return fmt.Errorf("读取嵌入 UI: %w", err)
@@ -198,6 +233,13 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config)
 		},
 	})
 	return runHTTPServer(ctx, config, logger, httptransport.NewApplicationHandler(api, assets))
+}
+
+func startupConfigLogFields(config Config, dataDirSource string) []zap.Field {
+	return []zap.Field{
+		zap.String("data_dir", config.DataDir),
+		zap.String("data_dir_source", dataDirSource),
+	}
 }
 
 func runHTTPServer(ctx context.Context, config Config, logger *zap.Logger, handler http.Handler) error {
