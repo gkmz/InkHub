@@ -114,13 +114,17 @@ func scanArticleSummary(rows interface{ Scan(...any) error }) (httptransport.Art
 	if err := rows.Scan(&item.ID, &item.Title, &relative, &item.Category, &item.ModifiedAt, &item.State, &hugoState, &wechatState, &item.ContentVersion, &item.Disposition); err != nil {
 		return httptransport.ArticleSummary{}, err
 	}
+	return finalizeArticleSummary(item, relative, hugoState, wechatState), nil
+}
+
+func finalizeArticleSummary(item httptransport.ArticleSummary, relative, hugoState, wechatState string) httptransport.ArticleSummary {
 	item.Directory = filepath.ToSlash(filepath.Dir(relative))
 	if item.Directory == "." {
 		item.Directory = ""
 	}
 	item.HugoState = publicationLabel(hugoState, "hugo")
 	item.WeChatState = publicationLabel(wechatState, "wechat")
-	return item, nil
+	return item
 }
 
 func (api databaseAPI) listAvailableChannels(ctx context.Context) ([]string, error) {

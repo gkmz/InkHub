@@ -117,8 +117,6 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.confirmHugoPreview(response, request)
 		}
-	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/dashboard":
-		writeJSON(response, http.StatusOK, map[string]any{"items": []any{}})
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/taxonomy":
 		h.taxonomyOverview(response, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/taxonomy/refresh":

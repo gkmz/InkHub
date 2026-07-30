@@ -198,6 +198,18 @@ func TestRuntimeHandlerPicksDirectoryThroughInjectedNativeAdapter(t *testing.T) 
 	}
 }
 
+func TestRuntimeDashboardPassesThroughToCoreRouter(t *testing.T) {
+	t.Parallel()
+	core := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		writeJSON(response, http.StatusOK, map[string]string{"source": "core"})
+	})
+	response := httptest.NewRecorder()
+	NewRuntimeHandler(nil, core).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/dashboard", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"source":"core"`) {
+		t.Fatalf("工作台请求未进入核心 Router: code=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 type fakeDirectoryPicker struct {
 	path  string
 	title string
@@ -216,6 +228,9 @@ func (emptyRuntimeAPI) ListArticles(context.Context, ArticleListQuery) (ArticleP
 
 func (emptyRuntimeAPI) BatchDisposition(context.Context, BatchDispositionCommand) (BatchDispositionResult, error) {
 	return BatchDispositionResult{}, nil
+}
+func (emptyRuntimeAPI) Dashboard(context.Context) (DashboardView, error) {
+	return DashboardView{}, nil
 }
 func (emptyRuntimeAPI) QueuePublication(context.Context, PublicationCommand) (string, error) {
 	return "", ErrNotFound

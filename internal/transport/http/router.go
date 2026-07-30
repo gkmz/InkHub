@@ -59,6 +59,14 @@ type ArticlePage struct {
 	AvailableChannels []string         `json:"available_channels"`
 }
 
+// DashboardView 是工作台四个互斥文章分组。
+type DashboardView struct {
+	Failed          []ArticleSummary `json:"failed"`
+	Changed         []ArticleSummary `json:"changed"`
+	NeedsReview     []ArticleSummary `json:"needs_review"`
+	RecentlyHandled []ArticleSummary `json:"recently_handled"`
+}
+
 // PublicationCommand 描述一个进入后台队列的渠道操作。
 type PublicationCommand struct {
 	ArticleID          string `json:"article_id"`
@@ -97,6 +105,7 @@ type BatchDispositionResult struct {
 // API 是 HTTP Adapter 调用的 Application 用例集合。
 type API interface {
 	ListArticles(ctx context.Context, query ArticleListQuery) (ArticlePage, error)
+	Dashboard(ctx context.Context) (DashboardView, error)
 	QueuePublication(ctx context.Context, command PublicationCommand) (string, error)
 	MarkWeChatCopied(ctx context.Context, command ConfirmCommand) error
 	ConfirmWeChat(ctx context.Context, command ConfirmCommand) error
@@ -117,6 +126,8 @@ func (r *router) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 	switch {
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/articles":
 		r.listArticles(response, request)
+	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/dashboard":
+		r.dashboard(response, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/articles/batch-disposition":
 		if !validateWriteRequest(response, request) {
 			return
@@ -140,6 +151,15 @@ func (r *router) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 	default:
 		writeError(response, http.StatusNotFound, "route.not_found", "接口不存在")
 	}
+}
+
+func (r *router) dashboard(response http.ResponseWriter, request *http.Request) {
+	view, err := r.api.Dashboard(request.Context())
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, view)
 }
 
 func (r *router) batchDisposition(response http.ResponseWriter, request *http.Request) {

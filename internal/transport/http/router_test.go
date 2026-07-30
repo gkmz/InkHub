@@ -53,6 +53,26 @@ func TestRouterParsesArticleListQueryAndRejectsUnknownFilters(t *testing.T) {
 	}
 }
 
+func TestRouterReturnsDashboardGroups(t *testing.T) {
+	t.Parallel()
+	api := &fakeAPI{dashboard: DashboardView{
+		Failed:          []ArticleSummary{{ID: "failed"}},
+		Changed:         []ArticleSummary{{ID: "changed"}},
+		NeedsReview:     []ArticleSummary{{ID: "pending"}},
+		RecentlyHandled: []ArticleSummary{{ID: "published"}},
+	}}
+	response := httptest.NewRecorder()
+	NewRouter(api).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/dashboard", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("工作台状态 = %d, body=%s", response.Code, response.Body.String())
+	}
+	for _, field := range []string{`"failed"`, `"changed"`, `"needs_review"`, `"recently_handled"`} {
+		if !strings.Contains(response.Body.String(), field) {
+			t.Fatalf("工作台响应缺少 %s: %s", field, response.Body.String())
+		}
+	}
+}
+
 func TestRouterMapsInvalidCursorToBadRequest(t *testing.T) {
 	t.Parallel()
 
@@ -177,6 +197,7 @@ type fakeAPI struct {
 	dispositionCommand BatchDispositionCommand
 	dispositionResult  BatchDispositionResult
 	dispositionErr     error
+	dashboard          DashboardView
 }
 
 func (a *fakeAPI) ListArticles(_ context.Context, query ArticleListQuery) (ArticlePage, error) {
@@ -195,6 +216,10 @@ func (a *fakeAPI) MarkWeChatCopied(context.Context, ConfirmCommand) error { retu
 func (a *fakeAPI) BatchDisposition(_ context.Context, command BatchDispositionCommand) (BatchDispositionResult, error) {
 	a.dispositionCommand = command
 	return a.dispositionResult, a.dispositionErr
+}
+
+func (a *fakeAPI) Dashboard(context.Context) (DashboardView, error) {
+	return a.dashboard, a.err
 }
 
 func decodeBody(t *testing.T, response *httptest.ResponseRecorder) map[string]any {
