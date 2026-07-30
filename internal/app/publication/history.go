@@ -147,6 +147,10 @@ func decodeHistoryCursor(value, workspaceID, articleID string) (HistoryEventCurs
 func historyItem(event HistoryEvent) HistoryItem {
 	channel, state, title, detail := event.ProviderType, event.Type, "发布状态已更新", "渠道已记录处理结果"
 	switch event.ProviderType + "/" + event.Type {
+	case "hugo/marked_published":
+		state, title, detail = "published", "已标记为 Hugo 已发表", "已记录外部发表状态"
+	case "wechat/marked_published":
+		state, title, detail = "published", "已标记为微信已发表", "已记录外部发表状态"
 	case "hugo/published":
 		title, detail = "已同步到 Hugo", "博客内容已更新"
 	case "hugo/failed":

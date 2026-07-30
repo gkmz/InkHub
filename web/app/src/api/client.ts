@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -27,7 +27,7 @@ export function getSession(signal?: AbortSignal) {
 
 /** getDashboard 获取按处理优先级组织的稿件。 */
 export function getDashboard(signal?: AbortSignal) {
-  return request<ArticlePage>("/dashboard", { signal });
+  return request<DashboardView>("/dashboard", { signal });
 }
 
 /** listArticles 读取内容库稳定分页，并透传搜索与筛选。 */

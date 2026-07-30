@@ -1,4 +1,5 @@
-export type ArticleState = "blocked" | "changed" | "incomplete" | "pending_review" | "approved";
+export type ArticleState = "draft" | "blocked" | "changed" | "incomplete" | "pending_review" | "approved";
+export type ArticleDisposition = "published" | "ignored";
 
 export interface WorkspaceSummary {
   id: string;
@@ -19,11 +20,21 @@ export interface ArticleSummary {
   state: ArticleState;
   hugo_state: string;
   wechat_state: string;
+  content_version: string;
+  disposition?: ArticleDisposition;
 }
 
 export interface ArticlePage {
   items: ArticleSummary[];
   next_cursor?: string;
+  available_channels: Array<"hugo" | "wechat">;
+}
+
+export interface DashboardView {
+  failed: ArticleSummary[];
+  changed: ArticleSummary[];
+  needs_review: ArticleSummary[];
+  recently_handled: ArticleSummary[];
 }
 
 export interface WorkspaceDraft {

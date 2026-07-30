@@ -44,6 +44,7 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 15px; }
 .section-heading h2 { margin: 0; font-size: 18px; }
 .section-heading > span { color: var(--muted); font-size: 13px; }
+.dashboard-sections { display: grid; gap: 34px; }
 .article-list { border-top: 1px solid var(--line); }
 .library-more { display: flex; justify-content: center; padding: 20px 0 4px; }
 .library-more button { min-width: 128px; }
