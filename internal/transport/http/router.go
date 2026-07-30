@@ -31,20 +31,32 @@ var (
 
 // ArticleSummary 是内容库列表使用的脱敏 DTO。
 type ArticleSummary struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Directory   string `json:"directory"`
-	Category    string `json:"category"`
-	ModifiedAt  string `json:"modified_at"`
-	State       string `json:"state"`
-	HugoState   string `json:"hugo_state"`
-	WeChatState string `json:"wechat_state"`
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	Directory      string `json:"directory"`
+	Category       string `json:"category"`
+	ModifiedAt     string `json:"modified_at"`
+	State          string `json:"state"`
+	HugoState      string `json:"hugo_state"`
+	WeChatState    string `json:"wechat_state"`
+	ContentVersion string `json:"content_version"`
+	Disposition    string `json:"disposition,omitempty"`
+}
+
+// ArticleListQuery 描述内容库的分页、搜索和固定枚举筛选条件。
+type ArticleListQuery struct {
+	Cursor      string
+	Limit       int
+	Search      string
+	State       string
+	Disposition string
 }
 
 // ArticlePage 是基于不透明 Cursor 的文章分页结果。
 type ArticlePage struct {
-	Items      []ArticleSummary `json:"items"`
-	NextCursor string           `json:"next_cursor,omitempty"`
+	Items             []ArticleSummary `json:"items"`
+	NextCursor        string           `json:"next_cursor,omitempty"`
+	AvailableChannels []string         `json:"available_channels"`
 }
 
 // PublicationCommand 描述一个进入后台队列的渠道操作。
@@ -84,7 +96,7 @@ type BatchDispositionResult struct {
 
 // API 是 HTTP Adapter 调用的 Application 用例集合。
 type API interface {
-	ListArticles(ctx context.Context, cursor string, limit int) (ArticlePage, error)
+	ListArticles(ctx context.Context, query ArticleListQuery) (ArticlePage, error)
 	QueuePublication(ctx context.Context, command PublicationCommand) (string, error)
 	MarkWeChatCopied(ctx context.Context, command ConfirmCommand) error
 	ConfirmWeChat(ctx context.Context, command ConfirmCommand) error
@@ -173,12 +185,43 @@ func (r *router) listArticles(response http.ResponseWriter, request *http.Reques
 		}
 		limit = parsed
 	}
-	page, err := r.api.ListArticles(request.Context(), request.URL.Query().Get("cursor"), limit)
+	state := request.URL.Query().Get("state")
+	disposition := request.URL.Query().Get("disposition")
+	if !validArticleStateFilter(state) || !validArticleDispositionFilter(disposition) {
+		writeError(response, http.StatusBadRequest, "request.invalid", "文章筛选参数无效")
+		return
+	}
+	query := ArticleListQuery{
+		Cursor:      request.URL.Query().Get("cursor"),
+		Limit:       limit,
+		Search:      strings.TrimSpace(request.URL.Query().Get("q")),
+		State:       state,
+		Disposition: disposition,
+	}
+	page, err := r.api.ListArticles(request.Context(), query)
 	if err != nil {
 		mapError(response, err)
 		return
 	}
 	writeJSON(response, http.StatusOK, page)
+}
+
+func validArticleStateFilter(value string) bool {
+	switch value {
+	case "", "draft", "incomplete", "pending_review", "approved", "changed", "blocked":
+		return true
+	default:
+		return false
+	}
+}
+
+func validArticleDispositionFilter(value string) bool {
+	switch value {
+	case "", "published", "ignored", "unresolved":
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *router) queuePublication(response http.ResponseWriter, request *http.Request) {

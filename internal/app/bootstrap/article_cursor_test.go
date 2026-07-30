@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	inksqlite "github.com/gkmz/InkHub/internal/storage/sqlite"
+	httptransport "github.com/gkmz/InkHub/internal/transport/http"
 )
 
 func TestArticleCursorRoundTripsAndRejectsInvalidInput(t *testing.T) {
@@ -47,14 +48,14 @@ INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,ind
 	}
 	api := newDatabaseAPI(db)
 
-	first, err := api.ListArticles(context.Background(), "", 2)
+	first, err := api.ListArticles(context.Background(), httptransport.ArticleListQuery{Limit: 2})
 	if err != nil {
 		t.Fatalf("first page: %v", err)
 	}
 	if len(first.Items) != 2 || first.Items[0].ID != "a3" || first.Items[1].ID != "a2" || first.NextCursor == "" {
 		t.Fatalf("first page = %+v", first)
 	}
-	second, err := api.ListArticles(context.Background(), first.NextCursor, 2)
+	second, err := api.ListArticles(context.Background(), httptransport.ArticleListQuery{Cursor: first.NextCursor, Limit: 2})
 	if err != nil {
 		t.Fatalf("second page: %v", err)
 	}

@@ -210,7 +210,7 @@ func (p *fakeDirectoryPicker) Pick(_ context.Context, title string) (string, err
 
 type emptyRuntimeAPI struct{}
 
-func (emptyRuntimeAPI) ListArticles(context.Context, string, int) (ArticlePage, error) {
+func (emptyRuntimeAPI) ListArticles(context.Context, ArticleListQuery) (ArticlePage, error) {
 	return ArticlePage{}, nil
 }
 

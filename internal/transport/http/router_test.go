@@ -20,8 +20,36 @@ func TestRouterListsCursorPageWithoutAbsolutePaths(t *testing.T) {
 	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "/Users/") {
 		t.Fatalf("文章列表响应不正确: code=%d body=%s", response.Code, response.Body.String())
 	}
-	if api.cursor != "cursor" || api.limit != 20 || !strings.Contains(response.Body.String(), `"next_cursor":"next"`) {
+	if api.listQuery.Cursor != "cursor" || api.listQuery.Limit != 20 || !strings.Contains(response.Body.String(), `"next_cursor":"next"`) {
 		t.Fatalf("Cursor 未透传: api=%+v body=%s", api, response.Body.String())
+	}
+}
+
+func TestRouterParsesArticleListQueryAndRejectsUnknownFilters(t *testing.T) {
+	t.Parallel()
+
+	api := &fakeAPI{}
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/articles?q=SQLite+Tips&state=pending_review&disposition=published&limit=25", nil)
+	NewRouter(api).ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("列表查询响应状态 = %d, body=%s", response.Code, response.Body.String())
+	}
+	want := ArticleListQuery{Search: "SQLite Tips", State: "pending_review", Disposition: "published", Limit: 25}
+	if api.listQuery != want {
+		t.Fatalf("列表查询参数 = %+v, want %+v", api.listQuery, want)
+	}
+
+	for _, path := range []string{
+		"/api/v1/articles?state=unknown",
+		"/api/v1/articles?disposition=unknown",
+	} {
+		invalidAPI := &fakeAPI{}
+		invalidResponse := httptest.NewRecorder()
+		NewRouter(invalidAPI).ServeHTTP(invalidResponse, httptest.NewRequest(http.MethodGet, "http://localhost"+path, nil))
+		if invalidResponse.Code != http.StatusBadRequest || invalidAPI.listCalls != 0 {
+			t.Fatalf("非法筛选未被拒绝: path=%s code=%d calls=%d body=%s", path, invalidResponse.Code, invalidAPI.listCalls, invalidResponse.Body.String())
+		}
 	}
 }
 
@@ -142,8 +170,8 @@ func TestRouterMapsBatchDispositionErrors(t *testing.T) {
 
 type fakeAPI struct {
 	page               ArticlePage
-	cursor             string
-	limit              int
+	listQuery          ArticleListQuery
+	listCalls          int
 	jobID              string
 	err                error
 	dispositionCommand BatchDispositionCommand
@@ -151,8 +179,9 @@ type fakeAPI struct {
 	dispositionErr     error
 }
 
-func (a *fakeAPI) ListArticles(_ context.Context, cursor string, limit int) (ArticlePage, error) {
-	a.cursor, a.limit = cursor, limit
+func (a *fakeAPI) ListArticles(_ context.Context, query ArticleListQuery) (ArticlePage, error) {
+	a.listQuery = query
+	a.listCalls++
 	return a.page, a.err
 }
 
