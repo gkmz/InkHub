@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	appdisposition "github.com/gkmz/InkHub/internal/app/disposition"
 	appjob "github.com/gkmz/InkHub/internal/app/job"
 	"github.com/gkmz/InkHub/internal/app/publication"
 	"github.com/gkmz/InkHub/internal/domain/article"
@@ -21,10 +22,39 @@ import (
 type databaseAPI struct {
 	db           *sql.DB
 	publications *publication.Service
+	dispositions *appdisposition.Service
 }
 
 func newDatabaseAPI(db *sql.DB) databaseAPI {
-	return databaseAPI{db: db, publications: publication.NewService(jobQueueAdapter{repository.NewJobRepository(db)}, publicationStoreAdapter{repository.NewPublicationRepository(db)})}
+	return databaseAPI{
+		db:           db,
+		publications: publication.NewService(jobQueueAdapter{repository.NewJobRepository(db)}, publicationStoreAdapter{repository.NewPublicationRepository(db)}),
+		dispositions: newDispositionService(db),
+	}
+}
+
+// BatchDisposition 将 HTTP DTO 转换为 Application 命令并映射稳定错误。
+func (api databaseAPI) BatchDisposition(ctx context.Context, command httptransport.BatchDispositionCommand) (httptransport.BatchDispositionResult, error) {
+	articles := make([]appdisposition.ArticleVersion, 0, len(command.Articles))
+	for _, article := range command.Articles {
+		articles = append(articles, appdisposition.ArticleVersion{ID: article.ID, ContentVersion: article.ContentVersion})
+	}
+	result, err := api.dispositions.Apply(ctx, appdisposition.Command{Operation: appdisposition.Operation(command.Operation), Articles: articles, Channels: command.Channels})
+	if err != nil {
+		switch {
+		case errors.Is(err, appdisposition.ErrContentChanged):
+			return httptransport.BatchDispositionResult{}, httptransport.ErrDispositionContentChanged
+		case errors.Is(err, appdisposition.ErrArticleNotFound):
+			return httptransport.BatchDispositionResult{}, httptransport.ErrNotFound
+		case errors.Is(err, appdisposition.ErrChannelUnavailable):
+			return httptransport.BatchDispositionResult{}, httptransport.ErrDispositionChannelUnavailable
+		case errors.Is(err, appdisposition.ErrInvalidCommand):
+			return httptransport.BatchDispositionResult{}, httptransport.ErrDispositionInvalid
+		default:
+			return httptransport.BatchDispositionResult{}, err
+		}
+	}
+	return httptransport.BatchDispositionResult{Processed: result.Processed, Changed: result.Changed, Unchanged: result.Unchanged}, nil
 }
 
 func (api databaseAPI) ListArticles(ctx context.Context, cursorValue string, limit int) (httptransport.ArticlePage, error) {

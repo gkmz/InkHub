@@ -95,12 +95,60 @@ func TestRouterMapsValidationAndStaleErrorsToStableCodes(t *testing.T) {
 	}
 }
 
+func TestRouterAppliesBatchDispositionAndReturnsCounts(t *testing.T) {
+	t.Parallel()
+	api := &fakeAPI{dispositionResult: BatchDispositionResult{Processed: 2, Changed: 1, Unchanged: 1}}
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/batch-disposition", strings.NewReader(`{"operation":"published","articles":[{"id":"a1","content_version":"v1"},{"id":"a2","content_version":"v2"}],"channels":["hugo","wechat"]}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://localhost")
+	response := httptest.NewRecorder()
+	NewRouter(api).ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"processed":2`) {
+		t.Fatalf("批量处置响应不正确: code=%d body=%s", response.Code, response.Body.String())
+	}
+	if api.dispositionCommand.Operation != "published" || len(api.dispositionCommand.Articles) != 2 || len(api.dispositionCommand.Channels) != 2 {
+		t.Fatalf("批量处置请求未透传: %+v", api.dispositionCommand)
+	}
+}
+
+func TestRouterMapsBatchDispositionErrors(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{name: "内容变化", err: ErrDispositionContentChanged, status: http.StatusConflict, code: "disposition.content_changed"},
+		{name: "文章不存在", err: ErrNotFound, status: http.StatusNotFound, code: "resource.not_found"},
+		{name: "渠道不可用", err: ErrDispositionChannelUnavailable, status: http.StatusUnprocessableEntity, code: "disposition.channel_unavailable"},
+		{name: "命令无效", err: ErrDispositionInvalid, status: http.StatusBadRequest, code: "request.invalid"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/batch-disposition", strings.NewReader(`{"operation":"ignored","articles":[{"id":"a1","content_version":"v1"}]}`))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", "http://localhost")
+			response := httptest.NewRecorder()
+			NewRouter(&fakeAPI{dispositionErr: test.err}).ServeHTTP(response, request)
+			if response.Code != test.status || !strings.Contains(response.Body.String(), test.code) {
+				t.Fatalf("code=%d body=%s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
 type fakeAPI struct {
-	page   ArticlePage
-	cursor string
-	limit  int
-	jobID  string
-	err    error
+	page               ArticlePage
+	cursor             string
+	limit              int
+	jobID              string
+	err                error
+	dispositionCommand BatchDispositionCommand
+	dispositionResult  BatchDispositionResult
+	dispositionErr     error
 }
 
 func (a *fakeAPI) ListArticles(_ context.Context, cursor string, limit int) (ArticlePage, error) {
@@ -114,6 +162,11 @@ func (a *fakeAPI) QueuePublication(context.Context, PublicationCommand) (string,
 
 func (a *fakeAPI) ConfirmWeChat(context.Context, ConfirmCommand) error    { return a.err }
 func (a *fakeAPI) MarkWeChatCopied(context.Context, ConfirmCommand) error { return a.err }
+
+func (a *fakeAPI) BatchDisposition(_ context.Context, command BatchDispositionCommand) (BatchDispositionResult, error) {
+	a.dispositionCommand = command
+	return a.dispositionResult, a.dispositionErr
+}
 
 func decodeBody(t *testing.T, response *httptest.ResponseRecorder) map[string]any {
 	t.Helper()

@@ -213,6 +213,10 @@ type emptyRuntimeAPI struct{}
 func (emptyRuntimeAPI) ListArticles(context.Context, string, int) (ArticlePage, error) {
 	return ArticlePage{}, nil
 }
+
+func (emptyRuntimeAPI) BatchDisposition(context.Context, BatchDispositionCommand) (BatchDispositionResult, error) {
+	return BatchDispositionResult{}, nil
+}
 func (emptyRuntimeAPI) QueuePublication(context.Context, PublicationCommand) (string, error) {
 	return "", ErrNotFound
 }

@@ -21,6 +21,12 @@ var (
 	ErrNotFound = errors.New("资源不存在")
 	// ErrInvalidCursor 表示列表分页位置损坏或不是服务端签发的结构。
 	ErrInvalidCursor = errors.New("分页 Cursor 无效")
+	// ErrDispositionContentChanged 表示批量处置包含已经变化的文章。
+	ErrDispositionContentChanged = errors.New("批量处置文章内容已变化")
+	// ErrDispositionInvalid 表示批量处置命令无效。
+	ErrDispositionInvalid = errors.New("批量处置请求无效")
+	// ErrDispositionChannelUnavailable 表示批量处置选择了未启用渠道。
+	ErrDispositionChannelUnavailable = errors.New("批量处置渠道不可用")
 )
 
 // ArticleSummary 是内容库列表使用的脱敏 DTO。
@@ -56,12 +62,33 @@ type ConfirmCommand struct {
 	ContentHash        string `json:"content_hash"`
 }
 
+// ArticleVersion 是批量命令引用的文章和用户已见内容版本。
+type ArticleVersion struct {
+	ID             string `json:"id"`
+	ContentVersion string `json:"content_version"`
+}
+
+// BatchDispositionCommand 描述文章批量处置请求。
+type BatchDispositionCommand struct {
+	Operation string           `json:"operation"`
+	Articles  []ArticleVersion `json:"articles"`
+	Channels  []string         `json:"channels,omitempty"`
+}
+
+// BatchDispositionResult 汇总文章批量处置结果。
+type BatchDispositionResult struct {
+	Processed int `json:"processed"`
+	Changed   int `json:"changed"`
+	Unchanged int `json:"unchanged"`
+}
+
 // API 是 HTTP Adapter 调用的 Application 用例集合。
 type API interface {
 	ListArticles(ctx context.Context, cursor string, limit int) (ArticlePage, error)
 	QueuePublication(ctx context.Context, command PublicationCommand) (string, error)
 	MarkWeChatCopied(ctx context.Context, command ConfirmCommand) error
 	ConfirmWeChat(ctx context.Context, command ConfirmCommand) error
+	BatchDisposition(ctx context.Context, command BatchDispositionCommand) (BatchDispositionResult, error)
 }
 
 // NewRouter 创建带本机同源边界的 `/api/v1` Router。
@@ -78,6 +105,11 @@ func (r *router) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 	switch {
 	case request.Method == http.MethodGet && request.URL.Path == "/api/v1/articles":
 		r.listArticles(response, request)
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/articles/batch-disposition":
+		if !validateWriteRequest(response, request) {
+			return
+		}
+		r.batchDisposition(response, request)
 	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/publications":
 		if !validateWriteRequest(response, request) {
 			return
@@ -96,6 +128,26 @@ func (r *router) ServeHTTP(response http.ResponseWriter, request *http.Request) 
 	default:
 		writeError(response, http.StatusNotFound, "route.not_found", "接口不存在")
 	}
+}
+
+func (r *router) batchDisposition(response http.ResponseWriter, request *http.Request) {
+	var command BatchDispositionCommand
+	if err := decodeJSON(request, &command); err != nil || len(command.Articles) < 1 || len(command.Articles) > 100 {
+		writeError(response, http.StatusBadRequest, "request.invalid", "文章批量处置请求无效")
+		return
+	}
+	for _, article := range command.Articles {
+		if strings.TrimSpace(article.ID) == "" || strings.TrimSpace(article.ContentVersion) == "" {
+			writeError(response, http.StatusBadRequest, "request.invalid", "文章批量处置请求无效")
+			return
+		}
+	}
+	result, err := r.api.BatchDisposition(request.Context(), command)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, result)
 }
 
 func (r *router) markWeChatCopied(response http.ResponseWriter, request *http.Request) {
@@ -212,6 +264,12 @@ func mapError(response http.ResponseWriter, err error) {
 		writeError(response, http.StatusNotFound, "resource.not_found", "请求的资源不存在")
 	case errors.Is(err, ErrInvalidCursor):
 		writeError(response, http.StatusBadRequest, "request.cursor_invalid", "分页位置无效，请重新加载列表")
+	case errors.Is(err, ErrDispositionContentChanged):
+		writeError(response, http.StatusConflict, "disposition.content_changed", "部分文章已更新，请刷新后重新选择")
+	case errors.Is(err, ErrDispositionChannelUnavailable):
+		writeError(response, http.StatusUnprocessableEntity, "disposition.channel_unavailable", "所选发布渠道未配置或未启用")
+	case errors.Is(err, ErrDispositionInvalid):
+		writeError(response, http.StatusBadRequest, "request.invalid", "文章批量处置请求无效")
 	default:
 		writeError(response, http.StatusInternalServerError, "internal.error", "操作失败")
 	}
