@@ -5,11 +5,12 @@ const stateText: Record<ArticleState, string> = { draft: "草稿", blocked: "处
 const actionText: Record<ArticleState, string> = { draft: "继续编辑", blocked: "重试", changed: "查看更新", incomplete: "补充信息", pending_review: "继续审核", approved: "查看" };
 
 /** ArticleRow 用自然语言展示文章状态，不泄露内部 hash 或任务标识。 */
-export function ArticleRow({ article, dashboard = false, onOpen }: { article: ArticleSummary; dashboard?: boolean; onOpen?: (id: string) => void }) {
+export function ArticleRow({ article, dashboard = false, onOpen, selected = false, onSelectedChange }: { article: ArticleSummary; dashboard?: boolean; onOpen?: (id: string) => void; selected?: boolean; onSelectedChange?: (id: string, selected: boolean) => void }) {
   const ActionIcon = article.state === "blocked" ? RotateCcw : article.state === "incomplete" ? FilePenLine : ArrowRight;
   const statusText = article.disposition === "published" ? "已发表" : article.disposition === "ignored" ? "已忽略" : stateText[article.state];
   return (
-    <article className={`article-row state-${article.state}`} data-testid={dashboard ? "dashboard-row" : "library-row"}>
+    <article className={`article-row state-${article.state}${onSelectedChange ? " selectable" : ""}`} data-testid={dashboard ? "dashboard-row" : "library-row"}>
+      {onSelectedChange && <input className="row-select" type="checkbox" aria-label={`选择文章 ${article.title || "未命名文章"}`} checked={selected} onChange={(event) => onSelectedChange(article.id, event.currentTarget.checked)} />}
       <div className="article-primary">
         <div className="article-title-line">{article.state === "blocked" && <CircleAlert size={16} aria-hidden="true" />}<h3>{article.title || "未命名文章"}</h3></div>
         <p>{article.directory || "根目录"} · {article.category || "未分类"}</p>
