@@ -35,6 +35,8 @@ type Article struct {
 	Keywords          []string
 	Slug              string
 	Cover             string
+	ContentStage      ContentStage
+	ContentStageIssue string
 	SourceMTime       *time.Time
 	SourceSize        int64
 	SourceFingerprint string

@@ -31,16 +31,28 @@ func parseDocument(content []byte) (contracts.SourceDocument, error) {
 		return contracts.SourceDocument{}, err
 	}
 	publish := mappingValue(mapping, "publish")
+	status := mappingValue(publish, "status")
+	statusValue := ""
+	if status != nil && status.Kind == yaml.ScalarNode {
+		statusValue = status.Value
+	}
+	contentStage, contentStageIssue := article.ResolveContentStage(
+		statusValue,
+		status != nil,
+		status == nil || (status.Kind == yaml.ScalarNode && status.Tag == "!!str"),
+	)
 	value := article.Article{
-		StableID:    article.StableID(scalarValue(mapping, "id")),
-		Title:       scalarValue(mapping, "title"),
-		Description: scalarValue(mapping, "description"),
-		Tags:        stringSequence(mapping, "tags"),
-		Keywords:    stringSequence(mapping, "keywords"),
-		Category:    scalarValue(publish, "category"),
-		Series:      scalarValue(publish, "series"),
-		Slug:        scalarValue(publish, "slug"),
-		Cover:       scalarValue(publish, "cover"),
+		StableID:          article.StableID(scalarValue(mapping, "id")),
+		Title:             scalarValue(mapping, "title"),
+		Description:       scalarValue(mapping, "description"),
+		Tags:              stringSequence(mapping, "tags"),
+		Keywords:          stringSequence(mapping, "keywords"),
+		Category:          scalarValue(publish, "category"),
+		Series:            scalarValue(publish, "series"),
+		Slug:              scalarValue(publish, "slug"),
+		Cover:             scalarValue(publish, "cover"),
+		ContentStage:      contentStage,
+		ContentStageIssue: contentStageIssue,
 	}
 	sum := sha256.Sum256(content)
 	return contracts.SourceDocument{

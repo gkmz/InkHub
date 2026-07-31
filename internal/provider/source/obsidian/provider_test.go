@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gkmz/InkHub/internal/domain/article"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
 
@@ -67,8 +68,57 @@ func TestProviderReadsFixedFrontmatterAndChinesePath(t *testing.T) {
 	if document.Article.StableID != "article_01J2ABCDEF" || document.Article.Keywords[0] != "Markdown 发布" {
 		t.Fatalf("Read() article = %#v", document.Article)
 	}
+	if document.Article.ContentStage != article.ContentStageDraft {
+		t.Fatalf("missing publish.status must default to draft: %#v", document.Article)
+	}
 	if !strings.Contains(document.Body, "[[内部链接]]") {
 		t.Fatal("Read() must preserve the Markdown body")
+	}
+}
+
+func TestProviderReadsReadyContentStage(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".obsidian"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\ntitle: Ready\npublish:\n  status: ready\n---\n正文\n"
+	if err := os.WriteFile(filepath.Join(root, "ready.md"), []byte(content), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := provider.Read(context.Background(), contracts.SourceRef{RelativePath: "ready.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.Article.ContentStage != article.ContentStageReady || document.Article.ContentStageIssue != "" {
+		t.Fatalf("ready stage = %q, issue = %q", document.Article.ContentStage, document.Article.ContentStageIssue)
+	}
+}
+
+func TestProviderTreatsInvalidContentStageAsNonBlockingDraft(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".obsidian"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\ntitle: Invalid\npublish:\n  status: published\n---\n正文\n"
+	if err := os.WriteFile(filepath.Join(root, "invalid-stage.md"), []byte(content), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := provider.Read(context.Background(), contracts.SourceRef{RelativePath: "invalid-stage.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.Article.ContentStage != article.ContentStageDraft || document.Article.ContentStageIssue == "" {
+		t.Fatalf("invalid stage = %q, issue = %q", document.Article.ContentStage, document.Article.ContentStageIssue)
 	}
 }
 
