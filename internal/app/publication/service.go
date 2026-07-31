@@ -13,6 +13,8 @@ import (
 var (
 	// ErrContentChanged 表示审核或渠道结果不再对应文章当前版本。
 	ErrContentChanged = errors.New("文章内容已变化")
+	// ErrArticleNotReady 表示文章尚未由作者明确标记为已就绪。
+	ErrArticleNotReady = errors.New("文章尚未标记为已就绪")
 	// ErrConfirmationInvalid 表示微信草稿尚未复制或状态不允许确认。
 	ErrConfirmationInvalid = errors.New("微信草稿状态不允许确认")
 )
@@ -69,6 +71,9 @@ type QueueRequest struct {
 func (s *Service) Queue(ctx context.Context, request QueueRequest) (string, error) {
 	if s == nil || s.queue == nil || request.JobID == "" || request.ProviderInstanceID == "" || request.Article.ID == "" {
 		return "", fmt.Errorf("发布任务参数不完整")
+	}
+	if request.Article.ContentStage != article.ContentStageReady {
+		return "", ErrArticleNotReady
 	}
 	if request.Article.ContentHash == "" || request.ApprovedContentHash != request.Article.ContentHash {
 		return "", ErrContentChanged

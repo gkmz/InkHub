@@ -1,12 +1,13 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import type { IncomingMessage } from "node:http";
 
 const demoArticles = [
-  { id: "a1", title: "构建可靠的本地内容工作流", directory: "writing/engineering", category: "工程实践", modified_at: "2026-07-14T09:42:00Z", state: "blocked", hugo_state: "构建失败", wechat_state: "尚未准备" },
-  { id: "a2", title: "从笔记到发布：我的写作系统", directory: "writing/product", category: "内容创作", modified_at: "2026-07-14T08:16:00Z", state: "changed", hugo_state: "需要同步", wechat_state: "草稿可能过期" },
-  { id: "a3", title: "SQLite 在桌面应用中的取舍", directory: "notes/database", category: "技术笔记", modified_at: "2026-07-13T14:30:00Z", state: "incomplete", hugo_state: "尚未同步", wechat_state: "尚未准备" },
-  { id: "a4", title: "公众号排版模板设计记录", directory: "writing/design", category: "设计", modified_at: "2026-07-12T11:05:00Z", state: "pending_review", hugo_state: "尚未同步", wechat_state: "尚未准备" },
-  { id: "a5", title: "内容哈希与幂等发布", directory: "notes/architecture", category: "工程实践", modified_at: "2026-07-10T16:20:00Z", state: "approved", hugo_state: "已同步", wechat_state: "已确认草稿" },
+  { id: "a1", title: "构建可靠的本地内容工作流", directory: "writing/engineering", category: "工程实践", modified_at: "2026-07-14T09:42:00Z", state: "blocked", content_stage: "ready", next_action: "retry", hugo_state: "构建失败", wechat_state: "尚未准备", content_version: "demo-a1-v1" },
+  { id: "a2", title: "从笔记到发布：我的写作系统", directory: "writing/product", category: "内容创作", modified_at: "2026-07-14T08:16:00Z", state: "changed", content_stage: "ready", next_action: "review", hugo_state: "需要同步", wechat_state: "草稿可能过期", content_version: "demo-a2-v1" },
+  { id: "a3", title: "SQLite 在桌面应用中的取舍", directory: "notes/database", category: "技术笔记", modified_at: "2026-07-13T14:30:00Z", state: "draft", content_stage: "draft", content_stage_issue: "", hugo_state: "未进入发布流程", wechat_state: "未进入发布流程", content_version: "demo-a3-v1" },
+  { id: "a4", title: "公众号排版模板设计记录", directory: "writing/design", category: "设计", modified_at: "2026-07-12T11:05:00Z", state: "pending_review", content_stage: "ready", next_action: "review", hugo_state: "尚未同步", wechat_state: "尚未准备", content_version: "demo-a4-v1" },
+  { id: "a5", title: "内容哈希与幂等发布", directory: "notes/architecture", category: "工程实践", modified_at: "2026-07-10T16:20:00Z", state: "approved", content_stage: "ready", next_action: "view", hugo_state: "已同步", wechat_state: "已确认草稿", content_version: "demo-a5-v1" },
 ];
 
 const demoArticle = {
@@ -19,25 +20,102 @@ const demoArticle = {
 };
 
 let demoWeChatPrepared = false;
+const demoIgnored = new Set<string>();
+const demoPublished = new Map<string, Set<string>>();
+
+function resetDemoState() {
+  demoWeChatPrepared = false;
+  demoIgnored.clear();
+  demoPublished.clear();
+}
+
+function demoSummary(article: typeof demoArticles[number]) {
+  if (demoIgnored.has(article.id)) return { ...article, disposition: "ignored" as const };
+  if (demoPublished.has(article.id)) return { ...article, disposition: "published" as const };
+  return { ...article, disposition: undefined };
+}
+
+function readJSONBody(request: IncomingMessage) {
+  return new Promise<Record<string, unknown>>((resolve, reject) => {
+    let raw = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => { raw += chunk; });
+    request.on("end", () => {
+      try { resolve(raw ? JSON.parse(raw) as Record<string, unknown> : {}); } catch (error) { reject(error); }
+    });
+    request.on("error", reject);
+  });
+}
 
 // 开发服务器只提供可重复的页面验收数据；生产构建不会包含这段中间件。
 const demoAPI: Plugin = {
   name: "inkhub-demo-api",
   configureServer(server) {
-    server.middlewares.use("/api/v1", (request, response) => {
+    server.middlewares.use("/api/v1", async (request, response) => {
       const url = new URL(request.url ?? "/", "http://localhost");
       const setupMode = request.headers.referer?.includes("demo=setup") ?? false;
       let body: unknown;
-      if (url.pathname === "/session") body = { has_workspace: !setupMode, workspace: setupMode ? null : { id: "demo", name: "我的写作空间" } };
-      else if (url.pathname === "/dashboard") body = { items: demoArticles };
+      if (url.pathname === "/demo/reset" && request.method === "POST") { resetDemoState(); body = { state: "reset" }; }
+      else if (url.pathname === "/session") body = { has_workspace: !setupMode, workspace: setupMode ? null : { id: "demo", name: "我的写作空间" } };
+      else if (url.pathname === "/dashboard") {
+        const visible = demoArticles.filter((article) => !demoIgnored.has(article.id)).map(demoSummary);
+        const ready = visible.filter((article) => article.content_stage === "ready");
+        const failed = ready.filter((article) => article.state === "blocked");
+        const changed = ready.filter((article) => article.state === "changed");
+        const needsReview = ready.filter((article) => article.state === "incomplete" || article.state === "pending_review");
+        const readyToPublish = ready.filter((article) => article.state === "approved" && article.id !== "a5" && article.disposition !== "published");
+        const latestReady = ready.filter((article) => article.id === "a5").slice(0, 10);
+        const recentlyHandled = visible.filter((article) => article.disposition === "published");
+        body = {
+          failed,
+          changed,
+          needs_review: needsReview,
+          ready_to_publish: readyToPublish,
+          latest_ready: latestReady,
+          recently_handled: recentlyHandled,
+        };
+      }
       else if (url.pathname === "/articles") {
         const query = (url.searchParams.get("q") ?? "").toLowerCase();
         const state = url.searchParams.get("state") ?? "";
-        body = { items: demoArticles.filter((item) => (!query || item.title.toLowerCase().includes(query)) && (!state || item.state === state)) };
+        const disposition = url.searchParams.get("disposition") ?? "";
+        const stage = url.searchParams.get("stage") ?? "";
+        const items = demoArticles.filter((article) => {
+          const ignored = demoIgnored.has(article.id);
+          const published = demoPublished.has(article.id);
+          const dispositionMatches = disposition === "ignored" ? ignored : disposition === "published" ? published : disposition === "unresolved" ? !ignored && !published : !ignored;
+          return dispositionMatches && (!query || article.title.toLowerCase().includes(query)) && (!state || article.state === state) && (!stage || article.content_stage === stage);
+        }).map(demoSummary);
+        body = { items, available_channels: ["hugo", "wechat"] };
+      } else if (url.pathname === "/articles/batch-disposition" && request.method === "POST") {
+        const command = await readJSONBody(request);
+        const operation = String(command.operation ?? "");
+        const articles = Array.isArray(command.articles) ? command.articles as Array<{ id?: string }> : [];
+        const channels = Array.isArray(command.channels) ? command.channels.map(String) : [];
+        let changed = 0;
+        for (const article of articles) {
+          const id = String(article.id ?? "");
+          if (operation === "ignored") {
+            if (!demoIgnored.has(id)) changed += 1;
+            demoIgnored.add(id);
+            demoPublished.delete(id);
+          } else if (operation === "restore") {
+            if (demoIgnored.delete(id)) changed += 1;
+          } else if (operation === "published") {
+            const previous = demoPublished.get(id);
+            if (!previous || channels.some((channel) => !previous.has(channel)) || previous.size !== channels.length) changed += 1;
+            demoIgnored.delete(id);
+            demoPublished.set(id, new Set(channels));
+          }
+        }
+        body = { processed: articles.length, changed, unchanged: articles.length - changed };
       } else if (url.pathname === "/workspaces") body = { workspace: { id: "demo", name: "我的写作空间" }, job_id: "demo-scan" };
       else if (/^\/articles\/[^/]+$/.test(url.pathname)) {
         const articleID = url.pathname.split("/").pop() ?? demoArticle.id;
-        body = { ...demoArticle, id: articleID, review_state: articleID === "a2" ? "已通过" : demoArticle.review_state, hugo_state: articleID === "a2" ? "需要同步" : demoArticle.hugo_state, wechat_state: demoWeChatPrepared ? "已准备" : demoArticle.wechat_state };
+        const summary = demoArticles.find((article) => article.id === articleID);
+        const channels = [...(demoPublished.get(articleID) ?? [])];
+        const disposition = demoIgnored.has(articleID) ? { kind: "ignored", channels: [] } : channels.length > 0 ? { kind: "published", channels } : undefined;
+        body = { ...demoArticle, id: articleID, content_version: summary?.content_version ?? demoArticle.content_version, content_stage: summary?.content_stage ?? "draft", content_stage_issue: summary?.content_stage_issue ?? "", disposition, review_state: summary?.content_stage === "draft" ? "不适用" : articleID === "a2" ? "已通过" : demoArticle.review_state, hugo_state: summary?.content_stage === "draft" ? "未进入发布流程" : articleID === "a2" ? "需要同步" : demoArticle.hugo_state, wechat_state: summary?.content_stage === "draft" ? "未进入发布流程" : demoWeChatPrepared ? "已准备" : demoArticle.wechat_state };
       }
       else if (/^\/articles\/[^/]+\/metadata$/.test(url.pathname)) body = demoArticle;
       else if (/^\/articles\/[^/]+\/review$/.test(url.pathname)) body = { state: "approved" };

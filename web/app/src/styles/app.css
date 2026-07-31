@@ -61,6 +61,10 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .status-label { width: fit-content; padding: 3px 7px; border: 1px solid var(--line); border-radius: 3px; font-size: 12px; }
 .state-blocked .status-label { color: var(--danger); border-color: #eccaca; background: #fff8f7; }
 .state-changed .status-label, .state-incomplete .status-label { color: #89500e; border-color: #ead1ae; background: #fffbf4; }
+.stage-warning { color: var(--warning, #a16207); }
+.draft-guidance { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 18px; padding: 12px 14px; border: 1px solid #e7d7ad; background: #fffaf0; color: #6b4f16; }
+.draft-guidance code { font-size: .85em; }
+.draft-guidance small { flex-basis: 100%; }
 .channel-state { display: flex; align-items: center; gap: 6px; }
 .channel-state b { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 3px; color: var(--ink); font-size: 10px; }
 .row-action { min-height: 34px; border: 1px solid var(--line); border-radius: 4px; background: white; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; font-size: 12px; }

@@ -83,18 +83,26 @@ func publicationLabel(state, channel string) string {
 func (api databaseAPI) QueuePublication(ctx context.Context, command httptransport.PublicationCommand) (string, error) {
 	var value article.Article
 	var approved sql.NullString
+	var stage string
 	// Provider 必须启用且属于文章工作区，不能信任客户端提交的渠道或实例组合。
-	err := api.db.QueryRowContext(ctx, `SELECT articles.id,articles.workspace_id,articles.content_hash,editorial_reviews.approved_content_hash FROM articles JOIN provider_instances ON provider_instances.id=? AND provider_instances.workspace_id=articles.workspace_id AND provider_instances.enabled=1 LEFT JOIN editorial_reviews ON editorial_reviews.article_id=articles.id WHERE articles.id=?`, command.ProviderInstanceID, command.ArticleID).Scan(&value.ID, &value.WorkspaceID, &value.ContentHash, &approved)
+	err := api.db.QueryRowContext(ctx, `SELECT articles.id,articles.workspace_id,articles.content_hash,articles.content_stage,editorial_reviews.approved_content_hash FROM articles JOIN provider_instances ON provider_instances.id=? AND provider_instances.workspace_id=articles.workspace_id AND provider_instances.enabled=1 LEFT JOIN editorial_reviews ON editorial_reviews.article_id=articles.id WHERE articles.id=?`, command.ProviderInstanceID, command.ArticleID).Scan(&value.ID, &value.WorkspaceID, &value.ContentHash, &stage, &approved)
 	if err != nil {
 		return "", httptransport.ErrNotFound
 	}
 	if command.ContentHash != value.ContentHash {
 		return "", httptransport.ErrStaleContent
 	}
+	value.ContentStage = article.ContentStage(stage)
+	if value.ContentStage != article.ContentStageReady {
+		return "", httptransport.ErrArticleNotReady
+	}
 	jobID := stableAPIID("job", command.ArticleID, command.ProviderInstanceID, command.ContentHash)
 	id, err := api.publications.Queue(ctx, publication.QueueRequest{JobID: jobID, ProviderInstanceID: command.ProviderInstanceID, Article: value, ApprovedContentHash: approved.String})
 	if errors.Is(err, publication.ErrContentChanged) {
 		return "", httptransport.ErrStaleContent
+	}
+	if errors.Is(err, publication.ErrArticleNotReady) {
+		return "", httptransport.ErrArticleNotReady
 	}
 	return id, err
 }

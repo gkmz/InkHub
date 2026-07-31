@@ -289,8 +289,8 @@ func (h *runtimeHandler) wechatContent(response http.ResponseWriter, request *ht
 
 func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *http.Request) {
 	id := strings.TrimPrefix(request.URL.Path, "/api/v1/articles/")
-	var workspaceID, sourceID, stableID, relative, title, description, category, series, tagsJSON, keywordsJSON, slug, cover, contentHash, modified string
-	err := h.db.QueryRowContext(request.Context(), `SELECT workspace_id,source_id,stable_id,relative_path,title,description,category,series,tags_json,keywords_json,slug,cover,content_hash,COALESCE(source_mtime,updated_at) FROM articles WHERE id=? AND deleted_at IS NULL`, id).Scan(&workspaceID, &sourceID, &stableID, &relative, &title, &description, &category, &series, &tagsJSON, &keywordsJSON, &slug, &cover, &contentHash, &modified)
+	var workspaceID, sourceID, stableID, relative, title, description, category, series, tagsJSON, keywordsJSON, slug, cover, contentHash, modified, contentStage, contentStageIssue string
+	err := h.db.QueryRowContext(request.Context(), `SELECT workspace_id,source_id,stable_id,relative_path,title,description,category,series,tags_json,keywords_json,slug,cover,content_hash,COALESCE(source_mtime,updated_at),content_stage,content_stage_issue FROM articles WHERE id=? AND deleted_at IS NULL`, id).Scan(&workspaceID, &sourceID, &stableID, &relative, &title, &description, &category, &series, &tagsJSON, &keywordsJSON, &slug, &cover, &contentHash, &modified, &contentStage, &contentStageIssue)
 	if err != nil {
 		mapError(response, ErrNotFound)
 		return
@@ -333,12 +333,21 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 		}
 	}
 	hugoState, wechatState, wechatCopied := "尚未同步", "尚未准备", false
+	if contentStage != "ready" {
+		reviewState, hugoState, wechatState = "不适用", "未进入发布流程", "未进入发布流程"
+	}
 	for channel, providerID := range providers {
+		if contentStage != "ready" {
+			break
+		}
 		if providerID == "" {
 			continue
 		}
-		var stored string
-		if h.db.QueryRowContext(request.Context(), `SELECT CASE WHEN content_hash<>? THEN 'outdated' ELSE state END FROM publications WHERE article_id=? AND provider_instance_id=?`, contentHash, id, providerID).Scan(&stored) == nil {
+		var stored, storedHash string
+		if h.db.QueryRowContext(request.Context(), `SELECT state,content_hash FROM publications WHERE article_id=? AND provider_instance_id=?`, id, providerID).Scan(&stored, &storedHash) == nil {
+			if stored != "confirmed" && storedHash != contentHash {
+				stored = "outdated"
+			}
 			label := runtimePublicationLabel(stored, channel)
 			if channel == "hugo" {
 				hugoState = label
@@ -359,7 +368,7 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 		mapError(response, err)
 		return
 	}
-	result := map[string]any{"id": id, "content_version": contentHash, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
+	result := map[string]any{"id": id, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
 	if disposition != nil {
 		result["disposition"] = disposition
 	}
@@ -436,9 +445,13 @@ func runtimePublicationLabel(state, channel string) string {
 
 func (h *runtimeHandler) reviewArticle(response http.ResponseWriter, request *http.Request) {
 	id := strings.TrimSuffix(strings.TrimPrefix(request.URL.Path, "/api/v1/articles/"), "/review")
-	var contentHash, frontmatterHash string
-	if err := h.db.QueryRowContext(request.Context(), `SELECT content_hash,frontmatter_hash FROM articles WHERE id=?`, id).Scan(&contentHash, &frontmatterHash); err != nil {
+	var contentHash, frontmatterHash, contentStage string
+	if err := h.db.QueryRowContext(request.Context(), `SELECT content_hash,frontmatter_hash,content_stage FROM articles WHERE id=?`, id).Scan(&contentHash, &frontmatterHash, &contentStage); err != nil {
 		mapError(response, ErrNotFound)
+		return
+	}
+	if contentStage != "ready" {
+		mapError(response, ErrArticleNotReady)
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)

@@ -30,6 +30,10 @@ func (h *runtimeHandler) createWeChatPlan(response http.ResponseWriter, request 
 	}
 	plan, err := h.wechatPlans.Plan(request.Context(), articleID, input.TemplateID)
 	if err != nil {
+		if errors.Is(err, publication.ErrArticleNotReady) {
+			mapError(response, ErrArticleNotReady)
+			return
+		}
 		mapError(response, err)
 		return
 	}
@@ -63,6 +67,10 @@ func (h *runtimeHandler) confirmWeChatPlan(response http.ResponseWriter, request
 	if _, err := h.wechatPlans.Confirm(request.Context(), articleID, input.Token); err != nil {
 		if errors.Is(err, publication.ErrWeChatPlanInvalid) {
 			writeError(response, http.StatusBadRequest, "request.plan_invalid", "微信准备计划已失效，请重新生成")
+			return
+		}
+		if errors.Is(err, publication.ErrArticleNotReady) {
+			mapError(response, ErrArticleNotReady)
 			return
 		}
 		mapError(response, err)

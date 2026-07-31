@@ -17,7 +17,7 @@ func TestDatabaseAPIQueuesOnlyCurrentApprovedPublication(t *testing.T) {
 	defer db.Close()
 	_, err = db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','test','/tmp','2026-01-01','2026-01-01','2026-01-01');
 INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES('s1','w1','obsidian','/tmp','2026-01-01','2026-01-01');
-INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,content_hash,frontmatter_hash,indexed_at,created_at,updated_at) VALUES('a1','w1','s1','article_TEST','a.md','hash-current','front','2026-01-01','2026-01-01','2026-01-01');
+INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,content_hash,frontmatter_hash,indexed_at,created_at,updated_at,content_stage) VALUES('a1','w1','s1','article_TEST','a.md','hash-current','front','2026-01-01','2026-01-01','2026-01-01','ready');
 INSERT INTO editorial_reviews(article_id,state,approved_content_hash,approved_frontmatter_hash,updated_at) VALUES('a1','approved','hash-current','front','2026-01-01');
 INSERT INTO provider_instances(id,workspace_id,provider_type,name,created_at,updated_at) VALUES('h1','w1','hugo','Hugo','2026-01-01','2026-01-01')`)
 	if err != nil {
@@ -48,7 +48,7 @@ func TestDatabaseAPIRejectsProviderFromAnotherWorkspace(t *testing.T) {
 	defer db.Close()
 	_, err = db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','one','/tmp','2026-01-01','2026-01-01','2026-01-01'),('w2','two','/tmp','2026-01-01','2026-01-01','2026-01-01');
 INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES('s1','w1','obsidian','/tmp','2026-01-01','2026-01-01');
-INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,content_hash,frontmatter_hash,indexed_at,created_at,updated_at) VALUES('a1','w1','s1','article_TEST','a.md','hash-current','front','2026-01-01','2026-01-01','2026-01-01');
+INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,content_hash,frontmatter_hash,indexed_at,created_at,updated_at,content_stage) VALUES('a1','w1','s1','article_TEST','a.md','hash-current','front','2026-01-01','2026-01-01','2026-01-01','ready');
 INSERT INTO editorial_reviews(article_id,state,approved_content_hash,approved_frontmatter_hash,updated_at) VALUES('a1','approved','hash-current','front','2026-01-01');
 INSERT INTO provider_instances(id,workspace_id,provider_type,name,created_at,updated_at) VALUES('h2','w2','hugo','Other Hugo','2026-01-01','2026-01-01')`)
 	if err != nil {

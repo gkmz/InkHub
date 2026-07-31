@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/gkmz/InkHub/internal/app/publication"
+	"github.com/gkmz/InkHub/internal/domain/article"
 	domaintemplate "github.com/gkmz/InkHub/internal/domain/template"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
@@ -40,14 +41,17 @@ func (api *wechatPlanAPI) Confirm(ctx context.Context, articleID, token string) 
 
 // ResolveWeChatPlan 解析最近工作区中已审核的当前文章和微信 Provider。
 func (api *wechatPlanAPI) ResolveWeChatPlan(ctx context.Context, articleID, templateID string) (publication.WeChatPlanArticle, error) {
-	var workspaceID, providerID, contentHash, approvedHash string
-	err := api.db.QueryRowContext(ctx, `SELECT articles.workspace_id,provider_instances.id,articles.content_hash,COALESCE(editorial_reviews.approved_content_hash,'')
+	var workspaceID, providerID, contentHash, approvedHash, stage string
+	err := api.db.QueryRowContext(ctx, `SELECT articles.workspace_id,provider_instances.id,articles.content_hash,COALESCE(editorial_reviews.approved_content_hash,''),articles.content_stage
 FROM articles
 JOIN workspaces ON workspaces.id=articles.workspace_id
 JOIN provider_instances ON provider_instances.workspace_id=articles.workspace_id AND provider_instances.provider_type='wechat' AND provider_instances.enabled=1
 LEFT JOIN editorial_reviews ON editorial_reviews.article_id=articles.id
 WHERE articles.id=? AND articles.deleted_at IS NULL
-  AND workspaces.id=(SELECT id FROM workspaces ORDER BY last_used_at DESC,id LIMIT 1)`, articleID).Scan(&workspaceID, &providerID, &contentHash, &approvedHash)
+	  AND workspaces.id=(SELECT id FROM workspaces ORDER BY last_used_at DESC,id LIMIT 1)`, articleID).Scan(&workspaceID, &providerID, &contentHash, &approvedHash, &stage)
+	if article.ContentStage(stage) != article.ContentStageReady {
+		return publication.WeChatPlanArticle{}, publication.ErrArticleNotReady
+	}
 	if err != nil || approvedHash == "" || approvedHash != contentHash {
 		return publication.WeChatPlanArticle{}, fmt.Errorf("微信文章未找到或尚未审核")
 	}
@@ -71,7 +75,8 @@ WHERE articles.id=? AND articles.deleted_at IS NULL
 	}
 	return publication.WeChatPlanArticle{
 		WorkspaceID: workspaceID, ArticleID: articleID, ProviderID: providerID, ContentHash: contentHash,
-		TemplateID: validated.Manifest.ID, TemplateRevision: validated.Digest, Input: input, Provider: provider,
+		ContentStage: article.ContentStage(stage),
+		TemplateID:   validated.Manifest.ID, TemplateRevision: validated.Digest, Input: input, Provider: provider,
 	}, nil
 }
 

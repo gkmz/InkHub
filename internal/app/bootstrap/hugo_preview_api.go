@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gkmz/InkHub/internal/app/publication"
+	"github.com/gkmz/InkHub/internal/domain/article"
 	domainjob "github.com/gkmz/InkHub/internal/domain/job"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
@@ -81,11 +82,13 @@ func (api *hugoPreviewAPI) Confirm(ctx context.Context, request publication.Conf
 // ResolvePreviewArticle 解析当前工作区文章和唯一启用的 Hugo Provider。
 func (api *hugoPreviewAPI) ResolvePreviewArticle(ctx context.Context, articleID string) (publication.PreviewArticle, error) {
 	var value publication.PreviewArticle
-	err := api.db.QueryRowContext(ctx, `SELECT articles.id,articles.workspace_id,provider_instances.id,articles.content_hash
+	var stage string
+	err := api.db.QueryRowContext(ctx, `SELECT articles.id,articles.workspace_id,provider_instances.id,articles.content_hash,articles.content_stage
 FROM articles
 JOIN workspaces ON workspaces.id=articles.workspace_id
 JOIN provider_instances ON provider_instances.workspace_id=articles.workspace_id AND provider_instances.provider_type='hugo' AND provider_instances.enabled=1
-WHERE articles.id=? AND articles.deleted_at IS NULL AND workspaces.id=(SELECT id FROM workspaces ORDER BY last_used_at DESC,id LIMIT 1)`, articleID).Scan(&value.ArticleID, &value.WorkspaceID, &value.ProviderID, &value.ContentHash)
+	WHERE articles.id=? AND articles.deleted_at IS NULL AND workspaces.id=(SELECT id FROM workspaces ORDER BY last_used_at DESC,id LIMIT 1)`, articleID).Scan(&value.ArticleID, &value.WorkspaceID, &value.ProviderID, &value.ContentHash, &stage)
+	value.ContentStage = article.ContentStage(stage)
 	return value, err
 }
 

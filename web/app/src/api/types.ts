@@ -1,4 +1,5 @@
 export type ArticleState = "draft" | "blocked" | "changed" | "incomplete" | "pending_review" | "approved";
+export type ContentStage = "draft" | "ready";
 export type ArticleDisposition = "published" | "ignored";
 export type PublicationChannel = "hugo" | "wechat";
 
@@ -23,6 +24,9 @@ export interface ArticleSummary {
   wechat_state: string;
   content_version: string;
   disposition?: ArticleDisposition;
+  content_stage: ContentStage;
+  content_stage_issue?: string;
+  next_action?: "retry" | "review" | "publish" | "view";
 }
 
 export interface ArticlePage {
@@ -35,6 +39,8 @@ export interface DashboardView {
   failed: ArticleSummary[];
   changed: ArticleSummary[];
   needs_review: ArticleSummary[];
+  ready_to_publish: ArticleSummary[];
+  latest_ready: ArticleSummary[];
   recently_handled: ArticleSummary[];
 }
 
@@ -174,6 +180,8 @@ export interface AISuggestion {
 export interface ArticleDetail {
   id: string;
   content_version: string;
+  content_stage: ContentStage;
+  content_stage_issue?: string;
   hugo_provider_id: string;
   wechat_provider_id: string;
   relative_path: string;

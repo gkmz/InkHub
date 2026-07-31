@@ -138,7 +138,7 @@ func insertHugoPreviewFixture(t *testing.T, db *sql.DB, site, vault, staging str
 	}{
 		{`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','test',?,'2026-01-01','2026-01-01','2026-01-01')`, []any{t.TempDir()}},
 		{`INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES('s1','w1','obsidian',?,'2026-01-01','2026-01-01')`, []any{vault}},
-		{`INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,description,tags_json,keywords_json,slug,content_hash,frontmatter_hash,indexed_at,created_at,updated_at) VALUES('a1','w1','s1','article_PREVIEW','preview.md','Hugo Preview','预览确认','["go"]','["InkHub"]','hugo-preview','hash-current','front','2026-01-01','2026-01-01','2026-01-01')`, nil},
+		{`INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,description,tags_json,keywords_json,slug,content_hash,frontmatter_hash,indexed_at,created_at,updated_at,content_stage) VALUES('a1','w1','s1','article_PREVIEW','preview.md','Hugo Preview','预览确认','["go"]','["InkHub"]','hugo-preview','hash-current','front','2026-01-01','2026-01-01','2026-01-01','ready')`, nil},
 		{`INSERT INTO editorial_reviews(article_id,state,approved_content_hash,approved_frontmatter_hash,updated_at) VALUES('a1','approved','hash-current','front','2026-01-01')`, nil},
 		{`INSERT INTO provider_instances(id,workspace_id,provider_type,name,config_json,created_at,updated_at) VALUES('h1','w1','hugo','Hugo',?,'2026-01-01','2026-01-01')`, []any{`{"root":"` + filepath.ToSlash(site) + `","staging_root":"` + filepath.ToSlash(staging) + `","section":"posts"}`}},
 	}

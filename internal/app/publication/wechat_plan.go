@@ -15,6 +15,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/gkmz/InkHub/internal/domain/article"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
 
@@ -29,6 +30,7 @@ type WeChatPlanArticle struct {
 	ArticleID        string
 	ProviderID       string
 	ContentHash      string
+	ContentStage     article.ContentStage
 	TemplateID       string
 	TemplateRevision string
 	Input            contracts.PublishInput
@@ -86,6 +88,9 @@ func (s *WeChatPlanService) Plan(ctx context.Context, articleID, templateID stri
 	if err != nil {
 		return WeChatPlanView{}, err
 	}
+	if value.ContentStage != article.ContentStageReady {
+		return WeChatPlanView{}, ErrArticleNotReady
+	}
 	planner, ok := value.Provider.(contracts.AssetPlanningProvider)
 	if !ok {
 		return WeChatPlanView{}, fmt.Errorf("微信 Provider 不支持图片规划")
@@ -122,6 +127,9 @@ func (s *WeChatPlanService) Confirm(ctx context.Context, articleID, token string
 	current, err := s.resolver.ResolveWeChatPlan(ctx, articleID, payload.TemplateID)
 	if err != nil {
 		return "", err
+	}
+	if current.ContentStage != article.ContentStageReady {
+		return "", ErrArticleNotReady
 	}
 	planner, ok := current.Provider.(contracts.AssetPlanningProvider)
 	if !ok {

@@ -27,29 +27,35 @@ var (
 	ErrDispositionInvalid = errors.New("批量处置请求无效")
 	// ErrDispositionChannelUnavailable 表示批量处置选择了未启用渠道。
 	ErrDispositionChannelUnavailable = errors.New("批量处置渠道不可用")
+	// ErrArticleNotReady 表示文章尚未由作者明确标记为已就绪。
+	ErrArticleNotReady = errors.New("文章尚未标记为已就绪")
 )
 
 // ArticleSummary 是内容库列表使用的脱敏 DTO。
 type ArticleSummary struct {
-	ID             string `json:"id"`
-	Title          string `json:"title"`
-	Directory      string `json:"directory"`
-	Category       string `json:"category"`
-	ModifiedAt     string `json:"modified_at"`
-	State          string `json:"state"`
-	HugoState      string `json:"hugo_state"`
-	WeChatState    string `json:"wechat_state"`
-	ContentVersion string `json:"content_version"`
-	Disposition    string `json:"disposition,omitempty"`
+	ID                string `json:"id"`
+	Title             string `json:"title"`
+	Directory         string `json:"directory"`
+	Category          string `json:"category"`
+	ModifiedAt        string `json:"modified_at"`
+	State             string `json:"state"`
+	HugoState         string `json:"hugo_state"`
+	WeChatState       string `json:"wechat_state"`
+	ContentVersion    string `json:"content_version"`
+	Disposition       string `json:"disposition,omitempty"`
+	ContentStage      string `json:"content_stage"`
+	ContentStageIssue string `json:"content_stage_issue,omitempty"`
+	NextAction        string `json:"next_action,omitempty"`
 }
 
 // ArticleListQuery 描述内容库的分页、搜索和固定枚举筛选条件。
 type ArticleListQuery struct {
-	Cursor      string
-	Limit       int
-	Search      string
-	State       string
-	Disposition string
+	Cursor       string
+	Limit        int
+	Search       string
+	State        string
+	Disposition  string
+	ContentStage string
 }
 
 // ArticlePage 是基于不透明 Cursor 的文章分页结果。
@@ -59,11 +65,13 @@ type ArticlePage struct {
 	AvailableChannels []string         `json:"available_channels"`
 }
 
-// DashboardView 是工作台四个互斥文章分组。
+// DashboardView 是工作台按行动优先级划分的互斥文章分组。
 type DashboardView struct {
 	Failed          []ArticleSummary `json:"failed"`
 	Changed         []ArticleSummary `json:"changed"`
 	NeedsReview     []ArticleSummary `json:"needs_review"`
+	ReadyToPublish  []ArticleSummary `json:"ready_to_publish"`
+	LatestReady     []ArticleSummary `json:"latest_ready"`
 	RecentlyHandled []ArticleSummary `json:"recently_handled"`
 }
 
@@ -207,16 +215,18 @@ func (r *router) listArticles(response http.ResponseWriter, request *http.Reques
 	}
 	state := request.URL.Query().Get("state")
 	disposition := request.URL.Query().Get("disposition")
-	if !validArticleStateFilter(state) || !validArticleDispositionFilter(disposition) {
+	contentStage := request.URL.Query().Get("stage")
+	if !validArticleStateFilter(state) || !validArticleDispositionFilter(disposition) || !validArticleContentStageFilter(contentStage) {
 		writeError(response, http.StatusBadRequest, "request.invalid", "文章筛选参数无效")
 		return
 	}
 	query := ArticleListQuery{
-		Cursor:      request.URL.Query().Get("cursor"),
-		Limit:       limit,
-		Search:      strings.TrimSpace(request.URL.Query().Get("q")),
-		State:       state,
-		Disposition: disposition,
+		Cursor:       request.URL.Query().Get("cursor"),
+		Limit:        limit,
+		Search:       strings.TrimSpace(request.URL.Query().Get("q")),
+		State:        state,
+		Disposition:  disposition,
+		ContentStage: contentStage,
 	}
 	page, err := r.api.ListArticles(request.Context(), query)
 	if err != nil {
@@ -224,6 +234,10 @@ func (r *router) listArticles(response http.ResponseWriter, request *http.Reques
 		return
 	}
 	writeJSON(response, http.StatusOK, page)
+}
+
+func validArticleContentStageFilter(value string) bool {
+	return value == "" || value == "draft" || value == "ready"
 }
 
 func validArticleStateFilter(value string) bool {
@@ -333,6 +347,8 @@ func mapError(response http.ResponseWriter, err error) {
 		writeError(response, http.StatusUnprocessableEntity, "disposition.channel_unavailable", "所选发布渠道未配置或未启用")
 	case errors.Is(err, ErrDispositionInvalid):
 		writeError(response, http.StatusBadRequest, "request.invalid", "文章批量处置请求无效")
+	case errors.Is(err, ErrArticleNotReady):
+		writeError(response, http.StatusUnprocessableEntity, "article.not_ready", "文章尚未标记为已就绪")
 	default:
 		writeError(response, http.StatusInternalServerError, "internal.error", "操作失败")
 	}

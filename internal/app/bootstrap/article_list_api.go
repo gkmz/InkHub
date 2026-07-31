@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gkmz/InkHub/internal/domain/article"
 	httptransport "github.com/gkmz/InkHub/internal/transport/http"
 )
 
@@ -33,7 +34,7 @@ func (api databaseAPI) ListArticles(ctx context.Context, input httptransport.Art
 	defer rows.Close()
 
 	for rows.Next() {
-		item, scanErr := scanArticleSummary(rows)
+		item, scanErr := scanArticleSummary(rows, channels)
 		if scanErr != nil {
 			return page, scanErr
 		}
@@ -55,14 +56,22 @@ func (api databaseAPI) ListArticles(ctx context.Context, input httptransport.Art
 
 func buildArticleListQuery(input httptransport.ArticleListQuery) (string, []any, error) {
 	query := `SELECT articles.id,articles.title,articles.relative_path,articles.category,
-COALESCE(articles.source_mtime,articles.updated_at),COALESCE(editorial_reviews.state,'pending_review'),
-COALESCE((SELECT CASE WHEN publications.content_hash<>articles.content_hash THEN 'outdated' ELSE publications.state END
+COALESCE(articles.source_mtime,articles.updated_at),articles.content_stage,articles.content_stage_issue,
+COALESCE(editorial_reviews.state,'pending_review'),COALESCE(editorial_reviews.approved_content_hash,''),
+COALESCE((SELECT publications.state
   FROM publications JOIN provider_instances ON provider_instances.id=publications.provider_instance_id
   WHERE publications.article_id=articles.id AND provider_instances.workspace_id=articles.workspace_id AND provider_instances.provider_type='hugo' LIMIT 1),'never'),
-COALESCE((SELECT CASE WHEN publications.content_hash<>articles.content_hash THEN 'outdated' ELSE publications.state END
+COALESCE((SELECT publications.content_hash
+  FROM publications JOIN provider_instances ON provider_instances.id=publications.provider_instance_id
+  WHERE publications.article_id=articles.id AND provider_instances.workspace_id=articles.workspace_id AND provider_instances.provider_type='hugo' LIMIT 1),''),
+COALESCE((SELECT publications.state
   FROM publications JOIN provider_instances ON provider_instances.id=publications.provider_instance_id
   WHERE publications.article_id=articles.id AND provider_instances.workspace_id=articles.workspace_id AND provider_instances.provider_type='wechat' LIMIT 1),'never'),
+COALESCE((SELECT publications.content_hash
+  FROM publications JOIN provider_instances ON provider_instances.id=publications.provider_instance_id
+  WHERE publications.article_id=articles.id AND provider_instances.workspace_id=articles.workspace_id AND provider_instances.provider_type='wechat' LIMIT 1),''),
 articles.content_hash,
+COALESCE(article_dispositions.kind,''),COALESCE(article_dispositions.content_hash,''),
 CASE WHEN article_dispositions.cleared_at IS NULL
   AND (article_dispositions.kind='ignored' OR (article_dispositions.kind='published' AND article_dispositions.content_hash=articles.content_hash))
   THEN article_dispositions.kind ELSE '' END
@@ -77,8 +86,16 @@ WHERE articles.deleted_at IS NULL AND articles.workspace_id=` + currentWorkspace
 		arguments = append(arguments, "%"+escapeLike(strings.ToLower(input.Search))+"%")
 	}
 	if input.State != "" {
-		query += ` AND COALESCE(editorial_reviews.state,'pending_review')=?`
-		arguments = append(arguments, input.State)
+		if input.State == "draft" {
+			query += ` AND articles.content_stage='draft'`
+		} else {
+			query += ` AND articles.content_stage='ready' AND COALESCE(editorial_reviews.state,'pending_review')=?`
+			arguments = append(arguments, input.State)
+		}
+	}
+	if input.ContentStage != "" {
+		query += ` AND articles.content_stage=?`
+		arguments = append(arguments, input.ContentStage)
 	}
 
 	// 处置枚举只映射到固定 SQL 片段，客户端输入永远不会成为 SQL 结构。
@@ -108,22 +125,27 @@ AND NOT COALESCE(article_dispositions.kind='published' AND article_dispositions.
 	return query, arguments, nil
 }
 
-func scanArticleSummary(rows interface{ Scan(...any) error }) (httptransport.ArticleSummary, error) {
+func scanArticleSummary(rows interface{ Scan(...any) error }, channels []string) (httptransport.ArticleSummary, error) {
 	var item httptransport.ArticleSummary
-	var relative, hugoState, wechatState string
-	if err := rows.Scan(&item.ID, &item.Title, &relative, &item.Category, &item.ModifiedAt, &item.State, &hugoState, &wechatState, &item.ContentVersion, &item.Disposition); err != nil {
+	var relative, stage, issue, reviewState, approvedHash, hugoState, hugoHash, wechatState, wechatHash, dispositionKind, dispositionHash string
+	if err := rows.Scan(&item.ID, &item.Title, &relative, &item.Category, &item.ModifiedAt, &stage, &issue, &reviewState, &approvedHash, &hugoState, &hugoHash, &wechatState, &wechatHash, &item.ContentVersion, &dispositionKind, &dispositionHash, &item.Disposition); err != nil {
 		return httptransport.ArticleSummary{}, err
 	}
-	return finalizeArticleSummary(item, relative, hugoState, wechatState), nil
+	item.ContentStage = stage
+	item.ContentStageIssue = issue
+	workflow := deriveArticleWorkflow(articleWorkflowInput{ContentStage: article.ContentStage(stage), ContentIssue: issue, ReviewState: reviewState, ApprovedHash: approvedHash, ContentHash: item.ContentVersion, Disposition: dispositionKind, DispositionHash: dispositionHash, HugoState: hugoState, HugoHash: hugoHash, WeChatState: wechatState, WeChatHash: wechatHash, AvailableChannels: channels})
+	return finalizeArticleSummary(item, relative, workflow), nil
 }
 
-func finalizeArticleSummary(item httptransport.ArticleSummary, relative, hugoState, wechatState string) httptransport.ArticleSummary {
+func finalizeArticleSummary(item httptransport.ArticleSummary, relative string, workflow articleWorkflowResult) httptransport.ArticleSummary {
 	item.Directory = filepath.ToSlash(filepath.Dir(relative))
 	if item.Directory == "." {
 		item.Directory = ""
 	}
-	item.HugoState = publicationLabel(hugoState, "hugo")
-	item.WeChatState = publicationLabel(wechatState, "wechat")
+	item.State = workflow.State
+	item.HugoState = workflow.HugoLabel
+	item.WeChatState = workflow.WeChatLabel
+	item.NextAction = workflow.NextAction
 	return item
 }
 

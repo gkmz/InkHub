@@ -44,12 +44,12 @@ func seedArticleListRows(t *testing.T, db interface {
 INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES
 ('s1','w1','obsidian','/tmp/old','2026-07-01','2026-07-01'),
 ('s2','w2','obsidian','/tmp/current','2026-07-30','2026-07-30');
-INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,content_hash,indexed_at,created_at,updated_at,source_mtime) VALUES
-('old','w1','s1','old','old.md','SQLite 旧文章','hash-old','2026-07-01','2026-07-01','2026-07-01','2026-07-31T12:00:00Z'),
-('match','w2','s2','match','notes/match.md','SQLite 当前文章','hash-match','2026-07-30','2026-07-30','2026-07-30','2026-07-30T09:00:00Z'),
-('ignored','w2','s2','ignored','notes/ignored.md','忽略文章','hash-ignored','2026-07-30','2026-07-30','2026-07-30','2026-07-30T11:00:00Z'),
-('published','w2','s2','published','notes/published.md','已发表文章','hash-published','2026-07-30','2026-07-30','2026-07-30','2026-07-30T10:00:00Z'),
-('stale','w2','s2','stale','notes/stale.md','已更新文章','hash-new','2026-07-30','2026-07-30','2026-07-30','2026-07-30T12:00:00Z');
+INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,content_hash,indexed_at,created_at,updated_at,source_mtime,content_stage) VALUES
+('old','w1','s1','old','old.md','SQLite 旧文章','hash-old','2026-07-01','2026-07-01','2026-07-01','2026-07-31T12:00:00Z','ready'),
+('match','w2','s2','match','notes/match.md','SQLite 当前文章','hash-match','2026-07-30','2026-07-30','2026-07-30','2026-07-30T09:00:00Z','ready'),
+('ignored','w2','s2','ignored','notes/ignored.md','忽略文章','hash-ignored','2026-07-30','2026-07-30','2026-07-30','2026-07-30T11:00:00Z','ready'),
+('published','w2','s2','published','notes/published.md','已发表文章','hash-published','2026-07-30','2026-07-30','2026-07-30','2026-07-30T10:00:00Z','ready'),
+('stale','w2','s2','stale','notes/stale.md','已更新文章','hash-new','2026-07-30','2026-07-30','2026-07-30','2026-07-30T12:00:00Z','ready');
 INSERT INTO article_dispositions(article_id,workspace_id,kind,content_hash,created_at,updated_at) VALUES
 ('ignored','w2','ignored','hash-before-ignore','2026-07-30','2026-07-30'),
 ('published','w2','published','hash-published','2026-07-30','2026-07-30'),

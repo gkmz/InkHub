@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gkmz/InkHub/internal/domain/article"
 	domainjob "github.com/gkmz/InkHub/internal/domain/job"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
@@ -15,7 +16,7 @@ import (
 func TestHugoPreviewQueuesDeterministicallyAndReturnsSafeView(t *testing.T) {
 	now := time.Date(2026, 7, 17, 8, 0, 0, 0, time.UTC)
 	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{}}
-	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash"}}
+	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash", ContentStage: article.ContentStageReady}}
 	service := NewHugoPreviewService(store, resolver, func() time.Time { return now })
 	job, err := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts"})
 	if err != nil {
@@ -48,7 +49,7 @@ func TestHugoPreviewQueuesDeterministicallyAndReturnsSafeView(t *testing.T) {
 func TestHugoPreviewConfirmRejectsStaleAndReusesDelivery(t *testing.T) {
 	now := time.Date(2026, 7, 17, 8, 0, 0, 0, time.UTC)
 	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{}}
-	resolver := &mutablePreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash"}}
+	resolver := &mutablePreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash", ContentStage: article.ContentStageReady}}
 	service := NewHugoPreviewService(store, resolver, func() time.Time { return now })
 	preview, _ := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts"})
 	expires := now.Add(time.Hour)
@@ -75,7 +76,7 @@ func TestHugoPreviewConfirmRejectsStaleAndReusesDelivery(t *testing.T) {
 
 func TestHugoPreviewRejectsMismatchedResolvedArticle(t *testing.T) {
 	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{}}
-	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "other", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash"}}
+	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "other", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash", ContentStage: article.ContentStageReady}}
 	service := NewHugoPreviewService(store, resolver, time.Now)
 
 	if _, err := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts"}); err == nil {
@@ -86,7 +87,7 @@ func TestHugoPreviewRejectsMismatchedResolvedArticle(t *testing.T) {
 func TestHugoPreviewRejectsMismatchedResultIdentity(t *testing.T) {
 	now := time.Date(2026, 7, 17, 8, 0, 0, 0, time.UTC)
 	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{}}
-	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash"}}
+	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash", ContentStage: article.ContentStageReady}}
 	service := NewHugoPreviewService(store, resolver, func() time.Time { return now })
 	preview, _ := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts"})
 	expires := now.Add(time.Hour)
@@ -107,7 +108,7 @@ func TestHugoPreviewRejectsMismatchedResultIdentity(t *testing.T) {
 func TestHugoPreviewReusesCompletedDeterministicJobs(t *testing.T) {
 	now := time.Date(2026, 7, 17, 8, 0, 0, 0, time.UTC)
 	store := &completedConflictPreviewJobStore{memoryPreviewJobStore: memoryPreviewJobStore{jobs: map[string]domainjob.Job{}}}
-	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash"}}
+	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash", ContentStage: article.ContentStageReady}}
 	service := NewHugoPreviewService(store, resolver, func() time.Time { return now })
 	preview, err := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts"})
 	if err != nil {
@@ -124,7 +125,7 @@ func TestHugoPreviewReusesCompletedDeterministicJobs(t *testing.T) {
 func TestHugoPreviewRequeuesFailedDeterministicJobs(t *testing.T) {
 	now := time.Date(2026, 7, 17, 8, 0, 0, 0, time.UTC)
 	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{}}
-	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash"}}
+	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash", ContentStage: article.ContentStageReady}}
 	service := NewHugoPreviewService(store, resolver, func() time.Time { return now })
 	preview, err := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts"})
 	if err != nil {

@@ -14,7 +14,7 @@ func TestQueueProvidersBindCurrentApprovedContentHash(t *testing.T) {
 
 	queue := &capturingQueue{}
 	service := NewService(queue, &capturingPublicationStore{})
-	value := article.Article{ID: "article_1", WorkspaceID: "workspace_1", ContentHash: "hash-v1"}
+	value := article.Article{ID: "article_1", WorkspaceID: "workspace_1", ContentHash: "hash-v1", ContentStage: article.ContentStageReady}
 	for _, providerID := range []string{"provider_hugo", "provider_wechat"} {
 		jobID, err := service.Queue(context.Background(), QueueRequest{
 			JobID: "job_" + providerID, ProviderInstanceID: providerID,
@@ -35,7 +35,7 @@ func TestQueueRejectsChangedArticle(t *testing.T) {
 	service := NewService(&capturingQueue{}, &capturingPublicationStore{})
 	_, err := service.Queue(context.Background(), QueueRequest{
 		JobID: "job", ProviderInstanceID: "provider",
-		Article:             article.Article{ID: "article_1", WorkspaceID: "workspace_1", ContentHash: "new-hash"},
+		Article:             article.Article{ID: "article_1", WorkspaceID: "workspace_1", ContentHash: "new-hash", ContentStage: article.ContentStageReady},
 		ApprovedContentHash: "old-hash",
 	})
 	if !errors.Is(err, ErrContentChanged) {
@@ -47,7 +47,7 @@ func TestQueueUsesGenericPublicationJobForAnyProvider(t *testing.T) {
 	t.Parallel()
 	queue := &capturingQueue{}
 	service := NewService(queue, nil)
-	value := article.Article{ID: "article", WorkspaceID: "workspace", ContentHash: "hash"}
+	value := article.Article{ID: "article", WorkspaceID: "workspace", ContentHash: "hash", ContentStage: article.ContentStageReady}
 	if _, err := service.Queue(context.Background(), QueueRequest{JobID: "job", ProviderInstanceID: "custom-provider", Article: value, ApprovedContentHash: "hash"}); err != nil {
 		t.Fatalf("通用发布 Provider 应可入队: %v", err)
 	}

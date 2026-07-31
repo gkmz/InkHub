@@ -60,11 +60,13 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   const seriesOptions = taxonomyTerms.filter((term) => term.kind === "series").map((term) => ({ key: term.key, name: term.name }));
   const tagOptions = taxonomyTerms.filter((term) => term.kind === "tag").map((term) => ({ key: term.key, name: term.name, usageCount: term.usage_count }));
   const canCreateTaxonomy = Boolean(taxonomy && !taxonomy.readonly && taxonomy.provider_id && taxonomy.revision);
-  const primary = article.review_state !== "已通过" ? { label: "审核通过", icon: Check, action: async () => { await reviewArticle(article.id); setArticle({ ...article, review_state: "已通过", hugo_state: "需要同步" }); } } : article.hugo_state !== "已同步" ? { label: "同步到 Hugo", icon: CloudUpload, action: async () => setShowHugoFlow(true) } : { label: "准备微信内容", icon: Send, action: async () => onNavigate(`/articles/${article.id}/wechat`) };
-  const PrimaryIcon = primary.icon;
-  const hidePrimaryForHugoFlow = showHugoFlow && article.review_state === "已通过" && article.hugo_state !== "已同步";
+  const isDraft = article.content_stage === "draft";
+  const primary = isDraft ? null : article.review_state !== "已通过" ? { label: "审核通过", icon: Check, action: async () => { await reviewArticle(article.id); setArticle({ ...article, review_state: "已通过", hugo_state: "需要同步" }); } } : article.hugo_state !== "已同步" ? { label: "同步到 Hugo", icon: CloudUpload, action: async () => setShowHugoFlow(true) } : { label: "准备微信内容", icon: Send, action: async () => onNavigate(`/articles/${article.id}/wechat`) };
+  const PrimaryIcon = primary?.icon;
+  const hidePrimaryForHugoFlow = showHugoFlow && !isDraft && article.review_state === "已通过" && article.hugo_state !== "已同步";
   return <div className="article-page">
     <div className="article-toolbar"><button type="button" onClick={() => onNavigate("/library")}><ArrowLeft size={16} />返回内容库</button><span>{article.relative_path}</span></div>
+    {isDraft && <section className="draft-guidance" role="status"><strong>草稿</strong><span>文章仍在创作阶段，不会进入审核或发布流程。</span><code>publish.status: ready</code>{article.content_stage_issue && <small>{article.content_stage_issue}</small>}</section>}
     <PublicationTrack review={article.review_state} hugo={article.hugo_state} wechat={article.wechat_state} />
     {article.disposition && <p className={`article-disposition state-${article.disposition.kind}`}>
       {article.disposition.kind === "ignored"
@@ -78,8 +80,8 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
         <MetadataForm value={article.metadata} sourceChanged={article.source_changed} categoryOptions={categoryOptions} seriesOptions={seriesOptions} tagOptions={tagOptions} taxonomyState={taxonomyState} canCreateTaxonomy={canCreateTaxonomy} onCreateTaxonomy={(kind, select) => setTaxonomySelection({ kind, select })} externalSuggestion={externalSuggestion} onReload={load} onSave={async (metadata) => { const next = await saveMetadata(article.id, metadata); setArticle(next); setNotice("元数据已保存"); }} />
         <Checks items={article.checks} />
         {article.ai_configured ? <AISuggestions stale={article.suggestions_stale} suggestions={article.suggestions} generating={generatingAI} onAccept={(suggestion) => setExternalSuggestion({ id: `${suggestion.id}:${Date.now()}`, field: suggestion.field, value: suggestion.name })} onGenerate={async () => { setGeneratingAI(true); try { const result = await generateArticleSuggestions(article.id); setArticle({ ...article, ...result }); setNotice("AI Tag 已生成"); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "AI Tag 生成失败"); } finally { setGeneratingAI(false); } }} /> : <section className="tool-section ai-unconfigured"><Bot size={17} /><span><b>AI 建议未启用</b><small>不影响手工审核</small></span><button onClick={() => onNavigate("/settings")}>配置 AI</button></section>}
-        {!hidePrimaryForHugoFlow && <div className="primary-action"><button className="primary" onClick={() => void primary.action()}><PrimaryIcon size={17} />{primary.label}</button>{notice && <span role="status">{notice}</span>}</div>}
-        {showHugoFlow && article.hugo_state !== "已同步" && <HugoPublishFlow articleID={article.id} contentHash={article.content_version} onPublished={async () => { setShowHugoFlow(false); setHistoryRefreshKey((value) => value + 1); await load(); }} />}
+        {!isDraft && !hidePrimaryForHugoFlow && primary && PrimaryIcon && <div className="primary-action"><button className="primary" onClick={() => void primary.action()}><PrimaryIcon size={17} />{primary.label}</button>{notice && <span role="status">{notice}</span>}</div>}
+        {!isDraft && showHugoFlow && article.hugo_state !== "已同步" && <HugoPublishFlow articleID={article.id} contentHash={article.content_version} onPublished={async () => { setShowHugoFlow(false); setHistoryRefreshKey((value) => value + 1); await load(); }} />}
         <PublicationHistory articleID={article.id} refreshKey={historyRefreshKey} />
       </aside>
     </div>

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gkmz/InkHub/internal/domain/article"
 	domainjob "github.com/gkmz/InkHub/internal/domain/job"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
@@ -26,10 +27,11 @@ var (
 
 // PreviewArticle 是预览服务执行身份和版本校验所需的最小文章视图。
 type PreviewArticle struct {
-	ArticleID   string
-	WorkspaceID string
-	ProviderID  string
-	ContentHash string
+	ArticleID    string
+	WorkspaceID  string
+	ProviderID   string
+	ContentHash  string
+	ContentStage article.ContentStage
 }
 
 // PreviewRequest 描述一次 Hugo Artifact 准备请求。
@@ -112,6 +114,9 @@ func (s *HugoPreviewService) Queue(ctx context.Context, request PreviewRequest) 
 	if current.ArticleID != request.ArticleID || current.WorkspaceID == "" || current.ProviderID == "" {
 		return domainjob.Job{}, ErrPreviewInvalid
 	}
+	if current.ContentStage != article.ContentStageReady {
+		return domainjob.Job{}, ErrArticleNotReady
+	}
 	if current.ContentHash != request.ContentHash {
 		return domainjob.Job{}, ErrPreviewStale
 	}
@@ -181,6 +186,9 @@ func (s *HugoPreviewService) Confirm(ctx context.Context, request ConfirmPreview
 	}
 	if current.WorkspaceID != result.WorkspaceID || current.ProviderID != result.ProviderID || current.ContentHash != result.Artifact.ContentHash {
 		return domainjob.Job{}, ErrPreviewStale
+	}
+	if current.ContentStage != article.ContentStageReady {
+		return domainjob.Job{}, ErrArticleNotReady
 	}
 	if result.Artifact.ExpiresAt == nil || !result.Artifact.ExpiresAt.After(s.now()) {
 		return domainjob.Job{}, ErrPreviewExpired

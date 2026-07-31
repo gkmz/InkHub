@@ -109,6 +109,8 @@ func writeHugoPreviewError(response http.ResponseWriter, err error) {
 		writeError(response, http.StatusConflict, "hugo.preview_not_ready", "Hugo 发布预览尚未准备完成")
 	case errors.Is(err, publication.ErrPreviewInvalid):
 		writeError(response, http.StatusUnprocessableEntity, "hugo.preview_invalid", "Hugo 发布预览数据无效")
+	case errors.Is(err, publication.ErrArticleNotReady):
+		writeError(response, http.StatusUnprocessableEntity, "article.not_ready", "文章尚未标记为已就绪")
 	default:
 		writeError(response, http.StatusUnprocessableEntity, "hugo.preview_failed", "Hugo 发布预览操作失败")
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gkmz/InkHub/internal/domain/article"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
 
@@ -17,7 +18,8 @@ func TestWeChatPlanIsReadOnlyAndConfirmEnqueuesBoundIntent(t *testing.T) {
 	provider := &staticPlanningProvider{items: []contracts.AssetPlanItem{{Reference: "images/cover.png", MediaType: "image/png", Size: 120, State: "upload"}}}
 	resolver := staticWeChatPlanResolver{value: WeChatPlanArticle{
 		WorkspaceID: "w1", ArticleID: "a1", ProviderID: "wechat1", ContentHash: "hash1",
-		TemplateID: "default", TemplateRevision: "template1", Provider: provider,
+		ContentStage: article.ContentStageReady,
+		TemplateID:   "default", TemplateRevision: "template1", Provider: provider,
 	}}
 	queue := &capturingQueue{}
 	service, err := NewWeChatPlanService(resolver, queue, []byte("01234567890123456789012345678901"), func() time.Time { return now })
@@ -46,6 +48,7 @@ func TestWeChatPlanRejectsTamperedToken(t *testing.T) {
 
 	service, err := NewWeChatPlanService(staticWeChatPlanResolver{value: WeChatPlanArticle{
 		WorkspaceID: "w1", ArticleID: "a1", ProviderID: "wechat1", ContentHash: "hash1", TemplateID: "default", TemplateRevision: "template1", Provider: &staticPlanningProvider{},
+		ContentStage: article.ContentStageReady,
 	}}, &capturingQueue{}, []byte("01234567890123456789012345678901"), time.Now)
 	if err != nil {
 		t.Fatal(err)
