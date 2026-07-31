@@ -33,6 +33,42 @@ func TestArticleRepositoryUpsertAndFindByStableID(t *testing.T) {
 	}
 }
 
+func TestArticleRepositoryPersistsContentStageAndIssue(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	seedWorkspace(t, db)
+	repo := NewArticleRepository(db)
+	ready := article.Article{
+		ID: "a-ready", WorkspaceID: "w1", SourceID: "s1", StableID: "article_READY",
+		RelativePath: "ready.md", ContentStage: article.ContentStageReady,
+	}
+	if err := repo.Upsert(context.Background(), ready); err != nil {
+		t.Fatal(err)
+	}
+	var stage, issue string
+	if err := db.QueryRow(`SELECT content_stage,content_stage_issue FROM articles WHERE id='a-ready'`).Scan(&stage, &issue); err != nil {
+		t.Fatal(err)
+	}
+	if stage != string(article.ContentStageReady) || issue != "" {
+		t.Fatalf("stored stage = %q, issue = %q", stage, issue)
+	}
+
+	draft := ready
+	draft.ID = "a-invalid"
+	draft.StableID = "article_INVALID"
+	draft.RelativePath = "invalid.md"
+	draft.ContentStage = article.ContentStageDraft
+	draft.ContentStageIssue = "publish.status 仅支持 draft 或 ready"
+	if err := repo.Upsert(context.Background(), draft); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT content_stage,content_stage_issue FROM articles WHERE id='a-invalid'`).Scan(&stage, &issue); err != nil {
+		t.Fatal(err)
+	}
+	if stage != string(article.ContentStageDraft) || issue == "" {
+		t.Fatalf("stored invalid stage = %q, issue = %q", stage, issue)
+	}
+}
+
 func TestArticleRepositoryRejectsInvalidStoredTime(t *testing.T) {
 	t.Parallel()
 

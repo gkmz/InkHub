@@ -36,6 +36,10 @@ func (r *ArticleRepository) Upsert(ctx context.Context, value article.Article) e
 	if value.IndexedAt.IsZero() {
 		indexedAt = now
 	}
+	contentStage := value.ContentStage
+	if contentStage == "" {
+		contentStage = article.ContentStageDraft
+	}
 	// 索引快照和审核失效属于同一个内容变化事实，必须在同一事务提交。
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -44,16 +48,17 @@ func (r *ArticleRepository) Upsert(ctx context.Context, value article.Article) e
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `INSERT INTO articles(
 id,workspace_id,source_id,stable_id,relative_path,title,description,category,series,tags_json,keywords_json,
-slug,cover,source_mtime,source_size,source_fingerprint,content_hash,frontmatter_hash,indexed_at,deleted_at,created_at,updated_at)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+slug,cover,source_mtime,source_size,source_fingerprint,content_hash,frontmatter_hash,indexed_at,deleted_at,created_at,updated_at,content_stage,content_stage_issue)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET relative_path=excluded.relative_path,title=excluded.title,
 description=excluded.description,category=excluded.category,series=excluded.series,tags_json=excluded.tags_json,
 keywords_json=excluded.keywords_json,slug=excluded.slug,cover=excluded.cover,source_mtime=excluded.source_mtime,
 source_size=excluded.source_size,source_fingerprint=excluded.source_fingerprint,content_hash=excluded.content_hash,frontmatter_hash=excluded.frontmatter_hash,
-indexed_at=excluded.indexed_at,deleted_at=excluded.deleted_at,updated_at=excluded.updated_at`,
+indexed_at=excluded.indexed_at,deleted_at=excluded.deleted_at,content_stage=excluded.content_stage,content_stage_issue=excluded.content_stage_issue,updated_at=excluded.updated_at`,
 		value.ID, value.WorkspaceID, value.SourceID, value.StableID, value.RelativePath, value.Title, value.Description,
 		value.Category, value.Series, string(tags), string(keywords), value.Slug, value.Cover, formatTime(value.SourceMTime),
-		value.SourceSize, value.SourceFingerprint, value.ContentHash, value.FrontmatterHash, indexedAt, formatTime(value.DeletedAt), now, now)
+		value.SourceSize, value.SourceFingerprint, value.ContentHash, value.FrontmatterHash, indexedAt, formatTime(value.DeletedAt), now, now,
+		contentStage, value.ContentStageIssue)
 	if err != nil {
 		return fmt.Errorf("保存文章索引: %w", err)
 	}
@@ -93,10 +98,11 @@ func (r *ArticleRepository) FindByStableID(ctx context.Context, workspaceID, sta
 	var sourceMTime, deletedAt sql.NullString
 	err := r.db.QueryRowContext(ctx, `SELECT id,workspace_id,source_id,stable_id,relative_path,title,description,
 category,series,tags_json,keywords_json,slug,cover,source_mtime,source_size,source_fingerprint,content_hash,frontmatter_hash,
-indexed_at,deleted_at FROM articles WHERE workspace_id=? AND stable_id=?`, workspaceID, stableID).Scan(
+indexed_at,deleted_at,content_stage,content_stage_issue FROM articles WHERE workspace_id=? AND stable_id=?`, workspaceID, stableID).Scan(
 		&value.ID, &value.WorkspaceID, &value.SourceID, &value.StableID, &value.RelativePath, &value.Title,
 		&value.Description, &value.Category, &value.Series, &tags, &keywords, &value.Slug, &value.Cover,
-		&sourceMTime, &value.SourceSize, &value.SourceFingerprint, &value.ContentHash, &value.FrontmatterHash, &indexedAt, &deletedAt)
+		&sourceMTime, &value.SourceSize, &value.SourceFingerprint, &value.ContentHash, &value.FrontmatterHash, &indexedAt, &deletedAt,
+		&value.ContentStage, &value.ContentStageIssue)
 	if err != nil {
 		return article.Article{}, fmt.Errorf("查询文章索引: %w", err)
 	}

@@ -30,8 +30,8 @@ func TestOpenMigratesEmptyDatabaseAndIsRepeatable(t *testing.T) {
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_migrations").Scan(&version); err != nil {
 		t.Fatalf("query migration version: %v", err)
 	}
-	if version != 6 {
-		t.Fatalf("migration version = %d, want 6", version)
+	if version != 7 {
+		t.Fatalf("migration version = %d, want 7", version)
 	}
 }
 

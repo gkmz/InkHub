@@ -184,6 +184,7 @@ var columnComments = map[string]string{
 	"source_revision": "生成当前投影的权威来源 revision", "usage_count": "term 在文章中的使用次数",
 	"revision": "最近成功发现的权威来源 revision", "complete": "快照是否为完整发现结果",
 	"last_error_code": "最近刷新失败的稳定错误码", "last_error_message": "最近刷新失败的脱敏说明",
+	"content_stage": "作者控制的文章内容阶段", "content_stage_issue": "文章内容阶段字段的修复提示",
 	"last_attempt_at": "最近刷新尝试时间（UTC）", "last_success_at": "最近成功刷新时间（UTC）",
 	"canonical_name": "term 的规范显示名称",
 	"target":         "模板适用的稳定渲染目标", "format": "模板入口内容格式", "renderer": "模板要求的 Renderer 契约标识",
