@@ -59,3 +59,80 @@ test("单行选择不打开文章且加载更多不自动选择新文章", async
   expect(second).not.toBeChecked();
   expect(screen.getByText("已选择 1 篇")).toBeInTheDocument();
 });
+
+test("批量标记已发表提交文章版本和多个渠道，成功后清空选择并重新读取", async () => {
+  let listRequests = 0;
+  let submitted: unknown;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+    if (init?.method === "POST") {
+      submitted = JSON.parse(String(init.body));
+      return Response.json({ processed: 2, changed: 2, unchanged: 0 });
+    }
+    listRequests += 1;
+    return Response.json({ items: [articleA, articleB], available_channels: ["hugo", "wechat"] });
+  });
+  render(<ToastProvider><LibraryPage onNavigate={vi.fn()} /></ToastProvider>);
+
+  await userEvent.click(await screen.findByRole("checkbox", { name: "选择当前已加载文章" }));
+  await userEvent.click(screen.getByRole("button", { name: "标记已发表" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: "Hugo" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: "微信" }));
+  await userEvent.click(screen.getByRole("button", { name: "确认标记" }));
+
+  await waitFor(() => expect(submitted).toEqual({
+    operation: "published",
+    articles: [{ id: "a1", content_version: "v1" }, { id: "a2", content_version: "v2" }],
+    channels: ["hugo", "wechat"],
+  }));
+  expect(await screen.findByRole("status")).toHaveTextContent("已处理 2 篇文章");
+  await waitFor(() => expect(listRequests).toBe(2));
+  expect(screen.queryByText("已选择 2 篇")).not.toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "选择文章 第一篇" })).not.toBeChecked();
+});
+
+test("批量处置发生版本冲突时保留选择并给出可恢复提示", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => init?.method === "POST"
+    ? Response.json({ error: { code: "disposition.content_changed", message: "内容版本冲突" } }, { status: 409 })
+    : Response.json({ items: [articleA], available_channels: ["hugo"] }));
+  render(<ToastProvider><LibraryPage onNavigate={vi.fn()} /></ToastProvider>);
+
+  await userEvent.click(await screen.findByRole("checkbox", { name: "选择文章 第一篇" }));
+  await userEvent.click(screen.getByRole("button", { name: "忽略" }));
+  await userEvent.click(screen.getByRole("button", { name: "确认忽略" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("部分文章已更新，请刷新后重新选择");
+  expect(screen.getByText("已选择 1 篇")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "选择文章 第一篇" })).toBeChecked();
+});
+
+test("已忽略筛选批量恢复时提交 restore", async () => {
+  let submitted: unknown;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+    if (init?.method === "POST") {
+      submitted = JSON.parse(String(init.body));
+      return Response.json({ processed: 1, changed: 1, unchanged: 0 });
+    }
+    return Response.json({ items: [ignoredArticle], available_channels: ["hugo", "wechat"] });
+  });
+  render(<ToastProvider><LibraryPage onNavigate={vi.fn()} /></ToastProvider>);
+  await screen.findByText("已忽略文章");
+  await userEvent.selectOptions(screen.getByLabelText("处置状态"), "ignored");
+  await userEvent.click(await screen.findByRole("checkbox", { name: "选择文章 已忽略文章" }));
+  await userEvent.click(screen.getByRole("button", { name: "恢复管理" }));
+  await userEvent.click(screen.getByRole("button", { name: "确认恢复" }));
+
+  await waitFor(() => expect(submitted).toEqual({
+    operation: "restore",
+    articles: [{ id: "ignored", content_version: "ignored-v1" }],
+  }));
+});
+
+test("关闭批量对话框后焦点回到触发按钮", async () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ items: [articleA], available_channels: ["hugo"] }));
+  render(<ToastProvider><LibraryPage onNavigate={vi.fn()} /></ToastProvider>);
+  await userEvent.click(await screen.findByRole("checkbox", { name: "选择文章 第一篇" }));
+  const trigger = screen.getByRole("button", { name: "标记已发表" });
+  await userEvent.click(trigger);
+  await userEvent.click(screen.getByRole("button", { name: "取消" }));
+  expect(trigger).toHaveFocus();
+});

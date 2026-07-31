@@ -78,6 +78,8 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .filter-strip select { border: 0; background: transparent; color: var(--ink); }
 .filter-strip button { border: 0; background: transparent; color: var(--action); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .batch-bar { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: #eef5f2; }
+.article-disposition { margin: 12px 0 0; padding: 10px 14px; border-left: 3px solid var(--action); background: #eef5f2; color: var(--ink); font-size: 13px; line-height: 1.5; }
+.article-disposition.state-ignored { border-left-color: #8b6f47; background: #f5f1e9; }
 .batch-bar strong { font-size: 13px; white-space: nowrap; }.batch-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .batch-actions button { min-height: 36px; padding-inline: 13px; }
 .page-state, .empty-state { min-height: 280px; display: grid; place-content: center; justify-items: center; text-align: center; color: var(--muted); }
@@ -331,6 +333,16 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .taxonomy-term-list code { color: var(--muted); font-size: 11px; }
 .dialog-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(24, 30, 27, .38); }
 .taxonomy-dialog { width: min(620px, 100%); max-height: min(760px, calc(100vh - 40px)); display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); box-shadow: 0 18px 55px rgba(24, 39, 33, .2); }
+.disposition-dialog { width: min(440px, 100%); max-height: calc(100vh - 40px); overflow: auto; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); box-shadow: 0 18px 55px rgba(24, 39, 33, .2); }
+.disposition-dialog > header, .disposition-dialog > footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 15px 18px; }
+.disposition-dialog > header { border-bottom: 1px solid var(--line); }.disposition-dialog > footer { justify-content: flex-end; border-top: 1px solid var(--line); }
+.disposition-dialog h2 { margin: 0; font-size: 17px; }.disposition-dialog header button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.disposition-dialog footer button, .settings-link { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.disposition-dialog-body { padding: 18px; }.disposition-dialog-body > p { margin: 0 0 16px; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.disposition-dialog fieldset { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }.disposition-dialog legend { margin-bottom: 8px; font-size: 12px; font-weight: 650; }
+.disposition-dialog fieldset label { min-height: 44px; display: grid; grid-template-columns: 22px 1fr auto; align-items: center; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; font-size: 13px; }.disposition-dialog fieldset label.disabled { color: var(--muted); background: #f6f7f6; }
+.disposition-dialog fieldset input { width: 16px; height: 16px; accent-color: var(--action); }.disposition-dialog fieldset small { color: var(--muted); font-size: 11px; }
+.settings-link { margin-top: 12px; padding: 4px 0; border: 0; background: transparent; color: var(--action); cursor: pointer; }
 .taxonomy-dialog > header, .taxonomy-dialog > footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px; }
 .taxonomy-dialog > header { border-bottom: 1px solid var(--line); }.taxonomy-dialog > footer { justify-content: flex-end; border-top: 1px solid var(--line); }
 .taxonomy-dialog h2 { margin: 0; font-size: 17px; }.taxonomy-dialog header button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); cursor: pointer; }

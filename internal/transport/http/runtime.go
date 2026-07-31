@@ -354,7 +354,60 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 		suggestionItems = suggestionViews(latest.Items)
 		suggestionsStale = latest.InputContentHash != contentHash
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"id": id, "content_version": contentHash, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied})
+	disposition, err := h.effectiveArticleDisposition(request.Context(), workspaceID, id, contentHash)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	result := map[string]any{"id": id, "content_version": contentHash, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
+	if disposition != nil {
+		result["disposition"] = disposition
+	}
+	writeJSON(response, http.StatusOK, result)
+}
+
+type articleDispositionView struct {
+	Kind     string   `json:"kind"`
+	Channels []string `json:"channels"`
+}
+
+func (h *runtimeHandler) effectiveArticleDisposition(ctx context.Context, workspaceID, articleID, contentHash string) (*articleDispositionView, error) {
+	var kind string
+	err := h.db.QueryRowContext(ctx, `SELECT kind FROM article_dispositions
+WHERE article_id=? AND workspace_id=? AND cleared_at IS NULL
+AND (kind='ignored' OR (kind='published' AND content_hash=?))`, articleID, workspaceID, contentHash).Scan(&kind)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	view := &articleDispositionView{Kind: kind, Channels: []string{}}
+	if kind == "ignored" {
+		return view, nil
+	}
+	// 详情只返回当前版本已标记的渠道名称，不暴露 Provider 实例 ID。
+	rows, err := h.db.QueryContext(ctx, `SELECT providers.provider_type
+FROM publications
+JOIN provider_instances providers ON providers.id=publications.provider_instance_id AND providers.workspace_id=publications.workspace_id
+WHERE publications.article_id=? AND publications.workspace_id=? AND publications.state='published'
+AND publications.content_hash=? AND providers.enabled=1 AND providers.provider_type IN ('hugo','wechat')
+ORDER BY CASE providers.provider_type WHEN 'hugo' THEN 1 ELSE 2 END`, articleID, workspaceID, contentHash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var channel string
+		if err := rows.Scan(&channel); err != nil {
+			return nil, err
+		}
+		view.Channels = append(view.Channels, channel)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return view, nil
 }
 
 func runtimePublicationLabel(state, channel string) string {

@@ -1,5 +1,6 @@
 export type ArticleState = "draft" | "blocked" | "changed" | "incomplete" | "pending_review" | "approved";
 export type ArticleDisposition = "published" | "ignored";
+export type PublicationChannel = "hugo" | "wechat";
 
 export interface WorkspaceSummary {
   id: string;
@@ -35,6 +36,18 @@ export interface DashboardView {
   changed: ArticleSummary[];
   needs_review: ArticleSummary[];
   recently_handled: ArticleSummary[];
+}
+
+export interface BatchDispositionCommand {
+  operation: "published" | "ignored" | "restore";
+  articles: Array<{ id: string; content_version: string }>;
+  channels?: PublicationChannel[];
+}
+
+export interface BatchDispositionResult {
+  processed: number;
+  changed: number;
+  unchanged: number;
 }
 
 export interface WorkspaceDraft {
@@ -176,6 +189,7 @@ export interface ArticleDetail {
   suggestions: AISuggestion[];
   suggestions_stale: boolean;
   wechat_copied: boolean;
+  disposition?: { kind: ArticleDisposition; channels: PublicationChannel[] };
 }
 
 export interface TemplateSummary {

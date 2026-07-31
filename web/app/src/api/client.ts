@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -33,6 +33,14 @@ export function getDashboard(signal?: AbortSignal) {
 /** listArticles 读取内容库稳定分页，并透传搜索与筛选。 */
 export function listArticles(query: URLSearchParams, signal?: AbortSignal) {
   return request<ArticlePage>(`/articles?${query.toString()}`, { signal });
+}
+
+/** batchDisposition 原子提交当前用户已选择文章的管理处置。 */
+export function batchDisposition(command: BatchDispositionCommand) {
+  return request<BatchDispositionResult>("/articles/batch-disposition", {
+    method: "POST",
+    body: JSON.stringify(command),
+  });
 }
 
 /** createWorkspace 幂等创建工作区并返回扫描任务。 */

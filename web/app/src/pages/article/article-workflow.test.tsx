@@ -199,6 +199,22 @@ test("发布轨道不暴露内部 hash 和任务 ID", () => {
   expect(screen.queryByText(/hash|job_/i)).not.toBeInTheDocument();
 });
 
+test("文章页显示当前版本已发表渠道提示", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy")
+    ? Response.json(taxonomy)
+    : Response.json({ ...article, disposition: { kind: "published", channels: ["hugo", "wechat"] } }));
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  expect(await screen.findByText("当前版本已标记为外部发表：Hugo、微信")).toBeInTheDocument();
+});
+
+test("文章页显示长期忽略提示", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy")
+    ? Response.json(taxonomy)
+    : Response.json({ ...article, disposition: { kind: "ignored", channels: [] } }));
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  expect(await screen.findByText("此文章已忽略，可在内容库恢复")).toBeInTheDocument();
+});
+
 test("Hugo 任务失败时显示失败步骤和重试且不宣称成功", () => {
   render(<JobStatus state="failed" progress={68} stage="构建预览" message="Hugo build 未通过" onRetry={vi.fn()} />);
   expect(screen.getByText("构建预览失败")).toBeInTheDocument();

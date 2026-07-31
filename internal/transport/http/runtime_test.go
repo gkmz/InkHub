@@ -3,6 +3,7 @@ package httptransport
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -208,6 +209,86 @@ func TestRuntimeDashboardPassesThroughToCoreRouter(t *testing.T) {
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"source":"core"`) {
 		t.Fatalf("工作台请求未进入核心 Router: code=%d body=%s", response.Code, response.Body.String())
 	}
+}
+
+func TestRuntimeArticleDetailReturnsOnlyEffectiveDisposition(t *testing.T) {
+	tests := []struct {
+		name            string
+		kind            string
+		dispositionHash string
+		wantDisposition bool
+		wantKind        string
+		wantChannels    []string
+	}{
+		{name: "当前版本已发表返回渠道", kind: "published", dispositionHash: "hash-1", wantDisposition: true, wantKind: "published", wantChannels: []string{"hugo", "wechat"}},
+		{name: "旧版本已发表不再有效", kind: "published", dispositionHash: "hash-old", wantDisposition: false},
+		{name: "忽略跨版本持续且不返回渠道", kind: "ignored", dispositionHash: "hash-old", wantDisposition: true, wantKind: "ignored", wantChannels: []string{}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			vault := t.TempDir()
+			if err := os.Mkdir(filepath.Join(vault, ".obsidian"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(vault, "article.md"), []byte("---\nid: stable-1\ntitle: 处置详情\n---\n正文"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err = db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','当前','/tmp','2026-07-30','2026-07-30','2026-07-30');
+INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES('s1','w1','obsidian',?,'2026-07-30','2026-07-30');
+INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,content_hash,indexed_at,created_at,updated_at) VALUES('a1','w1','s1','stable-1','article.md','处置详情','hash-1','2026-07-30','2026-07-30','2026-07-30');
+INSERT INTO provider_instances(id,workspace_id,provider_type,name,created_at,updated_at) VALUES
+('h1','w1','hugo','Hugo','2026-07-30','2026-07-30'),('m1','w1','wechat','微信','2026-07-30','2026-07-30');
+INSERT INTO publications(id,article_id,provider_instance_id,workspace_id,state,content_hash,created_at,updated_at) VALUES
+				('p1','a1','h1','w1','published','hash-1','2026-07-30','2026-07-30'),('p2','a1','m1','w1','published','hash-1','2026-07-30','2026-07-30')`, vault)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO article_dispositions(article_id,workspace_id,kind,content_hash,created_at,updated_at) VALUES('a1','w1',?,?,'2026-07-30','2026-07-30')`, test.kind, test.dispositionHash); err != nil {
+				t.Fatal(err)
+			}
+			handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{ProviderRuntime: testProviderRuntime(t)})
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/articles/a1", nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("文章详情响应错误: code=%d body=%s", response.Code, response.Body.String())
+			}
+			var body struct {
+				Disposition *struct {
+					Kind     string   `json:"kind"`
+					Channels []string `json:"channels"`
+				} `json:"disposition"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if !test.wantDisposition {
+				if body.Disposition != nil {
+					t.Fatalf("旧处置不应返回: %+v", body.Disposition)
+				}
+				return
+			}
+			if body.Disposition == nil || body.Disposition.Kind != test.wantKind || !equalStrings(body.Disposition.Channels, test.wantChannels) {
+				t.Fatalf("disposition=%+v want kind=%s channels=%v", body.Disposition, test.wantKind, test.wantChannels)
+			}
+		})
+	}
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 type fakeDirectoryPicker struct {

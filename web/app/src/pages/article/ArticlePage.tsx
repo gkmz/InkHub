@@ -2,7 +2,7 @@ import { ArrowLeft, Bot, Check, CloudUpload, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { generateArticleSuggestions, getArticle, getPublicationWorkflow, getTaxonomyOverview, reviewArticle, saveMetadata } from "../../api/client";
 import { sanitizePreviewHTML } from "../../api/safeHTML";
-import type { ArticleDetail, ArticleMetadata, TaxonomyOverview } from "../../api/types";
+import type { ArticleDetail, ArticleMetadata, PublicationChannel, TaxonomyOverview } from "../../api/types";
 import { AISuggestions } from "../../components/AISuggestions";
 import { Checks } from "../../components/Checks";
 import { HugoPublishFlow } from "../../components/HugoPublishFlow";
@@ -66,6 +66,11 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   return <div className="article-page">
     <div className="article-toolbar"><button type="button" onClick={() => onNavigate("/library")}><ArrowLeft size={16} />返回内容库</button><span>{article.relative_path}</span></div>
     <PublicationTrack review={article.review_state} hugo={article.hugo_state} wechat={article.wechat_state} />
+    {article.disposition && <p className={`article-disposition state-${article.disposition.kind}`}>
+      {article.disposition.kind === "ignored"
+        ? "此文章已忽略，可在内容库恢复"
+        : `当前版本已标记为外部发表：${article.disposition.channels.map((channel: PublicationChannel) => channel === "hugo" ? "Hugo" : "微信").join("、")}`}
+    </p>}
     <div className="mobile-tabs" role="tablist" aria-label="文章详情"><button role="tab" aria-selected={tab === "content"} onClick={() => setTab("content")}>内容</button><button role="tab" aria-selected={tab === "review"} onClick={() => setTab("review")}>审核</button><button role="tab" aria-selected={tab === "publish"} onClick={() => setTab("publish")}>发布</button></div>
     <div className="article-layout">
       <article className={`article-preview mobile-${tab}`}><p className="eyebrow">文章预览</p><h1>{article.metadata.title}</h1><p className="article-description">{article.metadata.description}</p><div className="prose" dangerouslySetInnerHTML={{ __html: sanitizePreviewHTML(article.preview_html) }} /></article>
