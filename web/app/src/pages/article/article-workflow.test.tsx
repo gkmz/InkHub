@@ -109,6 +109,15 @@ test("文章页读取 Hugo Category 且 taxonomy 失败不阻止审核", async (
   expect(screen.getByText("博客系列暂不可用")).toBeInTheDocument();
 });
 
+test("正文有一级标题时文章预览不重复显示元数据标题", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy")
+    ? Response.json(taxonomy)
+    : Response.json({ ...article, preview_html: "<h1>正文标题</h1><p>正文</p>" }));
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  expect(await screen.findByRole("heading", { name: "正文标题", level: 1 })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: metadata.title, level: 1 })).not.toBeInTheDocument();
+});
+
 test("文章页未连接博客时给出明确 Category 引导", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy") ? Response.json({ source: "尚未配置", state: "not_enabled", loaded_at: "-", readonly: true, terms: [], issues: [] }) : Response.json(article));
   render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);

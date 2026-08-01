@@ -9,3 +9,9 @@ export function sanitizePreviewHTML(value: string) {
     FORBID_ATTR: [],
   });
 }
+
+/** previewHasHeading 判断 Markdown 预览是否已经包含正文一级标题。 */
+export function previewHasHeading(value: string) {
+  const document = new DOMParser().parseFromString(sanitizePreviewHTML(value), "text/html");
+  return document.querySelector("h1") !== null;
+}

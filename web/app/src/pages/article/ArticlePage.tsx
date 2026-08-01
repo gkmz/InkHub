@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowLeft, Bot, Check, CloudUpload, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { generateArticleSuggestions, getArticle, getPublicationWorkflow, getTaxonomyOverview, reviewArticle, saveMetadata } from "../../api/client";
+import { previewHasHeading } from "../../api/safeHTML";
 import type { ArticleDetail, ArticleMetadata, PublicationChannel, TaxonomyOverview } from "../../api/types";
 import { AISuggestions } from "../../components/AISuggestions";
 import { Checks } from "../../components/Checks";
@@ -63,6 +64,7 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   const tagOptions = taxonomyTerms.filter((term) => term.kind === "tag").map((term) => ({ key: term.key, name: term.name, usageCount: term.usage_count }));
   const canCreateTaxonomy = Boolean(taxonomy && !taxonomy.readonly && taxonomy.provider_id && taxonomy.revision);
   const isDraft = article.content_stage === "draft";
+  const showMetadataTitle = !previewHasHeading(article.preview_html);
   const primary = isDraft ? null : article.review_state !== "已通过" ? { label: "审核通过", icon: Check, action: async () => { await reviewArticle(article.id); setArticle({ ...article, review_state: "已通过", hugo_state: "需要同步" }); } } : article.hugo_state !== "已同步" ? { label: "同步到 Hugo", icon: CloudUpload, action: async () => setShowHugoFlow(true) } : { label: "准备微信内容", icon: Send, action: async () => onNavigate(`/articles/${article.id}/wechat`) };
   const PrimaryIcon = primary?.icon;
   const hidePrimaryForHugoFlow = showHugoFlow && !isDraft && article.review_state === "已通过" && article.hugo_state !== "已同步";
@@ -78,7 +80,7 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
     </p>}
     <div className="mobile-tabs" role="tablist" aria-label="文章详情"><button role="tab" aria-selected={tab === "content"} onClick={() => setTab("content")}>内容</button><button role="tab" aria-selected={tab === "review"} onClick={() => setTab("review")}>审核</button><button role="tab" aria-selected={tab === "publish"} onClick={() => setTab("publish")}>发布</button></div>
     <div className="article-layout">
-      <article className={`article-preview mobile-${tab}`}><p className="eyebrow">文章预览</p><h1>{article.metadata.title}</h1><p className="article-description">{article.metadata.description}</p><MarkdownPreview html={article.preview_html} className="prose" /></article>
+      <article className={`article-preview mobile-${tab}`}><p className="eyebrow">文章预览</p>{showMetadataTitle && <h1>{article.metadata.title}</h1>}<p className="article-description">{article.metadata.description}</p><MarkdownPreview html={article.preview_html} className="prose" /></article>
       <aside className={`review-panel mobile-${tab}`}>
         <MetadataForm value={article.metadata} sourceChanged={article.source_changed} categoryOptions={categoryOptions} seriesOptions={seriesOptions} tagOptions={tagOptions} taxonomyState={taxonomyState} canCreateTaxonomy={canCreateTaxonomy} onCreateTaxonomy={(kind, select) => setTaxonomySelection({ kind, select })} externalSuggestion={externalSuggestion} onReload={load} onSave={async (metadata) => { const next = await saveMetadata(article.id, metadata); setArticle(next); setNotice("元数据已保存"); }} />
         <Checks items={article.checks} />
