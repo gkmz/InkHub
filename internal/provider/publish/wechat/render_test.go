@@ -83,6 +83,21 @@ func TestRenderResolvesTypedVariables(t *testing.T) {
 	}
 }
 
+func TestRenderSupportsTableAndHighlightedCode(t *testing.T) {
+	t.Parallel()
+
+	validated := renderTemplate("rich", `.inkhub-root table { border-collapse: collapse; } .inkhub-root code { color: #111111; }`)
+	output, err := Render(validated, "| 字段 | 值 |\n| --- | --- |\n| 状态 | ready |\n\n```go\nfunc main() {}\n```", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fragment := range []string{"<table", "<th", "<span", "font-weight:bold"} {
+		if !strings.Contains(output, fragment) {
+			t.Fatalf("微信 HTML 缺少 %q: %s", fragment, output)
+		}
+	}
+}
+
 func renderTemplate(id, css string) domaintemplate.Validated {
 	return domaintemplate.Validated{Manifest: domaintemplate.Manifest{ID: id, Variables: map[string]domaintemplate.Variable{}}, CSS: css}
 }

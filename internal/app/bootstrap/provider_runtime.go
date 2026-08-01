@@ -65,7 +65,7 @@ func newProviderRuntime(resolvers ...contracts.SecretResolver) (*registry.Regist
 			Owner: config.Owner, Repository: config.Repository, Branch: config.Branch, Prefix: config.Prefix, Token: string(token),
 		}, githubClient, zap.NewNop())
 	}
-	if err := runtime.RegisterPublish(wechat.NewFactoryWithUploaderBuilder(builtinTemplateLoader{}, unusedClipboard{}, uploaderBuilder)); err != nil {
+	if err := runtime.RegisterPublish(wechat.NewFactoryWithUploaderBuilder(builtinTemplateLoader{}, unusedClipboard{}, uploaderBuilder, wechat.NewMermaidInkRenderer())); err != nil {
 		return nil, err
 	}
 	return runtime, nil

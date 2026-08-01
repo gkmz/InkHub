@@ -14,8 +14,8 @@ import (
 	"regexp"
 	"strings"
 
+	contentmarkdown "github.com/gkmz/InkHub/internal/content/markdown"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
-	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 )
@@ -52,7 +52,7 @@ func (h *runtimeHandler) renderArticlePreview(ctx context.Context, source contra
 		}
 		return "![" + strings.SplitN(reference, "|", 2)[0] + "](" + h.assetURL(articleID, document.Fingerprint, asset.RelativePath) + ")"
 	})
-	markdown := goldmark.New()
+	markdown := contentmarkdown.NewRenderer()
 	reader := text.NewReader([]byte(body))
 	documentNode := markdown.Parser().Parse(reader)
 	err := ast.Walk(documentNode, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -189,7 +189,7 @@ func articleReferencesAsset(ctx context.Context, source contracts.SourceProvider
 		}
 	}
 	reader := text.NewReader([]byte(document.Body))
-	node := goldmark.New().Parser().Parse(reader)
+	node := contentmarkdown.NewRenderer().Parser().Parse(reader)
 	found := false
 	_ = ast.Walk(node, func(current ast.Node, entering bool) (ast.WalkStatus, error) {
 		image, ok := current.(*ast.Image)

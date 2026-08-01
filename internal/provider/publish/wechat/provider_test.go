@@ -147,6 +147,22 @@ func TestPrepareConvertsMermaidThroughControlledRenderer(t *testing.T) {
 	}
 }
 
+func TestMermaidInkRendererBuildsStableHTTPSURL(t *testing.T) {
+	t.Parallel()
+
+	renderer := NewMermaidInkRenderer()
+	value, err := renderer.Render(context.Background(), "graph TD; A-->B;", "digest-v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(value, "https://mermaid.ink/img/") || !strings.HasSuffix(value, "?v=digest-v1") {
+		t.Fatalf("Mermaid URL 不符合预期: %s", value)
+	}
+	if _, err := renderer.Render(context.Background(), "", ""); err == nil {
+		t.Fatal("空 Mermaid 源码应被拒绝")
+	}
+}
+
 func TestPreflightRejectsTemplateForAnotherTarget(t *testing.T) {
 	t.Parallel()
 	provider, err := New(Config{StagingRoot: t.TempDir()}, staticLoader{}, nil, &memoryClipboard{})

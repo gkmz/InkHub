@@ -1,7 +1,6 @@
 import { AlertTriangle, ArrowLeft, Bot, Check, CloudUpload, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { generateArticleSuggestions, getArticle, getPublicationWorkflow, getTaxonomyOverview, reviewArticle, saveMetadata } from "../../api/client";
-import { sanitizePreviewHTML } from "../../api/safeHTML";
 import type { ArticleDetail, ArticleMetadata, PublicationChannel, TaxonomyOverview } from "../../api/types";
 import { AISuggestions } from "../../components/AISuggestions";
 import { Checks } from "../../components/Checks";
@@ -11,6 +10,7 @@ import type { TaxonomyFieldState } from "../../components/SingleTaxonomyField";
 import { PublicationTrack } from "../../components/PublicationTrack";
 import { PublicationHistory } from "../../components/PublicationHistory";
 import { CreateTaxonomyTermDialog } from "../taxonomy/CreateTaxonomyTermDialog";
+import { MarkdownPreview } from "../../components/MarkdownPreview";
 
 type MobileTab = "content" | "review" | "publish";
 type TaxonomyFieldKind = "category" | "series";
@@ -78,7 +78,7 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
     </p>}
     <div className="mobile-tabs" role="tablist" aria-label="文章详情"><button role="tab" aria-selected={tab === "content"} onClick={() => setTab("content")}>内容</button><button role="tab" aria-selected={tab === "review"} onClick={() => setTab("review")}>审核</button><button role="tab" aria-selected={tab === "publish"} onClick={() => setTab("publish")}>发布</button></div>
     <div className="article-layout">
-      <article className={`article-preview mobile-${tab}`}><p className="eyebrow">文章预览</p><h1>{article.metadata.title}</h1><p className="article-description">{article.metadata.description}</p><div className="prose" dangerouslySetInnerHTML={{ __html: sanitizePreviewHTML(article.preview_html) }} /></article>
+      <article className={`article-preview mobile-${tab}`}><p className="eyebrow">文章预览</p><h1>{article.metadata.title}</h1><p className="article-description">{article.metadata.description}</p><MarkdownPreview html={article.preview_html} className="prose" /></article>
       <aside className={`review-panel mobile-${tab}`}>
         <MetadataForm value={article.metadata} sourceChanged={article.source_changed} categoryOptions={categoryOptions} seriesOptions={seriesOptions} tagOptions={tagOptions} taxonomyState={taxonomyState} canCreateTaxonomy={canCreateTaxonomy} onCreateTaxonomy={(kind, select) => setTaxonomySelection({ kind, select })} externalSuggestion={externalSuggestion} onReload={load} onSave={async (metadata) => { const next = await saveMetadata(article.id, metadata); setArticle(next); setNotice("元数据已保存"); }} />
         <Checks items={article.checks} />

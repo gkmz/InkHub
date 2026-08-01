@@ -6,6 +6,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.3
 	github.com/joho/godotenv v1.5.1
 	github.com/yuin/goldmark v1.7.0
+	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	github.com/zalando/go-keyring v0.2.8
 	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.25.0
@@ -17,7 +18,9 @@ require (
 
 require (
 	github.com/BurntSushi/toml v1.4.0 // indirect
+	github.com/alecthomas/chroma/v2 v2.2.0 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
+	github.com/dlclark/regexp2 v1.7.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect

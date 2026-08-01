@@ -32,7 +32,7 @@ func TestRuntimeHandlerRendersAndServesReferencedVaultImages(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(vault, "Areas", "image.png"), png, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	body := "# 图片\n\n![标准](image.png)\n\n![[image.png|640]]\n\n![远程](https://example.com/remote.png)"
+	body := "# 图片\n\n![标准](image.png)\n\n![[image.png|640]]\n\n![远程](https://example.com/remote.png)\n\n| 字段 | 值 |\n| --- | --- |\n| 状态 | ready |\n\n```go\nfunc main() {}\n```"
 	if err := os.WriteFile(filepath.Join(vault, "Areas", "article.md"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestRuntimeHandlerRendersAndServesReferencedVaultImages(t *testing.T) {
 		t.Fatal(err)
 	}
 	assetURL := regexp.MustCompile(`/api/v1/articles/[^" ]+/assets/[^" ]+`).FindString(detailBody.PreviewHTML)
-	if assetURL == "" || !strings.Contains(detailBody.PreviewHTML, "https://example.com/remote.png") {
+	if assetURL == "" || !strings.Contains(detailBody.PreviewHTML, "https://example.com/remote.png") || !strings.Contains(detailBody.PreviewHTML, "<table>") || !strings.Contains(detailBody.PreviewHTML, "<span style=") {
 		t.Fatalf("文章预览未改写图片: %s", detail.Body.String())
 	}
 	asset := httptest.NewRecorder()

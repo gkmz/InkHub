@@ -5,6 +5,7 @@ export function sanitizePreviewHTML(value: string) {
   return DOMPurify.sanitize(value, {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ["style", "form", "input", "button"],
-    FORBID_ATTR: ["style"],
+    // 后端只输出经过 Goldmark/模板清理的样式：代码高亮和微信模板都依赖它。
+    FORBID_ATTR: [],
   });
 }

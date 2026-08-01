@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 )
@@ -29,7 +28,7 @@ type Finding struct {
 
 // Check 使用 Goldmark AST 检查标题层级和本地图片。
 func Check(content []byte, baseDir string) []Finding {
-	document := goldmark.New().Parser().Parse(text.NewReader(content))
+	document := NewRenderer().Parser().Parse(text.NewReader(content))
 	var findings []Finding
 	previousHeading := 0
 	_ = ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {

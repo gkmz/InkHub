@@ -9,9 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	contentmarkdown "github.com/gkmz/InkHub/internal/content/markdown"
 	domaintemplate "github.com/gkmz/InkHub/internal/domain/template"
-	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -23,7 +22,7 @@ func Render(validated domaintemplate.Validated, markdown string, variables map[s
 		return "", err
 	}
 	var rendered bytes.Buffer
-	engine := goldmark.New(goldmark.WithExtensions(extension.GFM))
+	engine := contentmarkdown.NewRenderer()
 	if err := engine.Convert([]byte(markdown), &rendered); err != nil {
 		return "", fmt.Errorf("渲染微信 Markdown: %w", err)
 	}
@@ -147,6 +146,7 @@ var allowedHTMLTags = map[string]bool{
 	"blockquote": true, "ul": true, "ol": true, "li": true, "table": true, "thead": true, "tbody": true,
 	"tr": true, "th": true, "td": true, "a": true, "img": true, "code": true, "pre": true, "strong": true,
 	"em": true, "hr": true, "br": true, "del": true, "sup": true, "sub": true,
+	"span": true,
 }
 
 func sanitizeTree(root *html.Node) error {
