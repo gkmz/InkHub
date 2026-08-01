@@ -99,6 +99,39 @@ func TestProviderReadsReadyContentStage(t *testing.T) {
 	}
 }
 
+func TestProviderResolvesNestedRelativeWikiImageWithoutBlockingArticle(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	articleDir := filepath.Join(root, "B-Area", "01-工程大脑", "AI", "效率工具")
+	if err := os.MkdirAll(filepath.Join(root, ".obsidian", ""), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(articleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "assets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "assets", "20260731.png"), []byte("image"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\ntitle: Ready\npublish:\n  status: ready\n---\n![[../../../../assets/20260731.png]]\n"
+	if err := os.WriteFile(filepath.Join(articleDir, "article.md"), []byte(content), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := provider.Read(context.Background(), contracts.SourceRef{RelativePath: "B-Area/01-工程大脑/AI/效率工具/article.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.Article.ContentStage != article.ContentStageReady || len(document.Diagnostics) != 0 || len(document.ResourceRefs) != 1 {
+		t.Fatalf("嵌套相对图片不应阻塞已就绪文章: stage=%s diagnostics=%+v resources=%+v", document.Article.ContentStage, document.Diagnostics, document.ResourceRefs)
+	}
+}
+
 func TestProviderTreatsInvalidContentStageAsNonBlockingDraft(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

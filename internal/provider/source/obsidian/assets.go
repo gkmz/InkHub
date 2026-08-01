@@ -76,6 +76,10 @@ func (p *Provider) ResolveAsset(ctx context.Context, ref contracts.SourceRef, ra
 }
 
 func (p *Provider) resolveWikiAsset(reference, articleRelative string) (string, error) {
+	// 以 ./ 或 ../ 开头的 Wiki 图片引用按文章目录解析，兼容 Obsidian 中的相对资源路径。
+	if reference == "." || reference == ".." || strings.HasPrefix(reference, "./") || strings.HasPrefix(reference, "../") {
+		return filepath.Join(p.config.Root, filepath.Dir(filepath.FromSlash(articleRelative)), filepath.FromSlash(reference)), nil
+	}
 	if strings.Contains(filepath.ToSlash(reference), "/") {
 		return filepath.Join(p.config.Root, filepath.FromSlash(reference)), nil
 	}
