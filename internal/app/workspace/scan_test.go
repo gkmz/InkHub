@@ -50,6 +50,26 @@ func TestScanWorkspaceDoesNotMarkMissingAfterIncrementalResult(t *testing.T) {
 	}
 }
 
+func TestScanWorkspaceIndexesReadyArticleWithNonBlockingResourceDiagnostic(t *testing.T) {
+	t.Parallel()
+	store := &fakeArticleStore{}
+	result, err := ScanWorkspace(context.Background(), fakeSource{
+		result: contracts.ScanResult{Complete: true, Documents: []contracts.SourceDocumentRef{{
+			Ref:         contracts.SourceRef{SourceID: "source1", RelativePath: "ready.md", StableID: "article_READY"},
+			Diagnostics: []contracts.Diagnostic{{Code: "source.image_unresolved", Message: "图片引用无法解析", Blocking: false}},
+		}}},
+		documents: map[string]contracts.SourceDocument{
+			"ready.md": {Article: article.Article{SourceID: "source1", RelativePath: "ready.md", StableID: "article_READY", ContentStage: article.ContentStageReady}, Fingerprint: "fingerprint"},
+		},
+	}, store, ScanOptions{WorkspaceID: "w1", SourceID: "source1"}, contracts.ScanCursor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Indexed != 1 || result.Failed != 0 || len(store.saved) != 1 || store.saved[0].ContentStage != article.ContentStageReady {
+		t.Fatalf("ready article with resource diagnostic was not indexed: report=%+v saved=%+v", result, store.saved)
+	}
+}
+
 type fakeSource struct {
 	result    contracts.ScanResult
 	documents map[string]contracts.SourceDocument

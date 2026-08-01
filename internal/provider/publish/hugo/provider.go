@@ -107,7 +107,7 @@ func (p *Provider) Preflight(ctx context.Context, input contracts.PublishInput) 
 	if err := ctx.Err(); err != nil {
 		return contracts.PreflightResult{}, err
 	}
-	var diagnostics []contracts.Diagnostic
+	diagnostics := publicationDiagnostics(input.Diagnostics)
 	if input.OperationID == "" || !operationIDPattern.MatchString(input.OperationID) {
 		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "hugo.operation_invalid", Message: "Hugo OperationID 无效", Blocking: true})
 	}
@@ -115,6 +115,17 @@ func (p *Provider) Preflight(ctx context.Context, input contracts.PublishInput) 
 		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "hugo.article_invalid", Message: "Hugo 文章缺少内容版本、稳定 ID 或标题", Blocking: true})
 	}
 	return contracts.PreflightResult{Diagnostics: diagnostics, Ready: !hasBlocking(diagnostics)}, nil
+}
+
+// publicationDiagnostics 将索引阶段的资源问题提升为发布阶段阻断问题。
+func publicationDiagnostics(values []contracts.Diagnostic) []contracts.Diagnostic {
+	diagnostics := append([]contracts.Diagnostic(nil), values...)
+	for index := range diagnostics {
+		if diagnostics[index].Code == "source.image_unresolved" {
+			diagnostics[index].Blocking = true
+		}
+	}
+	return diagnostics
 }
 
 func providerError(code, message string, category contracts.ErrorCategory, retryable bool, cause error) *contracts.ProviderError {

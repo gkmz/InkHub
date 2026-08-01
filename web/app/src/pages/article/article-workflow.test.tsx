@@ -215,6 +215,16 @@ test("文章页显示长期忽略提示", async () => {
   expect(await screen.findByText("此文章已忽略，可在内容库恢复")).toBeInTheDocument();
 });
 
+test("文章页显示图片资源诊断但保留文章流程", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy")
+    ? Response.json(taxonomy)
+    : Response.json({ ...article, content_stage: "ready", resource_diagnostics: [{ code: "source.image_unresolved", message: "图片引用无法解析: missing.png", blocking: false }] }));
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  expect(await screen.findByText("图片引用需要处理")).toBeInTheDocument();
+  expect(screen.getByText("图片引用无法解析: missing.png")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "审核通过" })).toBeInTheDocument();
+});
+
 test("Hugo 任务失败时显示失败步骤和重试且不宣称成功", () => {
   render(<JobStatus state="failed" progress={68} stage="构建预览" message="Hugo build 未通过" onRetry={vi.fn()} />);
   expect(screen.getByText("构建预览失败")).toBeInTheDocument();

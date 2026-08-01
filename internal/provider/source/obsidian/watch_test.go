@@ -37,3 +37,33 @@ func TestWatchReportsCreatedMarkdownFile(t *testing.T) {
 		t.Fatal("Watch() did not report the created file")
 	}
 }
+
+func TestWatchReportsRescanWhenObsidianSettingsChange(t *testing.T) {
+	root := copyFixtureVault(t, "valid")
+	settingsPath := filepath.Join(root, ".obsidian", "app.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"attachmentFolderPath":"assets"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(Config{Root: root, SourceID: "source1", PollInterval: 10 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	changes := make(chan contracts.SourceChange, 4)
+	done := make(chan error, 1)
+	go func() { done <- provider.Watch(ctx, changes) }()
+
+	time.Sleep(30 * time.Millisecond)
+	if err := os.WriteFile(settingsPath, []byte(`{"attachmentFolderPath":"./attachments","newLinkFormat":"absolute"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case change := <-changes:
+		if change.Kind != contracts.SourceRescanRequired {
+			t.Fatalf("change = %#v", change)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Watch() did not report Obsidian settings change")
+	}
+}

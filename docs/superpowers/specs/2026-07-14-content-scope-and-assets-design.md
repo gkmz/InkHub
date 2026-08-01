@@ -87,11 +87,15 @@ ignored_folders:
 
 解析规则：
 
-- 读取 `.obsidian/app.json` 的 `attachmentFolderPath`。
-- Markdown 相对路径首先相对当前文章目录解析。
-- Obsidian Wiki 嵌入按明确相对路径或 Vault 内唯一文件名解析；同名歧义时返回可理解的检查错误。
+- 读取 `.obsidian/app.json` 的 `attachmentFolderPath`、`newLinkFormat` 和 `useMarkdownLinks`，并将附件目录规范化为 Vault 根目录、当前文章目录、当前文章子目录或指定 Vault 相对目录四种语义。
+- Markdown 相对路径首先相对当前文章目录解析；以 `/` 开头的 Markdown 路径解释为 Vault 根目录相对路径，不解释为本机绝对路径。
+- Obsidian Wiki 嵌入按 `./`、`../` 当前文章相对路径、Vault 根目录路径或附件设置解析；无目录的短名称按最短且唯一规则解析。同名歧义时返回可理解的检查错误。
+- `newLinkFormat` 只决定未来生成链接的偏好，读取已有文章时三种链接形式全部兼容；`useMarkdownLinks` 用于展示和发布转换诊断，不限制已有语法。
+- `.obsidian/app.json` 的内容指纹参与扫描修订，附件配置变化会触发重扫和资源重新解析。
 - `http` 和 `https` 图片保留为远程 URL，不由后端代理。
 - 其他协议、绝对本地路径、Vault 外相对路径和符号链接逃逸全部拒绝。
+
+图片资源解析失败只记录为资源诊断，不阻塞文章 frontmatter、内容阶段和文章索引；Hugo 或微信发布前检查将资源诊断提升为阻断问题。
 
 附件可以位于未纳入的目录中，但只有被已纳入文章引用时才允许读取。未引用附件不建立文章索引，也不自动发布。
 

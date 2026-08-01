@@ -61,3 +61,58 @@ func TestResolveAssetAllowsRemoteAndRejectsVaultEscape(t *testing.T) {
 		t.Fatal("指向 Vault 外的符号链接必须被拒绝")
 	}
 }
+
+func TestResolveAssetSupportsCurrentSubfolderAndVaultAbsoluteLinks(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".obsidian"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".obsidian", "app.json"), []byte(`{"attachmentFolderPath":"./attachments"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{"Areas/attachments/subfolder.png", "assets/root.png"} {
+		full := filepath.Join(root, relative)
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("data"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	provider, err := New(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := contracts.SourceRef{RelativePath: "Areas/note.md"}
+	local, err := provider.ResolveAsset(context.Background(), ref, "subfolder.png", AssetWikiEmbed)
+	if err != nil || local.RelativePath != "Areas/attachments/subfolder.png" {
+		t.Fatalf("current subfolder asset = %#v err=%v", local, err)
+	}
+	rootAsset, err := provider.ResolveAsset(context.Background(), ref, "/assets/root.png", AssetWikiEmbed)
+	if err != nil || rootAsset.RelativePath != "assets/root.png" {
+		t.Fatalf("vault absolute asset = %#v err=%v", rootAsset, err)
+	}
+}
+
+func TestResolveAssetReportsAmbiguousShortWikiName(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".obsidian"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{"one/image.png", "two/image.png"} {
+		full := filepath.Join(root, relative)
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("data"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	provider, err := New(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.ResolveAsset(context.Background(), contracts.SourceRef{RelativePath: "note.md"}, "image.png", AssetWikiEmbed); err == nil {
+		t.Fatal("重名短链接必须报告歧义")
+	}
+}

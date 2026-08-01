@@ -24,6 +24,9 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	if err := os.Mkdir(filepath.Join(vault, ".obsidian"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(vault, ".obsidian", "app.json"), []byte(`{"attachmentFolderPath":"assets","newLinkFormat":"relative","useMarkdownLinks":false}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	article := "---\nid: article_01JTEST\ntitle: 真实扫描文章\ndescription: 测试首次扫描\ntags: [Go]\nkeywords: [InkHub]\n---\n正文"
 	if err := os.MkdirAll(filepath.Join(vault, "Areas"), 0o700); err != nil {
 		t.Fatal(err)
@@ -67,6 +70,11 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	}
 	if refreshCalls != 2 {
 		t.Fatalf("工作区创建后未触发 taxonomy 刷新: calls=%d", refreshCalls)
+	}
+	settingsResponse := httptest.NewRecorder()
+	handler.ServeHTTP(settingsResponse, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/settings", nil))
+	if settingsResponse.Code != http.StatusOK || !strings.Contains(settingsResponse.Body.String(), `"attachment_location":"指定文件夹 assets"`) || !strings.Contains(settingsResponse.Body.String(), `"link_format":"基于当前笔记的相对路径"`) {
+		t.Fatalf("Obsidian 设置未返回: %d %s", settingsResponse.Code, settingsResponse.Body.String())
 	}
 	var articleID string
 	if err := db.QueryRow(`SELECT id FROM articles LIMIT 1`).Scan(&articleID); err != nil {

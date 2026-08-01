@@ -1,4 +1,4 @@
-import { ArrowLeft, Bot, Check, CloudUpload, Send } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, Check, CloudUpload, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { generateArticleSuggestions, getArticle, getPublicationWorkflow, getTaxonomyOverview, reviewArticle, saveMetadata } from "../../api/client";
 import { sanitizePreviewHTML } from "../../api/safeHTML";
@@ -56,6 +56,8 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   if (!article) return <div className="page-state">{notice || "正在打开文章…"}</div>;
   // 旧版本或降级响应可能缺少 terms，页面必须退化为空候选而不是白屏。
   const taxonomyTerms = Array.isArray(taxonomy?.terms) ? taxonomy.terms : [];
+  // 兼容旧版 API 响应，资源诊断缺省时视为空数组。
+  const resourceDiagnostics = Array.isArray(article.resource_diagnostics) ? article.resource_diagnostics : [];
   const categoryOptions = taxonomyTerms.filter((term) => term.kind === "category").map((term) => ({ key: term.key, name: term.name }));
   const seriesOptions = taxonomyTerms.filter((term) => term.kind === "series").map((term) => ({ key: term.key, name: term.name }));
   const tagOptions = taxonomyTerms.filter((term) => term.kind === "tag").map((term) => ({ key: term.key, name: term.name, usageCount: term.usage_count }));
@@ -67,6 +69,7 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   return <div className="article-page">
     <div className="article-toolbar"><button type="button" onClick={() => onNavigate("/library")}><ArrowLeft size={16} />返回内容库</button><span>{article.relative_path}</span></div>
     {isDraft && <section className="draft-guidance" role="status"><strong>草稿</strong><span>文章仍在创作阶段，不会进入审核或发布流程。</span><code>publish.status: ready</code>{article.content_stage_issue && <small>{article.content_stage_issue}</small>}</section>}
+    {resourceDiagnostics.length > 0 && <section className="resource-guidance" role="status"><AlertTriangle size={16} /><div><strong>图片引用需要处理</strong>{resourceDiagnostics.map((diagnostic) => <p key={`${diagnostic.code}:${diagnostic.message}`}>{diagnostic.message}</p>)}<small>文章内容阶段不受影响，但发布前必须修复这些引用。</small></div></section>}
     <PublicationTrack review={article.review_state} hugo={article.hugo_state} wechat={article.wechat_state} />
     {article.disposition && <p className={`article-disposition state-${article.disposition.kind}`}>
       {article.disposition.kind === "ignored"

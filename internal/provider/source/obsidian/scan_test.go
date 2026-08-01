@@ -52,3 +52,27 @@ func TestScanUsesCursorForUnchangedVault(t *testing.T) {
 		t.Fatalf("unchanged scan = %#v", second)
 	}
 }
+
+func TestScanInvalidatesCursorWhenObsidianSettingsChange(t *testing.T) {
+	t.Parallel()
+	root := copyFixtureVault(t, "valid")
+	settingsPath := filepath.Join(root, ".obsidian", "app.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"attachmentFolderPath":"assets"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	provider, _ := New(Config{Root: root, SourceID: "source1"})
+	first, err := provider.Scan(context.Background(), contracts.ScanCursor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settingsPath, []byte(`{"attachmentFolderPath":"./attachments"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := provider.Scan(context.Background(), first.Next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.Documents) == 0 || second.Next.Revision == first.Next.Revision {
+		t.Fatalf("settings change must invalidate cursor: first=%#v second=%#v", first.Next, second.Next)
+	}
+}

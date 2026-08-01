@@ -372,7 +372,13 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 		mapError(response, err)
 		return
 	}
-	result := map[string]any{"id": id, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
+	resourceDiagnostics := make([]map[string]any, 0)
+	for _, diagnostic := range document.Diagnostics {
+		if strings.HasPrefix(diagnostic.Code, "source.") {
+			resourceDiagnostics = append(resourceDiagnostics, map[string]any{"code": diagnostic.Code, "message": diagnostic.Message, "blocking": diagnostic.Blocking})
+		}
+	}
+	result := map[string]any{"id": id, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "resource_diagnostics": resourceDiagnostics, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
 	if disposition != nil {
 		result["disposition"] = disposition
 	}

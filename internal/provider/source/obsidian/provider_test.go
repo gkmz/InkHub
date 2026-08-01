@@ -132,6 +132,29 @@ func TestProviderResolvesNestedRelativeWikiImageWithoutBlockingArticle(t *testin
 	}
 }
 
+func TestProviderKeepsReadyStageWhenImageCannotBeResolved(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".obsidian"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\ntitle: Ready\npublish:\n  status: ready\n---\n![[missing.png]]\n"
+	if err := os.WriteFile(filepath.Join(root, "ready.md"), []byte(content), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(Config{Root: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := provider.Read(context.Background(), contracts.SourceRef{RelativePath: "ready.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.Article.ContentStage != article.ContentStageReady || len(document.Diagnostics) != 1 || document.Diagnostics[0].Blocking {
+		t.Fatalf("unresolved image must not change ready stage: stage=%s diagnostics=%+v", document.Article.ContentStage, document.Diagnostics)
+	}
+}
+
 func TestProviderTreatsInvalidContentStageAsNonBlockingDraft(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

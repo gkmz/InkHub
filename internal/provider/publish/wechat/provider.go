@@ -110,7 +110,7 @@ func (p *Provider) Preflight(ctx context.Context, input contracts.PublishInput) 
 	if err := ctx.Err(); err != nil {
 		return contracts.PreflightResult{}, err
 	}
-	diagnostics := append([]contracts.Diagnostic(nil), input.Diagnostics...)
+	diagnostics := publicationDiagnostics(input.Diagnostics)
 	if !wechatOperationPattern.MatchString(input.OperationID) || input.ContentHash == "" || input.TemplateRef == nil {
 		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.input_invalid", Message: "微信发布输入缺少 OperationID、内容版本或模板", Blocking: true})
 	} else if input.TemplateRef.Target != "" && input.TemplateRef.Target != domaintemplate.TargetWeChatHTML {
@@ -120,6 +120,17 @@ func (p *Provider) Preflight(ctx context.Context, input contracts.PublishInput) 
 		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.uploader_missing", Message: "文章包含本地图片但未配置图片上传", Blocking: true})
 	}
 	return contracts.PreflightResult{Diagnostics: diagnostics, Ready: !hasBlockingDiagnostic(diagnostics)}, nil
+}
+
+// publicationDiagnostics 将索引阶段的资源问题提升为发布阶段阻断问题。
+func publicationDiagnostics(values []contracts.Diagnostic) []contracts.Diagnostic {
+	diagnostics := append([]contracts.Diagnostic(nil), values...)
+	for index := range diagnostics {
+		if diagnostics[index].Code == "source.image_unresolved" {
+			diagnostics[index].Blocking = true
+		}
+	}
+	return diagnostics
 }
 
 // InspectAssets 只读检查本地图片及远端复用状态，不产生外部写入。

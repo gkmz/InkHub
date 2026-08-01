@@ -197,7 +197,15 @@ export interface ArticleDetail {
   suggestions: AISuggestion[];
   suggestions_stale: boolean;
   wechat_copied: boolean;
+  resource_diagnostics: Array<{ code: string; message: string; blocking: boolean }>;
   disposition?: { kind: ArticleDisposition; channels: PublicationChannel[] };
+}
+
+export interface ObsidianSettingsView {
+  attachment_location: string;
+  attachment_path: string;
+  link_format: string;
+  use_markdown_links: boolean;
 }
 
 export interface TemplateSummary {
@@ -275,5 +283,6 @@ export interface SettingsView {
   github_prefix?: string;
   default_template: string;
   templates: TemplateSummary[];
+  obsidian_settings?: ObsidianSettingsView;
   diagnostics: { name: string; state: "正常" | "需要处理" | "未启用"; message: string }[];
 }

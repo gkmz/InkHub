@@ -125,6 +125,21 @@ func TestPreflightAcceptsTermsManagedByHugoStandardTaxonomy(t *testing.T) {
 	}
 }
 
+func TestPreflightBlocksUnresolvedSourceImage(t *testing.T) {
+	t.Parallel()
+	provider, err := New(Config{Root: copyHugoFixture(t), StagingRoot: filepath.Join(t.TempDir(), "staging")}, &fakeBuilder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := provider.Preflight(context.Background(), contracts.PublishInput{
+		OperationID: "operation_1", ContentHash: "hash", Article: article.Article{StableID: "article_NEW", Title: "文章"},
+		Diagnostics: []contracts.Diagnostic{{Code: "source.image_unresolved", Message: "图片引用无法解析", Blocking: false}},
+	})
+	if err != nil || result.Ready || len(result.Diagnostics) != 1 || !result.Diagnostics[0].Blocking {
+		t.Fatalf("unresolved image must block Hugo publication: result=%+v err=%v", result, err)
+	}
+}
+
 func TestPreparePreservesRealSiteWhenStagingBuildFails(t *testing.T) {
 	t.Parallel()
 

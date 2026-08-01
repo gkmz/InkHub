@@ -19,6 +19,10 @@ func (p *Provider) Scan(ctx context.Context, cursor contracts.ScanCursor) (contr
 
 	result := contracts.ScanResult{Documents: make([]contracts.SourceDocumentRef, 0, len(paths)), Complete: true}
 	revision := sha256.New()
+	// app.json 会影响无路径附件的解释，必须参与扫描版本计算。
+	if settings, _ := readObsidianSettings(p.config.Root); settings.Fingerprint != "" {
+		_, _ = revision.Write([]byte(settings.Fingerprint))
+	}
 	stableIndexes := make(map[string][]int)
 	for _, relative := range paths {
 		document, err := p.Read(ctx, contracts.SourceRef{SourceID: p.config.SourceID, RelativePath: relative})

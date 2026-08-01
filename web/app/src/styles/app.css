@@ -65,6 +65,13 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .draft-guidance { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 18px; padding: 12px 14px; border: 1px solid #e7d7ad; background: #fffaf0; color: #6b4f16; }
 .draft-guidance code { font-size: .85em; }
 .draft-guidance small { flex-basis: 100%; }
+.resource-guidance { display: grid; grid-template-columns: 20px 1fr; gap: 8px; margin: 0 0 18px; padding: 12px 14px; border: 1px solid #e7c6c6; background: #fff7f7; color: #8a2d2d; }
+.resource-guidance strong { display: block; }
+.resource-guidance p { margin: 4px 0 0; overflow-wrap: anywhere; }
+.resource-guidance small { display: block; margin-top: 6px; color: var(--muted); }
+.obsidian-settings-summary { padding: 12px; border: 1px solid var(--line); background: #f8faf8; }
+.obsidian-settings-summary h3 { margin: 0 0 8px; font-size: 12px; }
+.obsidian-settings-summary p { margin: 4px 0; color: var(--muted); font-size: 11px; }
 .channel-state { display: flex; align-items: center; gap: 6px; }
 .channel-state b { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 3px; color: var(--ink); font-size: 10px; }
 .row-action { min-height: 34px; border: 1px solid var(--line); border-radius: 4px; background: white; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; font-size: 12px; }

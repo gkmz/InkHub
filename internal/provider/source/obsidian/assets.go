@@ -2,7 +2,6 @@ package obsidian
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -60,12 +59,12 @@ func (p *Provider) ResolveAsset(ctx context.Context, ref contracts.SourceRef, ra
 		return ResolvedAsset{}, fmt.Errorf("不支持的图片协议: %s", parsed.Scheme)
 	}
 	decoded, err := url.PathUnescape(parsed.Path)
-	if err != nil || decoded == "" || filepath.IsAbs(decoded) {
+	if err != nil || decoded == "" {
 		return ResolvedAsset{}, fmt.Errorf("本地图片路径无效")
 	}
 	var candidate string
 	if kind == AssetMarkdownImage {
-		candidate = filepath.Join(p.config.Root, filepath.Dir(filepath.FromSlash(ref.RelativePath)), filepath.FromSlash(decoded))
+		candidate = p.resolveMarkdownAsset(decoded, ref.RelativePath)
 	} else {
 		candidate, err = p.resolveWikiAsset(decoded, ref.RelativePath)
 		if err != nil {
@@ -75,24 +74,32 @@ func (p *Provider) ResolveAsset(ctx context.Context, ref contracts.SourceRef, ra
 	return p.authorizeAsset(candidate)
 }
 
+func (p *Provider) resolveMarkdownAsset(reference, articleRelative string) string {
+	// Markdown 使用 / 开头表示 Vault 根路径，其他路径相对当前笔记目录。
+	if strings.HasPrefix(filepath.ToSlash(reference), "/") {
+		return filepath.Join(p.config.Root, filepath.FromSlash(strings.TrimPrefix(filepath.ToSlash(reference), "/")))
+	}
+	return filepath.Join(p.config.Root, filepath.Dir(filepath.FromSlash(articleRelative)), filepath.FromSlash(reference))
+}
+
 func (p *Provider) resolveWikiAsset(reference, articleRelative string) (string, error) {
 	// 以 ./ 或 ../ 开头的 Wiki 图片引用按文章目录解析，兼容 Obsidian 中的相对资源路径。
 	if reference == "." || reference == ".." || strings.HasPrefix(reference, "./") || strings.HasPrefix(reference, "../") {
 		return filepath.Join(p.config.Root, filepath.Dir(filepath.FromSlash(articleRelative)), filepath.FromSlash(reference)), nil
 	}
+	// WikiLink 以 / 开头时表示 Vault 根路径，而不是本机文件系统绝对路径。
+	if strings.HasPrefix(filepath.ToSlash(reference), "/") {
+		return filepath.Join(p.config.Root, filepath.FromSlash(strings.TrimPrefix(filepath.ToSlash(reference), "/"))), nil
+	}
 	if strings.Contains(filepath.ToSlash(reference), "/") {
 		return filepath.Join(p.config.Root, filepath.FromSlash(reference)), nil
 	}
-	attachmentFolder := p.attachmentFolder()
-	if attachmentFolder != "" && attachmentFolder != "." {
-		candidate := filepath.Join(p.config.Root, filepath.FromSlash(attachmentFolder), reference)
+	settings, _ := readObsidianSettings(p.config.Root)
+	candidates := p.shortAssetCandidates(reference, articleRelative, settings.AttachmentFolder)
+	for _, candidate := range candidates {
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
 			return candidate, nil
 		}
-	}
-	local := filepath.Join(p.config.Root, filepath.Dir(filepath.FromSlash(articleRelative)), reference)
-	if info, err := os.Stat(local); err == nil && !info.IsDir() {
-		return local, nil
 	}
 	var matches []string
 	err := filepath.WalkDir(p.config.Root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -116,18 +123,43 @@ func (p *Provider) resolveWikiAsset(reference, articleRelative string) (string, 
 	return matches[0], nil
 }
 
-func (p *Provider) attachmentFolder() string {
-	content, err := os.ReadFile(filepath.Join(p.config.Root, ".obsidian", "app.json"))
-	if err != nil {
-		return ""
+func (p *Provider) shortAssetCandidates(reference, articleRelative string, location AttachmentLocation) []string {
+	articleDir := filepath.Dir(filepath.FromSlash(articleRelative))
+	root := p.config.Root
+	configured := func() string {
+		if location.Path == "" {
+			return filepath.Join(root, reference)
+		}
+		return filepath.Join(root, filepath.FromSlash(location.Path), reference)
 	}
-	var config struct {
-		AttachmentFolderPath string `json:"attachmentFolderPath"`
+	current := filepath.Join(root, articleDir, reference)
+	currentSubfolder := current
+	if location.Path != "" {
+		currentSubfolder = filepath.Join(root, articleDir, filepath.FromSlash(location.Path), reference)
 	}
-	if json.Unmarshal(content, &config) != nil {
-		return ""
+	ordered := make([]string, 0, 4)
+	appendUnique := func(value string) {
+		for _, existing := range ordered {
+			if filepath.Clean(existing) == filepath.Clean(value) {
+				return
+			}
+		}
+		ordered = append(ordered, value)
 	}
-	return strings.TrimSpace(config.AttachmentFolderPath)
+	switch location.Kind {
+	case AttachmentAtCurrentFolder:
+		appendUnique(current)
+	case AttachmentAtCurrentSubfolder:
+		appendUnique(currentSubfolder)
+	case AttachmentAtConfiguredFolder:
+		appendUnique(configured())
+	case AttachmentAtVaultRoot:
+		appendUnique(filepath.Join(root, reference))
+	}
+	// 兼容切换 Obsidian 附件设置前已经存在的文章引用。
+	appendUnique(current)
+	appendUnique(filepath.Join(root, reference))
+	return ordered
 }
 
 func (p *Provider) authorizeAsset(candidate string) (ResolvedAsset, error) {

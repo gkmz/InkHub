@@ -12,6 +12,7 @@ import (
 
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/provider/source/folder"
+	"github.com/gkmz/InkHub/internal/provider/source/obsidian"
 )
 
 type directoryInspectRequest struct {
@@ -115,6 +116,22 @@ func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Re
 	settings["ignored_folders"] = config.IgnoredFolders
 	settings["ignored_file_names"] = config.IgnoredFileNames
 	settings["directories"] = directories
+	obsidianSettings, settingsErr := obsidian.ReadSettings(root)
+	settings["obsidian_settings"] = map[string]any{
+		"attachment_location": obsidianSettings.AttachmentLocationLabel(),
+		"attachment_path":     obsidianSettings.AttachmentFolder.Path,
+		"link_format":         obsidianSettings.LinkFormatLabel(),
+		"use_markdown_links":  obsidianSettings.UseMarkdownLinks,
+	}
+	if settingsErr != nil {
+		diagnostics := settings["diagnostics"].([]map[string]string)
+		diagnostics = append(diagnostics, map[string]string{"name": "Obsidian 配置", "state": "需要处理", "message": "无法读取 .obsidian/app.json，已使用安全默认解析规则"})
+		settings["diagnostics"] = diagnostics
+	} else {
+		diagnostics := settings["diagnostics"].([]map[string]string)
+		diagnostics = append(diagnostics, map[string]string{"name": "Obsidian 配置", "state": "正常", "message": obsidianSettings.AttachmentLocationLabel() + " · " + obsidianSettings.LinkFormatLabel()})
+		settings["diagnostics"] = diagnostics
+	}
 	if aiConfig, enabled, found := loadStoredAIConfig(request.Context(), h.db, workspaceID); found {
 		settings["ai_enabled"] = enabled
 		settings["ai_base_url"] = aiConfig.BaseURL

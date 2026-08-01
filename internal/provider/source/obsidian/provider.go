@@ -126,7 +126,8 @@ func (p *Provider) collectResources(ctx context.Context, ref contracts.SourceRef
 	collect := func(raw string, kind contracts.ResourceKind) {
 		resolved, err := p.ResolveResource(ctx, ref, raw, kind)
 		if err != nil {
-			diagnostics = append(diagnostics, contracts.Diagnostic{Code: "source.image_unresolved", Message: "文章图片无法解析或超出 Vault", Blocking: true})
+			// 图片是发布资源问题，不应阻塞文章 frontmatter 和内容阶段索引。
+			diagnostics = append(diagnostics, contracts.Diagnostic{Code: "source.image_unresolved", Message: fmt.Sprintf("图片引用无法解析: %s", raw), Blocking: false})
 			return
 		}
 		if resolved.RemoteURL != "" {
