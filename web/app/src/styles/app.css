@@ -73,6 +73,7 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .list-header.selectable { grid-template-columns: 32px minmax(230px, 1.6fr) 80px 100px minmax(100px, .7fr) minmax(100px, .7fr) 105px; }
 .select-all { display: grid; place-items: center start; }
 .library-tools { display: flex; gap: 10px; margin-bottom: 18px; }
+.page-toolbar { display: flex; justify-content: flex-end; margin-bottom: 24px; }
 .search-field { flex: 1; max-width: 520px; height: 42px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 4px; color: var(--muted); }
 .search-field:focus-within { border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
 .search-field input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); }

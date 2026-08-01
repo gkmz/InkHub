@@ -136,3 +136,26 @@ test("关闭批量对话框后焦点回到触发按钮", async () => {
   await userEvent.click(screen.getByRole("button", { name: "取消" }));
   expect(trigger).toHaveFocus();
 });
+
+test("内容库手动刷新工作区后重新读取当前筛选", async () => {
+  let listRequests = 0;
+  let resolveRefresh: ((response: Response) => void) | undefined;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input).endsWith("/workspace/refresh")) {
+      return new Promise<Response>((resolve) => { resolveRefresh = resolve; });
+    }
+    listRequests += 1;
+    return Response.json({ items: [articleA], available_channels: [] });
+  });
+  render(<ToastProvider><LibraryPage onNavigate={vi.fn()} /></ToastProvider>);
+  await screen.findByText("第一篇");
+
+  const button = screen.getByRole("button", { name: "刷新工作区" });
+  await userEvent.click(button);
+  expect(screen.getByRole("button", { name: "刷新工作区" })).toBeDisabled();
+  expect(screen.getByText("正在扫描…")).toBeInTheDocument();
+  resolveRefresh?.(Response.json({ indexed: 1, failed: 0 }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent("内容库已更新，共索引 1 篇文章");
+  await waitFor(() => expect(listRequests).toBe(2));
+});

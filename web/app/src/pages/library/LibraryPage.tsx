@@ -1,6 +1,6 @@
-import { Filter, Search, X } from "lucide-react";
+import { Filter, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { APIError, batchDisposition, listArticles } from "../../api/client";
+import { APIError, batchDisposition, listArticles, refreshWorkspace } from "../../api/client";
 import type { ArticleSummary, PublicationChannel } from "../../api/types";
 import { ArticleRow } from "../../components/ArticleRow";
 import { BatchDispositionDialog } from "../../components/BatchDispositionDialog";
@@ -21,6 +21,7 @@ export function LibraryPage({ onNavigate }: { onNavigate: (path: string) => void
   const [availableChannels, setAvailableChannels] = useState<PublicationChannel[]>([]);
   const [dialog, setDialog] = useState<DispositionOperation | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [nextCursor, setNextCursor] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
@@ -50,6 +51,19 @@ export function LibraryPage({ onNavigate }: { onNavigate: (path: string) => void
     });
     return () => controller.abort();
   }, [query, state, disposition, contentStage, reloadKey, toast]);
+  const refresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const result = await refreshWorkspace();
+      setReloadKey((value) => value + 1);
+      toast.show({ kind: "success", message: `内容库已更新，共索引 ${result.indexed} 篇文章` });
+    } catch (reason) {
+      toast.show({ kind: "error", message: reason instanceof Error ? reason.message : "内容库刷新失败" });
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
@@ -104,7 +118,7 @@ export function LibraryPage({ onNavigate }: { onNavigate: (path: string) => void
     }
   };
   return <div className="library-page">
-    <div className="library-tools"><label className="search-field"><Search size={18} /><span className="sr-only">搜索文章</span><input type="search" aria-label="搜索文章" placeholder="搜索标题" value={input} onChange={(event) => setInput(event.target.value)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => { composing.current = false; setInput(event.currentTarget.value); setQuery(event.currentTarget.value); }} /></label><button className="filter-button" type="button" aria-controls="library-filters" onClick={() => stateSelect.current?.focus()}><Filter size={17} />筛选</button></div>
+    <div className="library-tools"><label className="search-field"><Search size={18} /><span className="sr-only">搜索文章</span><input type="search" aria-label="搜索文章" placeholder="搜索标题" value={input} onChange={(event) => setInput(event.target.value)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={(event) => { composing.current = false; setInput(event.currentTarget.value); setQuery(event.currentTarget.value); }} /></label><button className="filter-button" type="button" aria-controls="library-filters" onClick={() => stateSelect.current?.focus()}><Filter size={17} />筛选</button><button className="secondary" type="button" aria-label="刷新工作区" disabled={refreshing} onClick={() => void refresh()}><RefreshCw size={15} aria-hidden="true" />{refreshing ? "正在扫描…" : "刷新工作区"}</button></div>
     <div className="filter-strip" id="library-filters"><label>内容阶段<select value={contentStage} onChange={(event) => setContentStage(event.target.value)}><option value="">全部</option><option value="ready">已就绪</option><option value="draft">草稿</option></select></label><label>审核状态<select ref={stateSelect} value={state} onChange={(event) => setState(event.target.value)}><option value="">全部</option><option value="pending_review">等待审核</option><option value="changed">内容已更新</option><option value="blocked">处理失败</option><option value="approved">已通过</option></select></label><label>处置状态<select value={disposition} onChange={(event) => setDisposition(event.target.value)}><option value="">全部</option><option value="unresolved">未处理</option><option value="published">已发表</option><option value="ignored">已忽略</option></select></label>{(state || disposition || contentStage) && <button type="button" onClick={() => { setState(""); setDisposition(""); setContentStage(""); }}><X size={14} />清除筛选</button>}</div>
     {selected.size > 0 && <div className="batch-bar" role="region" aria-label="批量操作"><strong>已选择 {selected.size} 篇</strong><div className="batch-actions">{disposition === "ignored" ? <button className="primary" type="button" onClick={(event) => openDialog("restore", event.currentTarget)}>恢复管理</button> : <><button className="primary" type="button" onClick={(event) => openDialog("published", event.currentTarget)}>标记已发表</button><button className="secondary" type="button" onClick={(event) => openDialog("ignored", event.currentTarget)}>忽略</button></>}<button className="secondary" type="button" onClick={() => setSelected(new Set())}>取消选择</button></div></div>}
     <h2 className="sr-only">文章列表</h2>

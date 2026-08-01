@@ -91,6 +91,10 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.createWorkspace(response, request)
 		}
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/workspace/refresh":
+		if validateWriteRequest(response, request) {
+			h.refreshWorkspace(response, request)
+		}
 	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/directories/pick":
 		if validateWriteRequest(response, request) {
 			h.pickDirectory(response, request)
@@ -568,6 +572,26 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 		}
 	}
 	writeJSON(response, http.StatusCreated, map[string]any{"workspace": map[string]string{"id": workspaceID, "name": input.Name}, "job_id": jobID, "taxonomy_state": taxonomyState})
+}
+
+// refreshWorkspace 重新扫描最近工作区的内容源，并返回本次索引统计。
+func (h *runtimeHandler) refreshWorkspace(response http.ResponseWriter, request *http.Request) {
+	var sourceID, workspaceID string
+	err := h.db.QueryRowContext(request.Context(), `SELECT sources.id,sources.workspace_id FROM sources JOIN workspaces ON workspaces.id=sources.workspace_id ORDER BY workspaces.last_used_at DESC LIMIT 1`).Scan(&sourceID, &workspaceID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			mapError(response, ErrNotFound)
+			return
+		}
+		mapError(response, err)
+		return
+	}
+	report, err := h.scanWorkspace(request.Context(), sourceID, workspaceID, nil)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]int{"indexed": report.Indexed, "failed": report.Failed})
 }
 
 func (h *runtimeHandler) scanWorkspace(ctx context.Context, sourceID, workspaceID string, overrideConfig []byte) (workspaceapp.ScanReport, error) {

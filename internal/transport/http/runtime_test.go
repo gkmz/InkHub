@@ -98,6 +98,55 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	}
 }
 
+func TestRuntimeHandlerRefreshesWorkspace(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	vault := t.TempDir()
+	if err := os.Mkdir(filepath.Join(vault, ".obsidian"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(vault, "Areas"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	articlePath := filepath.Join(vault, "Areas", "文章.md")
+	draft := "---\nid: article_REFRESH\ntitle: 手动刷新\npublish:\n  status: draft\n---\n正文\n"
+	if err := os.WriteFile(articlePath, []byte(draft), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{ProviderRuntime: testProviderRuntime(t)})
+	createRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/workspaces", strings.NewReader(`{"name":"刷新测试","vault_path":"`+filepath.ToSlash(vault)+`","content_roots":["Areas"],"ignored_folders":[],"wechat_template":"default","ai_enabled":false}`))
+	createRequest.Header.Set("Content-Type", "application/json")
+	createRequest.Header.Set("Origin", "http://localhost")
+	createRequest.Header.Set("Idempotency-Key", "refresh-test")
+	createResponse := httptest.NewRecorder()
+	handler.ServeHTTP(createResponse, createRequest)
+	if createResponse.Code != http.StatusCreated {
+		t.Fatalf("创建刷新测试工作区失败: %d %s", createResponse.Code, createResponse.Body.String())
+	}
+	var stage string
+	if err := db.QueryRow(`SELECT content_stage FROM articles WHERE title='手动刷新'`).Scan(&stage); err != nil || stage != "draft" {
+		t.Fatalf("初始文章阶段错误: stage=%s err=%v", stage, err)
+	}
+	ready := strings.Replace(draft, "status: draft", "status: ready", 1)
+	if err := os.WriteFile(articlePath, []byte(ready), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	refreshRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/workspace/refresh", strings.NewReader("{}"))
+	refreshRequest.Header.Set("Content-Type", "application/json")
+	refreshRequest.Header.Set("Origin", "http://localhost")
+	refreshResponse := httptest.NewRecorder()
+	handler.ServeHTTP(refreshResponse, refreshRequest)
+	if refreshResponse.Code != http.StatusOK || !strings.Contains(refreshResponse.Body.String(), `"indexed":1`) {
+		t.Fatalf("工作区刷新失败: %d %s", refreshResponse.Code, refreshResponse.Body.String())
+	}
+	if err := db.QueryRow(`SELECT content_stage FROM articles WHERE title='手动刷新'`).Scan(&stage); err != nil || stage != "ready" {
+		t.Fatalf("刷新后文章阶段错误: stage=%s err=%v", stage, err)
+	}
+}
+
 func TestRuntimeHandlerInspectsVaultDirectoriesWithoutExposingFileNames(t *testing.T) {
 	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
 	if err != nil {

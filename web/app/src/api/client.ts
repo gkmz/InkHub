@@ -30,6 +30,11 @@ export function getDashboard(signal?: AbortSignal) {
   return request<DashboardView>("/dashboard", { signal });
 }
 
+/** refreshWorkspace 重新扫描最近工作区的 Markdown 内容并返回索引统计。 */
+export function refreshWorkspace() {
+  return request<{ indexed: number; failed: number }>("/workspace/refresh", { method: "POST", body: "{}" });
+}
+
 /** listArticles 读取内容库稳定分页，并透传搜索与筛选。 */
 export function listArticles(query: URLSearchParams, signal?: AbortSignal) {
   return request<ArticlePage>(`/articles?${query.toString()}`, { signal });
