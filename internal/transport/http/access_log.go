@@ -13,6 +13,7 @@ import (
 )
 
 type requestIDContextKey struct{}
+type requestLoggerContextKey struct{}
 
 var validRequestID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
@@ -20,6 +21,15 @@ var validRequestID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 func RequestID(ctx context.Context) string {
 	requestID, _ := ctx.Value(requestIDContextKey{}).(string)
 	return requestID
+}
+
+// RequestLogger 返回当前请求关联的结构化日志器；未经过 AccessLog 时返回空日志器。
+func RequestLogger(ctx context.Context) *zap.Logger {
+	logger, _ := ctx.Value(requestLoggerContextKey{}).(*zap.Logger)
+	if logger == nil {
+		return zap.NewNop()
+	}
+	return logger
 }
 
 // AccessLog 为 HTTP 请求补充 request ID，并记录不含正文和查询参数的访问摘要。
@@ -34,8 +44,10 @@ func AccessLog(logger *zap.Logger, next http.Handler) http.Handler {
 			requestID = newRequestID()
 		}
 		response.Header().Set("X-Request-ID", requestID)
-		request = request.WithContext(context.WithValue(request.Context(), requestIDContextKey{}, requestID))
-		wrapped := &accessResponseWriter{ResponseWriter: response, status: http.StatusOK}
+		requestContext := context.WithValue(request.Context(), requestIDContextKey{}, requestID)
+		requestContext = context.WithValue(requestContext, requestLoggerContextKey{}, logger)
+		request = request.WithContext(requestContext)
+		wrapped := &accessResponseWriter{ResponseWriter: response, status: http.StatusOK, request: request}
 
 		next.ServeHTTP(wrapped, request)
 
@@ -46,6 +58,9 @@ func AccessLog(logger *zap.Logger, next http.Handler) http.Handler {
 			zap.Int("status", wrapped.status),
 			zap.Int64("response_bytes", wrapped.bytes),
 			platformlogging.Duration(start),
+		}
+		if wrapped.errorCode != "" {
+			fields = append(fields, zap.String("error_code", wrapped.errorCode))
 		}
 		switch {
 		case wrapped.status >= http.StatusInternalServerError:
@@ -63,6 +78,16 @@ type accessResponseWriter struct {
 	status      int
 	bytes       int64
 	wroteHeader bool
+	errorCode   string
+	request     *http.Request
+}
+
+func (writer *accessResponseWriter) setErrorCode(code string) {
+	writer.errorCode = code
+}
+
+func (writer *accessResponseWriter) requestForLogging() *http.Request {
+	return writer.request
 }
 
 func (writer *accessResponseWriter) WriteHeader(status int) {

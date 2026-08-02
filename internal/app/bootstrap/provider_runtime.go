@@ -37,6 +37,14 @@ func (r secretStoreResolver) Resolve(ctx context.Context, ref string) (contracts
 
 // newProviderRuntime 注册所有内置 Provider；具体实现只在装配层出现。
 func newProviderRuntime(resolvers ...contracts.SecretResolver) (*registry.Registry, error) {
+	return newProviderRuntimeWithLogger(zap.NewNop(), resolvers...)
+}
+
+// newProviderRuntimeWithLogger 注册内置 Provider，并把运行期日志器传给需要记录外部边界的实现。
+func newProviderRuntimeWithLogger(logger *zap.Logger, resolvers ...contracts.SecretResolver) (*registry.Registry, error) {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	var resolver contracts.SecretResolver
 	if len(resolvers) > 0 {
 		resolver = resolvers[0]
@@ -63,7 +71,7 @@ func newProviderRuntime(resolvers ...contracts.SecretResolver) (*registry.Regist
 	uploaderBuilder := func(_ context.Context, config wechat.AssetUploaderConfig, token []byte) (wechat.AssetUploader, error) {
 		return githubassets.New(githubassets.Config{
 			Owner: config.Owner, Repository: config.Repository, Branch: config.Branch, Prefix: config.Prefix, Token: string(token),
-		}, githubClient, zap.NewNop())
+		}, githubClient, logger)
 	}
 	if err := runtime.RegisterPublish(wechat.NewFactoryWithUploaderBuilder(builtinTemplateLoader{}, unusedClipboard{}, uploaderBuilder, wechat.NewMermaidInkRenderer())); err != nil {
 		return nil, err

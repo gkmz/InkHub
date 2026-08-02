@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 
+	platformlogging "github.com/gkmz/InkHub/internal/platform/logging"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"go.uber.org/zap"
 )
@@ -47,7 +48,8 @@ func New(config Config, client *http.Client, logger *zap.Logger) (*Uploader, err
 }
 
 // Validate 确认目标仓库公开且当前 Token 具备内容写权限。
-func (u *Uploader) Validate(ctx context.Context) error {
+func (u *Uploader) Validate(ctx context.Context) (err error) {
+	defer func() { u.logError("validate", err) }()
 	var value struct {
 		Private     bool `json:"private"`
 		Permissions struct {
@@ -82,7 +84,8 @@ func (u *Uploader) Validate(ctx context.Context) error {
 }
 
 // Inspect 只读检查确定性目标是否存在且内容摘要一致。
-func (u *Uploader) Inspect(ctx context.Context, request contracts.AssetUploadRequest) (contracts.AssetUploadResult, bool, error) {
+func (u *Uploader) Inspect(ctx context.Context, request contracts.AssetUploadRequest) (result contracts.AssetUploadResult, found bool, err error) {
+	defer func() { u.logError("inspect", err) }()
 	assetPath, err := AssetPath(u.config.Prefix, request.Digest, request.Extension)
 	if err != nil {
 		return contracts.AssetUploadResult{}, false, githubError("github.config_invalid", "GitHub 图片目标无效", contracts.ErrorValidation, false)
@@ -118,7 +121,8 @@ func (u *Uploader) Inspect(ctx context.Context, request contracts.AssetUploadReq
 }
 
 // Upload 幂等创建摘要路径，并确认最终地址可以匿名访问。
-func (u *Uploader) Upload(ctx context.Context, request contracts.AssetUploadRequest) (contracts.AssetUploadResult, error) {
+func (u *Uploader) Upload(ctx context.Context, request contracts.AssetUploadRequest) (result contracts.AssetUploadResult, err error) {
+	defer func() { u.logError("upload", err) }()
 	if existing, found, err := u.Inspect(ctx, request); err != nil || found {
 		return existing, err
 	}
@@ -221,6 +225,21 @@ func (u *Uploader) verifyPublicURL(ctx context.Context, endpoint string) error {
 		return githubError("github.public_url_unavailable", "GitHub 图片暂时无法公开访问", contracts.ErrorDependency, true)
 	}
 	return nil
+}
+
+// logError 记录 GitHub 边界失败的稳定上下文，不记录 Token、图片内容或完整响应。
+func (u *Uploader) logError(operation string, err error) {
+	if err == nil {
+		return
+	}
+	fields := []zap.Field{
+		zap.String("provider", "github-assets"),
+		zap.String("operation", operation),
+		zap.String("repository_owner", u.config.Owner),
+		zap.String("repository", u.config.Repository),
+	}
+	fields = append(fields, platformlogging.ErrorFields(err)...)
+	u.logger.Error("GitHub 图片 Provider 操作失败", fields...)
 }
 
 func repositoryURL(config Config) string {

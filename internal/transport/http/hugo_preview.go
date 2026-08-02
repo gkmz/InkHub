@@ -100,18 +100,19 @@ func safeHugoPreviewView(view publication.PreviewView) map[string]any {
 }
 
 func writeHugoPreviewError(response http.ResponseWriter, err error) {
+	status, code, message := http.StatusUnprocessableEntity, "hugo.preview_failed", "Hugo 发布预览操作失败"
 	switch {
 	case errors.Is(err, publication.ErrPreviewStale):
-		writeError(response, http.StatusConflict, "hugo.preview_stale", "文章内容已变化，请重新生成预览")
+		status, code, message = http.StatusConflict, "hugo.preview_stale", "文章内容已变化，请重新生成预览"
 	case errors.Is(err, publication.ErrPreviewExpired):
-		writeError(response, http.StatusConflict, "hugo.preview_expired", "Hugo 发布预览已过期，请重新生成")
+		status, code, message = http.StatusConflict, "hugo.preview_expired", "Hugo 发布预览已过期，请重新生成"
 	case errors.Is(err, publication.ErrPreviewNotReady):
-		writeError(response, http.StatusConflict, "hugo.preview_not_ready", "Hugo 发布预览尚未准备完成")
+		status, code, message = http.StatusConflict, "hugo.preview_not_ready", "Hugo 发布预览尚未准备完成"
 	case errors.Is(err, publication.ErrPreviewInvalid):
-		writeError(response, http.StatusUnprocessableEntity, "hugo.preview_invalid", "Hugo 发布预览数据无效")
+		code, message = "hugo.preview_invalid", "Hugo 发布预览数据无效"
 	case errors.Is(err, publication.ErrArticleNotReady):
-		writeError(response, http.StatusUnprocessableEntity, "article.not_ready", "文章尚未标记为已就绪")
-	default:
-		writeError(response, http.StatusUnprocessableEntity, "hugo.preview_failed", "Hugo 发布预览操作失败")
+		code, message = "article.not_ready", "文章尚未标记为已就绪"
 	}
+	logHTTPError(response, err, status, code)
+	writeError(response, status, code, message)
 }

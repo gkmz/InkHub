@@ -1,12 +1,14 @@
 package httptransport
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
@@ -44,6 +46,41 @@ func TestAccessLogRecordsRequestMetadataAndRequestID(t *testing.T) {
 	}
 	if strings.Contains(entries[0].Message+entries[0].ContextMap()["path"].(string), "secret") {
 		t.Fatalf("日志包含查询参数或请求体: %#v", entries[0])
+	}
+}
+
+func TestAccessLogIncludesErrorCodeAndProviderDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	core, observed := observer.New(zap.DebugLevel)
+	handler := AccessLog(zap.New(core), http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		mapError(response, &contracts.ProviderError{
+			Code: "openai.timeout", Category: contracts.ErrorTemporary, Message: "AI 请求超时", Retryable: true,
+			Cause: errors.New("upstream timeout"),
+		})
+	}))
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/suggestions", nil)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"code":"openai.timeout"`) {
+		t.Fatalf("provider error response = %d %s", response.Code, response.Body.String())
+	}
+	entries := observed.All()
+	if len(entries) != 2 {
+		t.Fatalf("log count = %d, want handler and access entries", len(entries))
+	}
+	fields := entries[0].ContextMap()
+	if fields["error_code"] != "openai.timeout" || fields["provider_error_category"] != "temporary" || fields["provider_error_retryable"] != true || fields["provider_error_cause_type"] != "*errors.errorString" {
+		t.Fatalf("provider diagnostics = %#v", fields)
+	}
+	accessFields := entries[1].ContextMap()
+	if accessFields["error_code"] != "openai.timeout" || accessFields["status"] != int64(http.StatusServiceUnavailable) {
+		t.Fatalf("access diagnostics = %#v", accessFields)
+	}
+	if strings.Contains(entries[0].Message, "upstream timeout") {
+		t.Fatalf("日志不应重复写入底层错误正文: %#v", entries[0])
 	}
 }
 

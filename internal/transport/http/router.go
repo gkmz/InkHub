@@ -12,6 +12,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	platformlogging "github.com/gkmz/InkHub/internal/platform/logging"
+	"github.com/gkmz/InkHub/internal/provider/contracts"
+	"go.uber.org/zap"
 )
 
 var (
@@ -334,27 +338,78 @@ func localOnly(next http.Handler) http.Handler {
 }
 
 func mapError(response http.ResponseWriter, err error) {
+	status, code, message := mappedError(err)
+	logHTTPError(response, err, status, code)
+	writeError(response, status, code, message)
+}
+
+func mappedError(err error) (status int, code, message string) {
 	switch {
 	case errors.Is(err, ErrStaleContent):
-		writeError(response, http.StatusConflict, "content.stale", "文章内容已变化，请刷新后重试")
+		return http.StatusConflict, "content.stale", "文章内容已变化，请刷新后重试"
 	case errors.Is(err, ErrNotFound):
-		writeError(response, http.StatusNotFound, "resource.not_found", "请求的资源不存在")
+		return http.StatusNotFound, "resource.not_found", "请求的资源不存在"
 	case errors.Is(err, ErrInvalidCursor):
-		writeError(response, http.StatusBadRequest, "request.cursor_invalid", "分页位置无效，请重新加载列表")
+		return http.StatusBadRequest, "request.cursor_invalid", "分页位置无效，请重新加载列表"
 	case errors.Is(err, ErrDispositionContentChanged):
-		writeError(response, http.StatusConflict, "disposition.content_changed", "部分文章已更新，请刷新后重新选择")
+		return http.StatusConflict, "disposition.content_changed", "部分文章已更新，请刷新后重新选择"
 	case errors.Is(err, ErrDispositionChannelUnavailable):
-		writeError(response, http.StatusUnprocessableEntity, "disposition.channel_unavailable", "所选发布渠道未配置或未启用")
+		return http.StatusUnprocessableEntity, "disposition.channel_unavailable", "所选发布渠道未配置或未启用"
 	case errors.Is(err, ErrDispositionInvalid):
-		writeError(response, http.StatusBadRequest, "request.invalid", "文章批量处置请求无效")
+		return http.StatusBadRequest, "request.invalid", "文章批量处置请求无效"
 	case errors.Is(err, ErrArticleNotReady):
-		writeError(response, http.StatusUnprocessableEntity, "article.not_ready", "文章尚未标记为已就绪")
-	default:
-		writeError(response, http.StatusInternalServerError, "internal.error", "操作失败")
+		return http.StatusUnprocessableEntity, "article.not_ready", "文章尚未标记为已就绪"
 	}
+	var providerErr *contracts.ProviderError
+	if errors.As(err, &providerErr) && providerErr != nil {
+		status := http.StatusInternalServerError
+		switch providerErr.Category {
+		case contracts.ErrorValidation:
+			status = http.StatusBadRequest
+		case contracts.ErrorConflict:
+			status = http.StatusConflict
+		case contracts.ErrorNotFound:
+			status = http.StatusNotFound
+		case contracts.ErrorDependency:
+			status = http.StatusBadGateway
+		case contracts.ErrorTemporary:
+			status = http.StatusServiceUnavailable
+		case contracts.ErrorPermanent:
+			status = http.StatusUnprocessableEntity
+		case contracts.ErrorUnauthorizedResource:
+			status = http.StatusForbidden
+		}
+		return status, providerErr.Code, providerErr.Message
+	}
+	return http.StatusInternalServerError, "internal.error", "操作失败"
+}
+
+func logHTTPError(response http.ResponseWriter, err error, status int, code string) {
+	holder, ok := response.(interface{ requestForLogging() *http.Request })
+	if !ok || holder.requestForLogging() == nil {
+		return
+	}
+	request := holder.requestForLogging()
+	fields := []zap.Field{
+		zap.String("request_id", RequestID(request.Context())),
+		zap.String("method", request.Method),
+		zap.String("path", request.URL.Path),
+		zap.Int("status", status),
+		zap.String("error_code", code),
+	}
+	fields = append(fields, platformlogging.ErrorFields(err)...)
+	logger := RequestLogger(request.Context())
+	if status >= http.StatusInternalServerError {
+		logger.Error("HTTP 请求处理失败", fields...)
+		return
+	}
+	logger.Warn("HTTP 请求处理失败", fields...)
 }
 
 func writeError(response http.ResponseWriter, status int, code, message string) {
+	if setter, ok := response.(interface{ setErrorCode(string) }); ok {
+		setter.setErrorCode(code)
+	}
 	writeJSON(response, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
 

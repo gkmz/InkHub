@@ -85,6 +85,7 @@ func safeWorkflowView(view publication.WorkflowView) map[string]any {
 
 func writePublicationWorkflowError(response http.ResponseWriter, err error) {
 	if errors.Is(err, publication.ErrHistoryCursorInvalid) {
+		logHTTPError(response, err, http.StatusBadRequest, "request.cursor_invalid")
 		writeError(response, http.StatusBadRequest, "request.cursor_invalid", "发布历史分页位置无效")
 		return
 	}
@@ -92,5 +93,6 @@ func writePublicationWorkflowError(response http.ResponseWriter, err error) {
 		mapError(response, ErrNotFound)
 		return
 	}
+	logHTTPError(response, err, http.StatusUnprocessableEntity, "publication.workflow_failed")
 	writeError(response, http.StatusUnprocessableEntity, "publication.workflow_failed", "发布状态读取失败")
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -51,7 +52,14 @@ func (h *runtimeHandler) saveAISettings(response http.ResponseWriter, request *h
 		}
 	}
 	if input.APIKey != "" {
-		if h.aiSecrets == nil || h.aiSecrets.Set(request.Context(), secretRef, input.APIKey) != nil {
+		var secretErr error
+		if h.aiSecrets == nil {
+			secretErr = errors.New("AI Secret Store 不可用")
+		} else {
+			secretErr = h.aiSecrets.Set(request.Context(), secretRef, input.APIKey)
+		}
+		if secretErr != nil {
+			logHTTPError(response, secretErr, http.StatusInternalServerError, "ai.secret_save_failed")
 			writeError(response, http.StatusInternalServerError, "ai.secret_save_failed", "AI API Key 保存失败")
 			return
 		}

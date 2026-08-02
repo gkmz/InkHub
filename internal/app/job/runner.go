@@ -12,6 +12,7 @@ import (
 	"time"
 
 	domainjob "github.com/gkmz/InkHub/internal/domain/job"
+	platformlogging "github.com/gkmz/InkHub/internal/platform/logging"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"go.uber.org/zap"
 )
@@ -143,6 +144,7 @@ func (r *Runner) Enqueue(ctx context.Context, request EnqueueRequest) (domainjob
 	}
 	payload, err := mergeTargetMetadata(request.PayloadJSON, request.ArticleID, request.ProviderInstanceID)
 	if err != nil {
+		r.logger.Warn("后台任务入队请求无效", append(requestLogFields(request), platformlogging.ErrorFields(err)...)...)
 		return domainjob.Job{}, false, err
 	}
 	request.PayloadJSON = payload
@@ -154,7 +156,9 @@ func (r *Runner) Enqueue(ctx context.Context, request EnqueueRequest) (domainjob
 		DedupeKey: request.DedupeKey, PayloadJSON: request.PayloadJSON, AvailableAt: r.config.Now(),
 	})
 	if err != nil {
-		r.logger.Error("后台任务入队失败", append(requestLogFields(request), zap.String("error_code", "job_enqueue_failed"), zap.Error(err))...)
+		fields := append(requestLogFields(request), zap.String("error_code", "job_enqueue_failed"))
+		fields = append(fields, platformlogging.ErrorFields(err)...)
+		r.logger.Error("后台任务入队失败", fields...)
 		return domainjob.Job{}, false, err
 	}
 	r.logger.Info("后台任务已入队", append(requestLogFields(request), zap.Bool("created", created))...)
@@ -205,7 +209,9 @@ func (r *Runner) RunOne(ctx context.Context) (bool, error) {
 	value, claimed, err := r.store.ClaimNext(ctx, r.config.Now())
 	if err != nil || !claimed {
 		if err != nil {
-			r.logger.Error("领取后台任务失败", zap.String("error_code", "job_claim_failed"), zap.Error(err))
+			fields := []zap.Field{zap.String("error_code", "job_claim_failed")}
+			fields = append(fields, platformlogging.ErrorFields(err)...)
+			r.logger.Error("领取后台任务失败", fields...)
 		}
 		return claimed, err
 	}
@@ -217,7 +223,9 @@ func (r *Runner) RunOne(ctx context.Context) (bool, error) {
 	r.mu.RUnlock()
 	if !exists || options.Handle == nil {
 		err := r.store.Fail(ctx, value.ID, "job.handler_missing", "任务处理器未注册", r.config.Now())
-		r.logger.Error("后台任务执行失败", append(fields, zap.String("error_code", "job.handler_missing"), elapsedField(start))...)
+		logFields := append(fields, zap.String("error_code", "job.handler_missing"), elapsedField(start))
+		logFields = append(logFields, platformlogging.ErrorFields(err)...)
+		r.logger.Error("后台任务执行失败", logFields...)
 		return true, err
 	}
 
@@ -233,7 +241,12 @@ func (r *Runner) RunOne(ctx context.Context) (bool, error) {
 	}()
 	release, err := r.locks.acquire(taskCtx, lockKeys(value.PayloadJSON))
 	if err != nil {
-		return true, r.finishInterrupted(ctx, value, options)
+		finishErr := r.finishInterrupted(ctx, value, options)
+		if finishErr != nil {
+			fields := append(jobLogFields(value), platformlogging.ErrorFields(finishErr)...)
+			r.logger.Error("后台任务中断状态保存失败", fields...)
+		}
+		return true, finishErr
 	}
 	defer release()
 
@@ -244,7 +257,12 @@ func (r *Runner) RunOne(ctx context.Context) (bool, error) {
 		if findErr == nil && stored.State == domainjob.StateCancelled {
 			return true, nil
 		}
-		return true, r.finishInterrupted(ctx, value, options)
+		finishErr := r.finishInterrupted(ctx, value, options)
+		if finishErr != nil {
+			logFields := append(fields, platformlogging.ErrorFields(finishErr)...)
+			r.logger.Error("后台任务中断状态保存失败", logFields...)
+		}
+		return true, finishErr
 	}
 	if handleErr == nil {
 		if result == "" {
@@ -252,12 +270,16 @@ func (r *Runner) RunOne(ctx context.Context) (bool, error) {
 		}
 		if !json.Valid([]byte(result)) {
 			err := r.store.Fail(ctx, value.ID, "job.result_invalid", "任务返回了无效结果", r.config.Now())
-			r.logger.Error("后台任务执行失败", append(fields, zap.String("error_code", "job.result_invalid"), elapsedField(start))...)
+			logFields := append(fields, zap.String("error_code", "job.result_invalid"), elapsedField(start))
+			logFields = append(logFields, platformlogging.ErrorFields(err)...)
+			r.logger.Error("后台任务执行失败", logFields...)
 			return true, err
 		}
 		err := r.store.Succeed(ctx, value.ID, result, r.config.Now())
 		if err != nil {
-			r.logger.Error("保存后台任务结果失败", append(fields, zap.String("error_code", "job_succeed_store_failed"), zap.Error(err), elapsedField(start))...)
+			logFields := append(fields, zap.String("error_code", "job_succeed_store_failed"), elapsedField(start))
+			logFields = append(logFields, platformlogging.ErrorFields(err)...)
+			r.logger.Error("保存后台任务结果失败", logFields...)
 			return true, err
 		}
 		r.logger.Info("后台任务执行成功", append(fields, elapsedField(start))...)
@@ -267,18 +289,30 @@ func (r *Runner) RunOne(ctx context.Context) (bool, error) {
 	if retryable && options.RetrySafe && value.Attempts < options.MaxAttempts {
 		availableAt := r.config.Now().Add(options.Backoff(value.Attempts))
 		err := r.store.Retry(ctx, value.ID, availableAt, code, message, r.config.Now())
-		r.logger.Warn("后台任务等待重试", append(fields, zap.String("error_code", code), zap.Int("attempt", value.Attempts), elapsedField(start))...)
+		logFields := append(fields, zap.String("error_code", code), zap.Int("attempt", value.Attempts), elapsedField(start))
+		logFields = append(logFields, platformlogging.ErrorFields(handleErr)...)
+		if err != nil {
+			logFields = append(logFields, platformlogging.ErrorFields(err)...)
+		}
+		r.logger.Warn("后台任务等待重试", logFields...)
 		return true, err
 	}
 	err = r.store.Fail(ctx, value.ID, code, message, r.config.Now())
-	r.logger.Error("后台任务执行失败", append(fields, zap.String("error_code", code), zap.Int("attempt", value.Attempts), elapsedField(start))...)
+	logFields := append(fields, zap.String("error_code", code), zap.Int("attempt", value.Attempts), elapsedField(start))
+	logFields = append(logFields, platformlogging.ErrorFields(handleErr)...)
+	if err != nil {
+		logFields = append(logFields, platformlogging.ErrorFields(err)...)
+	}
+	r.logger.Error("后台任务执行失败", logFields...)
 	if err != nil {
 		return true, err
 	}
 	if options.OnTerminalFailure != nil {
 		failure := Failure{Code: code, Message: message, Attempt: value.Attempts}
 		if callbackErr := options.OnTerminalFailure(ctx, value, failure); callbackErr != nil {
-			r.logger.Error("保存任务失败事实失败", append(fields, zap.String("error_code", "job.failure_event_failed"), zap.Error(callbackErr))...)
+			logFields := append(fields, zap.String("error_code", "job.failure_event_failed"))
+			logFields = append(logFields, platformlogging.ErrorFields(callbackErr)...)
+			r.logger.Error("保存任务失败事实失败", logFields...)
 			return true, callbackErr
 		}
 	}

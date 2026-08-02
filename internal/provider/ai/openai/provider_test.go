@@ -81,6 +81,9 @@ func TestProviderMapsRateLimitToRetryableError(t *testing.T) {
 	if strings.Contains(providerErr.Error(), "secret upstream detail") {
 		t.Fatalf("错误消息泄露上游响应: %q", providerErr.Error())
 	}
+	if providerErr.UpstreamStatus != http.StatusTooManyRequests || providerErr.UpstreamMessage != "secret upstream detail" {
+		t.Fatalf("上游诊断字段缺失: %+v", providerErr)
+	}
 }
 
 func TestProviderRejectsOversizedAndInvalidResponses(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -67,7 +68,14 @@ func (h *runtimeHandler) saveWeChatSettings(response http.ResponseWriter, reques
 		return
 	}
 	if input.GitHubToken != "" {
-		if h.aiSecrets == nil || h.aiSecrets.Set(request.Context(), secretRef, input.GitHubToken) != nil {
+		var secretErr error
+		if h.aiSecrets == nil {
+			secretErr = errors.New("Secret Store 不可用")
+		} else {
+			secretErr = h.aiSecrets.Set(request.Context(), secretRef, input.GitHubToken)
+		}
+		if secretErr != nil {
+			logHTTPError(response, secretErr, http.StatusInternalServerError, "wechat.secret_save_failed")
 			writeError(response, http.StatusInternalServerError, "wechat.secret_save_failed", "GitHub Token 保存失败")
 			return
 		}

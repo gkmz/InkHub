@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -278,7 +279,7 @@ func (p *Provider) do(ctx context.Context, payload []byte) ([]byte, error) {
 		return nil, &contracts.ProviderError{Code: "openai.response_too_large", Category: contracts.ErrorPermanent, Message: "AI 响应超过大小限制"}
 	}
 	if response.StatusCode == http.StatusTooManyRequests {
-		return nil, &contracts.ProviderError{Code: "openai.rate_limited", Category: contracts.ErrorTemporary, Message: "AI 服务请求过于频繁", Retryable: true}
+		return nil, upstreamProviderError("openai.rate_limited", contracts.ErrorTemporary, "AI 服务请求过于频繁", true, response.StatusCode, body)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		retryable := response.StatusCode >= 500
@@ -286,7 +287,35 @@ func (p *Provider) do(ctx context.Context, payload []byte) ([]byte, error) {
 		if retryable {
 			category = contracts.ErrorTemporary
 		}
-		return nil, &contracts.ProviderError{Code: "openai.request_failed", Category: category, Message: fmt.Sprintf("AI 服务返回状态 %d", response.StatusCode), Retryable: retryable}
+		return nil, upstreamProviderError("openai.request_failed", category, fmt.Sprintf("AI 服务返回状态 %d", response.StatusCode), retryable, response.StatusCode, body)
 	}
 	return body, nil
+}
+
+type upstreamErrorResponse struct {
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+var sensitiveUpstreamValue = regexp.MustCompile(`(?i)(authorization|bearer|api[-_ ]?key|token)\s*[:=]\s*[^\s,;]+`)
+
+func upstreamProviderError(code string, category contracts.ErrorCategory, message string, retryable bool, status int, body []byte) *contracts.ProviderError {
+	providerErr := &contracts.ProviderError{Code: code, Category: category, Message: message, Retryable: retryable, UpstreamStatus: status}
+	var upstream upstreamErrorResponse
+	if json.Unmarshal(body, &upstream) == nil {
+		providerErr.UpstreamCode = strings.TrimSpace(upstream.Error.Code)
+		providerErr.UpstreamMessage = sanitizeUpstreamMessage(upstream.Error.Message)
+	}
+	return providerErr
+}
+
+func sanitizeUpstreamMessage(value string) string {
+	value = strings.Join(strings.Fields(value), " ")
+	value = sensitiveUpstreamValue.ReplaceAllString(value, "$1=[REDACTED]")
+	if runes := []rune(value); len(runes) > 512 {
+		value = string(runes[:512])
+	}
+	return value
 }

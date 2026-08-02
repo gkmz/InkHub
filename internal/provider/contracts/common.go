@@ -38,12 +38,15 @@ const (
 
 // ProviderError 是 Transport 和任务系统可识别的脱敏错误。
 type ProviderError struct {
-	Code      string
-	Category  ErrorCategory
-	Message   string
-	Retryable bool
-	Field     string
-	Cause     error
+	Code            string
+	Category        ErrorCategory
+	Message         string
+	Retryable       bool
+	Field           string
+	Cause           error
+	UpstreamStatus  int
+	UpstreamCode    string
+	UpstreamMessage string
 }
 
 // Error 返回可安全展示的说明，不泄露底层响应或 Secret。

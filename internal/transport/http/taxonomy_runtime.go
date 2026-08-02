@@ -69,6 +69,7 @@ func (h *runtimeHandler) refreshTaxonomyOverview(response http.ResponseWriter, r
 		return
 	}
 	if err := h.refreshTaxonomy(request.Context()); err != nil {
+		logHTTPError(response, err, http.StatusUnprocessableEntity, "taxonomy.refresh_failed")
 		writeError(response, http.StatusUnprocessableEntity, "taxonomy.refresh_failed", "类目刷新失败，请检查 Hugo 配置")
 		return
 	}
@@ -172,12 +173,15 @@ func writeTaxonomyError(response http.ResponseWriter, err error) {
 	var providerErr *contracts.ProviderError
 	if errors.As(err, &providerErr) {
 		if providerErr.Category == contracts.ErrorConflict {
+			logHTTPError(response, err, http.StatusConflict, providerErr.Code)
 			writeError(response, http.StatusConflict, providerErr.Code, providerErr.Message)
 			return
 		}
+		logHTTPError(response, err, http.StatusUnprocessableEntity, providerErr.Code)
 		writeError(response, http.StatusUnprocessableEntity, providerErr.Code, providerErr.Message)
 		return
 	}
+	logHTTPError(response, err, http.StatusUnprocessableEntity, "taxonomy.change_failed")
 	writeError(response, http.StatusUnprocessableEntity, "taxonomy.change_failed", "类目变更失败，请检查 Hugo 配置")
 }
 

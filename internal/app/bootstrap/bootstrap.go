@@ -162,19 +162,21 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config,
 	db, err := sqlite.Open(ctx, filepath.Join(config.DataDir, "inkhub.db"))
 	if err != nil {
 		// migration 或完整性检查失败时仍提供 UI，但所有 API 都进入只读恢复边界。
-		logger.Error("数据库不可用，进入恢复模式", zap.String("error_code", "database_open_failed"), zap.Error(err))
+		fields := append([]zap.Field{zap.String("error_code", "database_open_failed")}, platformlogging.ErrorFields(err)...)
+		logger.Error("数据库不可用，进入恢复模式", fields...)
 		return runHTTPServer(ctx, config, logger, httptransport.NewApplicationHandler(httptransport.NewRecoveryHandler(), assets))
 	}
 	defer db.Close()
 	logger.Info("数据库已打开", zap.String("component", "sqlite"))
 	secretStore := platformsecrets.NewSystemStore()
-	providerRuntime, err := newProviderRuntime(secretStoreResolver{store: secretStore})
+	providerRuntime, err := newProviderRuntimeWithLogger(logger, secretStoreResolver{store: secretStore})
 	if err != nil {
 		return fmt.Errorf("注册内置 Provider: %w", err)
 	}
 	// 启动重扫只修复可重建索引；失败不阻止用户进入设置修正 Vault 或目录规则。
 	if report, scanErr := RescanRecentWorkspace(ctx, db, providerRuntime); scanErr != nil {
-		logger.Warn("启动重扫失败", zap.String("error_code", "workspace_rescan_failed"), zap.Error(scanErr))
+		fields := append([]zap.Field{zap.String("error_code", "workspace_rescan_failed")}, platformlogging.ErrorFields(scanErr)...)
+		logger.Warn("启动重扫失败", fields...)
 	} else {
 		logger.Info("启动重扫完成",
 			zap.String("component", "workspace_scan"),
@@ -183,18 +185,21 @@ func serve(ctx context.Context, config Config, logConfig platformlogging.Config,
 		)
 	}
 	if snapshots, taxonomyErr := RefreshRecentTaxonomy(ctx, db, providerRuntime); taxonomyErr != nil {
-		logger.Warn("启动 taxonomy 刷新失败", zap.String("error_code", "taxonomy_refresh_failed"), zap.Error(taxonomyErr))
+		fields := append([]zap.Field{zap.String("error_code", "taxonomy_refresh_failed")}, platformlogging.ErrorFields(taxonomyErr)...)
+		logger.Warn("启动 taxonomy 刷新失败", fields...)
 	} else {
 		logger.Info("启动 taxonomy 刷新完成", zap.String("component", "taxonomy"), zap.Int("snapshot_count", len(snapshots)))
 	}
 	runner := newPublicationRunner(db, logger, providerRuntime)
 	if err := runner.Recover(ctx, time.Now().UTC().Add(-time.Minute)); err != nil {
-		logger.Error("恢复后台任务失败", zap.String("error_code", "job_recovery_failed"), zap.Error(err))
+		fields := append([]zap.Field{zap.String("error_code", "job_recovery_failed")}, platformlogging.ErrorFields(err)...)
+		logger.Error("恢复后台任务失败", fields...)
 		return fmt.Errorf("恢复后台任务: %w", err)
 	}
 	logger.Info("后台任务恢复完成", zap.String("component", "job_runner"))
 	if err := runner.Start(ctx); err != nil {
-		logger.Error("启动后台任务失败", zap.String("error_code", "job_runner_start_failed"), zap.Error(err))
+		fields := append([]zap.Field{zap.String("error_code", "job_runner_start_failed")}, platformlogging.ErrorFields(err)...)
+		logger.Error("启动后台任务失败", fields...)
 		return fmt.Errorf("启动后台任务: %w", err)
 	}
 	defer func() {
@@ -246,7 +251,8 @@ func runHTTPServer(ctx context.Context, config Config, logger *zap.Logger, handl
 	server := &http.Server{Handler: httptransport.AccessLog(logger, handler), ReadHeaderTimeout: 5 * time.Second}
 	listener, err := net.Listen("tcp", net.JoinHostPort(config.Host, fmt.Sprint(config.Port)))
 	if err != nil {
-		logger.Error("监听 HTTP 地址失败", zap.String("error_code", "http_listen_failed"), zap.Error(err))
+		fields := append([]zap.Field{zap.String("error_code", "http_listen_failed")}, platformlogging.ErrorFields(err)...)
+		logger.Error("监听 HTTP 地址失败", fields...)
 		return fmt.Errorf("监听 InkHub 地址: %w", err)
 	}
 	logger.Info("HTTP 服务已启动", zap.String("component", "http_server"), zap.String("address", listener.Addr().String()))
@@ -265,7 +271,8 @@ func runHTTPServer(ctx context.Context, config Config, logger *zap.Logger, handl
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
-		logger.Error("HTTP 服务异常退出", zap.String("error_code", "http_server_failed"), zap.Error(err))
+		fields := append([]zap.Field{zap.String("error_code", "http_server_failed")}, platformlogging.ErrorFields(err)...)
+		logger.Error("HTTP 服务异常退出", fields...)
 		return err
 	}
 }
