@@ -51,6 +51,20 @@ test("保存元数据前展示字段级变更摘要", async () => {
   expect(screen.getByText("Description：旧摘要 → 新摘要")).toBeInTheDocument();
 });
 
+test("采用 AI Description 建议只更新草稿而不立即保存", async () => {
+  const save = vi.fn();
+  render(<MetadataForm value={metadata} sourceChanged={false} externalSuggestion={{ id: "description-1", field: "description", value: "AI 生成的摘要" }} onSave={save} />);
+  expect(await screen.findByDisplayValue("AI 生成的摘要")).toBeInTheDocument();
+  expect(save).not.toHaveBeenCalled();
+});
+
+test("Keywords 建议替换数组，Tags 建议大小写不敏感去重", async () => {
+  const view = render(<MetadataForm value={metadata} sourceChanged={false} externalSuggestion={{ id: "keywords-1", field: "keywords", value: ["go", "ai"] }} onSave={vi.fn()} />);
+  expect(await screen.findByDisplayValue("go, ai")).toBeInTheDocument();
+  view.rerender(<MetadataForm value={metadata} sourceChanged={false} externalSuggestion={{ id: "tags-1", field: "tags", value: "go" }} onSave={vi.fn()} />);
+  expect(screen.getAllByText("Go")).toHaveLength(1);
+});
+
 test("Category 从 Hugo 快照选择并进入文章草稿", async () => {
   render(<MetadataForm value={metadata} sourceChanged={false} taxonomyState="ready" categoryOptions={[{ key: "engineering", name: "工程实践" }, { key: "product", name: "产品" }]} onSave={vi.fn()} />);
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Category" }), "产品");

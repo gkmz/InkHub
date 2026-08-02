@@ -15,7 +15,7 @@ interface MetadataFormProps {
   tagOptions?: TagOption[];
   canCreateTaxonomy?: boolean;
   onCreateTaxonomy?: (kind: "category" | "series", select: (name: string) => void) => void;
-  externalSuggestion?: { id: string; field: keyof ArticleMetadata; value: string } | null;
+  externalSuggestion?: { id: string; field: keyof ArticleMetadata; value: string | string[] } | null;
 }
 
 /** MetadataForm 编辑标准元数据，并在源文件变化时停止写回。 */
@@ -26,10 +26,14 @@ export function MetadataForm({ value, sourceChanged, onSave, onReload, taxonomyS
     if (!externalSuggestion) return;
     setDraft((current) => {
       if (externalSuggestion.field === "tags") {
-        const exists = current.tags.some((tag) => tag.toLocaleLowerCase() === externalSuggestion.value.toLocaleLowerCase());
-        return exists ? current : { ...current, tags: [...current.tags, externalSuggestion.value] };
+        if (typeof externalSuggestion.value !== "string") return current;
+        const exists = current.tags.some((tag) => normalize(tag) === normalize(externalSuggestion.value as string));
+        return exists ? current : { ...current, tags: [...current.tags, externalSuggestion.value as string] };
       }
-      return { ...current, [externalSuggestion.field]: externalSuggestion.value } as ArticleMetadata;
+      if (externalSuggestion.field === "keywords" && Array.isArray(externalSuggestion.value)) {
+        return { ...current, keywords: externalSuggestion.value };
+      }
+      return typeof externalSuggestion.value === "string" ? { ...current, [externalSuggestion.field]: externalSuggestion.value } as ArticleMetadata : current;
     });
   }, [externalSuggestion]);
   const update = <K extends keyof ArticleMetadata>(field: K, next: ArticleMetadata[K]) => setDraft((current) => ({ ...current, [field]: next }));
@@ -56,3 +60,5 @@ function fieldLabel(field: keyof ArticleMetadata) {
 function formatValue(value: string | string[]) {
   return Array.isArray(value) ? value.join("、") : value;
 }
+
+function normalize(value: string) { return value.trim().toLocaleLowerCase(); }
