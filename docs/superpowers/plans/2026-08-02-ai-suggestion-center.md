@@ -216,7 +216,7 @@ git commit -m "feat(ai): build suggestion center"
 
 - [ ] **Step 1: Add boundary tests**
 
-后端覆盖旧内容哈希详情的 `suggestions_stale=true\)、生成失败保留旧版本、跨 workspace suggestion ID 404。前端覆盖生成失败旧建议仍在、重复点击只发一个请求、采用后点击“保存到文章”才发 PUT metadata、历史详情只读。
+后端覆盖旧内容哈希详情的 `suggestions_stale=true`、生成失败保留旧版本、跨 workspace suggestion ID 404。前端覆盖生成失败旧建议仍在、重复点击只发一个请求、采用后点击“保存到文章”才发 PUT metadata、历史详情只读。
 
 - [ ] **Step 2: Update product copy**
 
@@ -245,5 +245,4 @@ Expected: 全部通过；Playwright 覆盖桌面和移动视口，文章页无�
 git add internal/transport/http web/app/src docs/PRD.md docs/design/interactions.md web/dist
 git commit -m "feat(ai): complete suggestion center workflow"
 ```
-
 
