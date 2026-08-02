@@ -211,14 +211,18 @@ func (p *Provider) buildRequest(request contracts.AIRequest) ([]byte, error) {
 	if !request.AllowBody {
 		article.Body = ""
 	}
+	outputSchema := request.OutputSchema
+	if outputSchema == "" && request.Task == contracts.AITaskMetadata {
+		outputSchema = metadataOutputSchema
+	}
 	input := struct {
 		Task     contracts.AITask          `json:"task"`
 		Article  contracts.ArticleInput    `json:"article"`
 		Taxonomy contracts.TaxonomyContext `json:"taxonomy"`
 		Schema   json.RawMessage           `json:"output_schema,omitempty"`
 	}{Task: request.Task, Article: article, Taxonomy: request.Taxonomy}
-	if request.OutputSchema != "" {
-		input.Schema = json.RawMessage(request.OutputSchema)
+	if outputSchema != "" {
+		input.Schema = json.RawMessage(outputSchema)
 	}
 	content, err := json.Marshal(input)
 	if err != nil {
@@ -228,8 +232,12 @@ func (p *Provider) buildRequest(request contracts.AIRequest) ([]byte, error) {
 		return nil, &contracts.ProviderError{Code: "openai.input_too_large", Category: contracts.ErrorValidation, Message: "AI 输入超过配置限制"}
 	}
 	payload, err := json.Marshal(chatRequest{
-		Model:          p.config.Model,
-		Messages:       []chatMessage{{Role: "user", Content: string(content)}},
+		Model: p.config.Model,
+		Messages: []chatMessage{{
+			Role: "user",
+			// OpenAI-compatible接口要求 json_object 模式的消息明确提及 JSON。
+			Content: "请只返回合法的 json 对象，不要输出 Markdown 代码围栏或额外解释。\n输入：" + string(content),
+		}},
 		ResponseFormat: &responseFormat{Type: "json_object"},
 	})
 	if err != nil {

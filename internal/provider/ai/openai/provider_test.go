@@ -41,6 +41,17 @@ func TestProviderGeneratesStructuredSuggestionsWithoutSendingBodyInPrivacyMode(t
 	if strings.Contains(string(receivedBody), "不得发送的完整正文") {
 		t.Fatalf("隐私模式泄露了正文: %s", receivedBody)
 	}
+	var requestPayload struct {
+		Messages []struct {
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(receivedBody, &requestPayload); err != nil || len(requestPayload.Messages) != 1 {
+		t.Fatalf("AI 请求消息结构无效: %s", receivedBody)
+	}
+	if !strings.Contains(strings.ToLower(requestPayload.Messages[0].Content), "json") || !strings.Contains(requestPayload.Messages[0].Content, "output_schema") {
+		t.Fatalf("AI 请求未声明 JSON 输出和结构约束: %s", requestPayload.Messages[0].Content)
+	}
 	if result.InputContentHash != "hash-v1" || result.Model != "test-model" {
 		t.Fatalf("响应上下文不匹配: %+v", result)
 	}
