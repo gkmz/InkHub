@@ -34,6 +34,36 @@ func TestListArticlesScopesSearchesAndFiltersDispositions(t *testing.T) {
 	assertArticleListIDs(t, api, httptransport.ArticleListQuery{Limit: 50}, "stale", "published", "match")
 }
 
+func TestListArticlesPrioritizesReadyBeforeDrafts(t *testing.T) {
+	t.Parallel()
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','test','/tmp','2026-01-01','2026-01-01','2026-01-01');
+INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES('s1','w1','obsidian','/tmp','2026-01-01','2026-01-01');
+INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,content_hash,indexed_at,created_at,updated_at,source_mtime,content_stage) VALUES
+('draft-new','w1','s1','draft-new','draft-new.md','较新的草稿','draft-new','2026-01-03','2026-01-03','2026-01-03','2026-01-03','draft'),
+('ready-old','w1','s1','ready-old','ready-old.md','较早的就绪文章','ready-old','2026-01-02','2026-01-02','2026-01-02','2026-01-02','ready'),
+('ready-new','w1','s1','ready-new','ready-new.md','较新的就绪文章','ready-new','2026-01-01','2026-01-01','2026-01-01','2026-01-01','ready')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := newDatabaseAPI(db)
+	first, err := api.ListArticles(context.Background(), httptransport.ArticleListQuery{Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.Items) != 2 || first.Items[0].ID != "ready-old" || first.Items[1].ID != "ready-new" {
+		t.Fatalf("ready-first page = %+v", first.Items)
+	}
+	if first.NextCursor == "" {
+		t.Fatal("ready page should include a cursor for the remaining draft")
+	}
+	assertArticleListIDs(t, api, httptransport.ArticleListQuery{Cursor: first.NextCursor, Limit: 2}, "draft-new")
+}
+
 func seedArticleListRows(t *testing.T, db interface {
 	Exec(string, ...any) (sql.Result, error)
 }) {

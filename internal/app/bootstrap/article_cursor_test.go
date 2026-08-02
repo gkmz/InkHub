@@ -13,7 +13,7 @@ import (
 func TestArticleCursorRoundTripsAndRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 
-	want := articleCursor{ModifiedAt: "2026-07-15T10:00:00Z", ID: "article_1"}
+	want := articleCursor{ContentStage: "ready", ModifiedAt: "2026-07-15T10:00:00Z", ID: "article_1"}
 	encoded, err := encodeArticleCursor(want)
 	if err != nil {
 		t.Fatalf("encodeArticleCursor() error = %v", err)

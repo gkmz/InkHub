@@ -10,8 +10,10 @@ const maxArticleCursorLength = 1024
 
 // articleCursor 保存内容库 keyset 分页所需的最后排序位置。
 type articleCursor struct {
-	ModifiedAt string `json:"modified_at"`
-	ID         string `json:"id"`
+	// ContentStage 是列表排序的第一关键字，确保跨阶段分页保持稳定。
+	ContentStage string `json:"content_stage"`
+	ModifiedAt   string `json:"modified_at"`
+	ID           string `json:"id"`
 }
 
 func encodeArticleCursor(cursor articleCursor) (string, error) {
@@ -44,6 +46,9 @@ func decodeArticleCursor(value string) (articleCursor, error) {
 }
 
 func validateArticleCursor(cursor articleCursor) error {
+	if cursor.ContentStage != "draft" && cursor.ContentStage != "ready" {
+		return fmt.Errorf("文章 Cursor 内容阶段无效")
+	}
 	if cursor.ModifiedAt == "" || cursor.ID == "" || len(cursor.ModifiedAt) > 64 || len(cursor.ID) > 256 {
 		return fmt.Errorf("文章 Cursor 字段无效")
 	}

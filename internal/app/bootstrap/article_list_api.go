@@ -11,6 +11,9 @@ import (
 
 const currentWorkspaceSQL = `(SELECT id FROM workspaces ORDER BY last_used_at DESC,id LIMIT 1)`
 
+// articleStageRankSQL 将作者明确标记的已就绪文章排在草稿前面。
+const articleStageRankSQL = `CASE WHEN articles.content_stage='ready' THEN 0 ELSE 1 END`
+
 // ListArticles 查询当前工作区中符合条件的内容库文章。
 func (api databaseAPI) ListArticles(ctx context.Context, input httptransport.ArticleListQuery) (httptransport.ArticlePage, error) {
 	page := httptransport.ArticlePage{
@@ -46,7 +49,7 @@ func (api databaseAPI) ListArticles(ctx context.Context, input httptransport.Art
 	if len(page.Items) > input.Limit {
 		page.Items = page.Items[:input.Limit]
 		last := page.Items[len(page.Items)-1]
-		page.NextCursor, err = encodeArticleCursor(articleCursor{ModifiedAt: last.ModifiedAt, ID: last.ID})
+		page.NextCursor, err = encodeArticleCursor(articleCursor{ContentStage: last.ContentStage, ModifiedAt: last.ModifiedAt, ID: last.ID})
 		if err != nil {
 			return httptransport.ArticlePage{}, err
 		}
@@ -116,11 +119,15 @@ AND NOT COALESCE(article_dispositions.kind='published' AND article_dispositions.
 		if err != nil {
 			return "", nil, httptransport.ErrInvalidCursor
 		}
-		// 时间和 ID 共同构成稳定 keyset，避免翻页期间新增文章造成 OFFSET 漂移。
-		query += ` AND (COALESCE(articles.source_mtime,articles.updated_at) < ? OR (COALESCE(articles.source_mtime,articles.updated_at) = ? AND articles.id < ?))`
-		arguments = append(arguments, cursor.ModifiedAt, cursor.ModifiedAt, cursor.ID)
+		// 阶段、时间和 ID 共同构成稳定 keyset，避免跨阶段分页时漏掉草稿或重复文章。
+		query += ` AND (` + articleStageRankSQL + ` > ? OR (` + articleStageRankSQL + ` = ? AND COALESCE(articles.source_mtime,articles.updated_at) < ?) OR (` + articleStageRankSQL + ` = ? AND COALESCE(articles.source_mtime,articles.updated_at) = ? AND articles.id < ?))`
+		stageRank := 1
+		if cursor.ContentStage == "ready" {
+			stageRank = 0
+		}
+		arguments = append(arguments, stageRank, stageRank, cursor.ModifiedAt, stageRank, cursor.ModifiedAt, cursor.ID)
 	}
-	query += ` ORDER BY COALESCE(articles.source_mtime,articles.updated_at) DESC,articles.id DESC LIMIT ?`
+	query += ` ORDER BY ` + articleStageRankSQL + ` ASC,COALESCE(articles.source_mtime,articles.updated_at) DESC,articles.id DESC LIMIT ?`
 	arguments = append(arguments, input.Limit+1)
 	return query, arguments, nil
 }
