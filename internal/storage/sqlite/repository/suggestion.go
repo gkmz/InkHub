@@ -60,7 +60,7 @@ WHERE ai_suggestions.article_id=excluded.article_id
 
 // FindByID 按建议 ID 查询完整建议集合。
 func (r *SuggestionRepository) FindByID(ctx context.Context, id string) (domaineditorial.SuggestionSet, error) {
-	return scanSuggestion(r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state FROM ai_suggestions WHERE id=?`, id))
+	return scanSuggestion(r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state,created_at,updated_at FROM ai_suggestions WHERE id=?`, id))
 }
 
 // ListByArticle 查询指定工作区文章的建议历史，最新生成的版本排在最前面。
@@ -71,7 +71,7 @@ func (r *SuggestionRepository) ListByArticle(ctx context.Context, workspaceID, a
 	if limit > 100 {
 		limit = 100
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state
+	rows, err := r.db.QueryContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state,created_at,updated_at
 FROM ai_suggestions
 WHERE workspace_id=? AND article_id=?
 ORDER BY created_at DESC,id DESC LIMIT ?`, workspaceID, articleID, limit)
@@ -95,13 +95,13 @@ ORDER BY created_at DESC,id DESC LIMIT ?`, workspaceID, articleID, limit)
 
 // FindByArticleID 在工作区和文章边界内查询指定的建议版本。
 func (r *SuggestionRepository) FindByArticleID(ctx context.Context, workspaceID, articleID, suggestionID string) (domaineditorial.SuggestionSet, error) {
-	return scanSuggestion(r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state
+	return scanSuggestion(r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state,created_at,updated_at
 FROM ai_suggestions WHERE workspace_id=? AND article_id=? AND id=?`, workspaceID, articleID, suggestionID))
 }
 
 // FindLatestByArticle 查询当前工作区文章最近更新的一组 AI 建议。
 func (r *SuggestionRepository) FindLatestByArticle(ctx context.Context, workspaceID, articleID string) (domaineditorial.SuggestionSet, bool, error) {
-	value, err := scanSuggestion(r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state FROM ai_suggestions WHERE workspace_id=? AND article_id=? ORDER BY updated_at DESC LIMIT 1`, workspaceID, articleID))
+	value, err := scanSuggestion(r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state,created_at,updated_at FROM ai_suggestions WHERE workspace_id=? AND article_id=? ORDER BY updated_at DESC,id DESC LIMIT 1`, workspaceID, articleID))
 	if err == sql.ErrNoRows {
 		return domaineditorial.SuggestionSet{}, false, nil
 	}
@@ -113,7 +113,7 @@ func scanSuggestion(row rowScanner) (domaineditorial.SuggestionSet, error) {
 	var payloadJSON string
 	err := row.Scan(
 		&value.ID, &value.ArticleID, &value.InputContentHash, &value.ProviderInstanceID,
-		&value.WorkspaceID, &payloadJSON, &value.State,
+		&value.WorkspaceID, &payloadJSON, &value.State, &value.CreatedAt, &value.UpdatedAt,
 	)
 	if err != nil {
 		return domaineditorial.SuggestionSet{}, fmt.Errorf("查询 AI 建议: %w", err)

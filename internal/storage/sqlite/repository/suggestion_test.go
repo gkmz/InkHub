@@ -71,6 +71,24 @@ func TestSuggestionRepositoryListsHistoryByArticle(t *testing.T) {
 	}
 }
 
+func TestSuggestionRepositoryScopesHistoryToArticleAndWorkspace(t *testing.T) {
+	t.Parallel()
+
+	db := openRepositoryTestDB(t)
+	seedSuggestionParents(t, db)
+	repository := NewSuggestionRepository(db)
+	value := domaineditorial.SuggestionSet{ID: "suggestion_private", ArticleID: "a1", WorkspaceID: "w1", ProviderInstanceID: "provider_ai", InputContentHash: "hash-v1", State: domaineditorial.SuggestionPending}
+	if err := repository.Save(context.Background(), value); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.FindByArticleID(context.Background(), "w2", "a1", value.ID); err == nil {
+		t.Fatal("跨工作区查询不应返回建议")
+	}
+	if _, err := repository.FindByArticleID(context.Background(), "w1", "other", value.ID); err == nil {
+		t.Fatal("跨文章查询不应返回建议")
+	}
+}
+
 func seedSuggestionParents(t *testing.T, db *sql.DB) {
 	t.Helper()
 	seedWorkspace(t, db)

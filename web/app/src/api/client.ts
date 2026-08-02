@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, SuggestionHistoryResponse, SuggestionVersionView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -121,7 +121,17 @@ export function confirmHugoPreview(previewID: string) {
 
 /** generateArticleSuggestions 主动请求当前文章的结构化 AI 建议。 */
 export function generateArticleSuggestions(articleID: string) {
-  return request<Pick<ArticleDetail, "suggestions" | "suggestions_stale">>(`/articles/${encodeURIComponent(articleID)}/suggestions`, { method: "POST", body: "{}" });
+  return request<Pick<ArticleDetail, "suggestions" | "suggestions_stale" | "suggestions_id" | "suggestions_generated_at">>(`/articles/${encodeURIComponent(articleID)}/suggestions`, { method: "POST", body: "{}" });
+}
+
+/** getSuggestionHistory 查询当前文章的 AI 建议生成历史。 */
+export function getSuggestionHistory(articleID: string, signal?: AbortSignal) {
+  return request<SuggestionHistoryResponse>(`/articles/${encodeURIComponent(articleID)}/suggestions?limit=20`, { signal });
+}
+
+/** getSuggestionVersion 读取指定 AI 建议版本的只读详情。 */
+export function getSuggestionVersion(articleID: string, suggestionID: string, signal?: AbortSignal) {
+  return request<SuggestionVersionView>(`/articles/${encodeURIComponent(articleID)}/suggestions/${encodeURIComponent(suggestionID)}`, { signal });
 }
 
 /** saveMetadata 使用源文件指纹约束写回，冲突由服务端拒绝。 */

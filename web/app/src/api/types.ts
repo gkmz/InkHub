@@ -172,9 +172,36 @@ export interface AISuggestion {
   id: string;
   field: keyof ArticleMetadata;
   name: string;
+  value?: string | string[];
   reason: string;
   new_term: boolean;
   usage_count: number;
+  accepted?: boolean;
+}
+
+export interface SuggestionHistoryItem {
+  id: string;
+  generated_at: string;
+  model: string;
+  input_content_hash: string;
+  state: string;
+  suggestion_count: number;
+  current: boolean;
+}
+
+export interface SuggestionHistoryResponse {
+  items: SuggestionHistoryItem[];
+  latest_id?: string;
+}
+
+export interface SuggestionVersionView {
+  id: string;
+  generated_at: string;
+  model: string;
+  input_content_hash: string;
+  state: string;
+  suggestions: AISuggestion[];
+  suggestions_stale: boolean;
 }
 
 export interface ArticleDetail {
@@ -195,6 +222,8 @@ export interface ArticleDetail {
   checks: CheckResult[];
   ai_configured: boolean;
   suggestions: AISuggestion[];
+  suggestions_id?: string;
+  suggestions_generated_at?: string;
   suggestions_stale: boolean;
   wechat_copied: boolean;
   resource_diagnostics: Array<{ code: string; message: string; blocking: boolean }>;

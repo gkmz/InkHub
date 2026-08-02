@@ -34,6 +34,8 @@ type SuggestionSet struct {
 	ProviderInstanceID string
 	InputContentHash   string
 	Model              string
+	CreatedAt          string
+	UpdatedAt          string
 	Items              []SuggestionItem
 	State              SuggestionState
 }

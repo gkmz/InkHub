@@ -2,10 +2,13 @@ package httptransport
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	editorialapp "github.com/gkmz/InkHub/internal/app/editorial"
@@ -18,9 +21,36 @@ type articleSuggestionView struct {
 	ID         string `json:"id"`
 	Field      string `json:"field"`
 	Name       string `json:"name"`
+	Value      any    `json:"value,omitempty"`
 	Reason     string `json:"reason"`
 	NewTerm    bool   `json:"new_term"`
 	UsageCount int    `json:"usage_count"`
+	Accepted   bool   `json:"accepted"`
+}
+
+type articleSuggestionHistoryView struct {
+	ID               string `json:"id"`
+	GeneratedAt      string `json:"generated_at"`
+	Model            string `json:"model"`
+	InputContentHash string `json:"input_content_hash"`
+	State            string `json:"state"`
+	SuggestionCount  int    `json:"suggestion_count"`
+	Current          bool   `json:"current"`
+}
+
+type articleSuggestionHistoryResponse struct {
+	Items    []articleSuggestionHistoryView `json:"items"`
+	LatestID string                         `json:"latest_id,omitempty"`
+}
+
+type articleSuggestionDetailView struct {
+	ID               string                  `json:"id"`
+	GeneratedAt      string                  `json:"generated_at"`
+	Model            string                  `json:"model"`
+	InputContentHash string                  `json:"input_content_hash"`
+	State            string                  `json:"state"`
+	Suggestions      []articleSuggestionView `json:"suggestions"`
+	SuggestionsStale bool                    `json:"suggestions_stale"`
 }
 
 // generateArticleSuggestions 通过当前工作区 AI Provider 生成并持久化结构化建议。
@@ -69,7 +99,85 @@ func (h *runtimeHandler) generateArticleSuggestions(response http.ResponseWriter
 		mapError(response, err)
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"suggestions": suggestionViews(result.Items), "suggestions_stale": false})
+	detail := suggestionDetailView(result, current.ContentHash)
+	writeJSON(response, http.StatusOK, detail)
+}
+
+// suggestionHistory 返回当前文章的 AI 建议生成历史摘要。
+func (h *runtimeHandler) suggestionHistory(response http.ResponseWriter, request *http.Request, articleID string) {
+	current, err := h.loadSuggestionArticle(request, articleID)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	limit := 20
+	if raw := request.URL.Query().Get("limit"); raw != "" {
+		parsed, parseErr := strconv.Atoi(raw)
+		if parseErr != nil || parsed < 1 || parsed > 100 {
+			writeError(response, http.StatusBadRequest, "request.invalid", "建议历史分页参数无效")
+			return
+		}
+		limit = parsed
+	}
+	history, err := repository.NewSuggestionRepository(h.db).ListByArticle(request.Context(), current.WorkspaceID, current.ID, limit)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	items := make([]articleSuggestionHistoryView, 0, len(history))
+	for _, version := range history {
+		items = append(items, articleSuggestionHistoryView{
+			ID: version.ID, GeneratedAt: version.CreatedAt, Model: version.Model,
+			InputContentHash: version.InputContentHash, State: string(version.State),
+			SuggestionCount: len(version.Items), Current: version.InputContentHash == current.ContentHash,
+		})
+	}
+	result := articleSuggestionHistoryResponse{Items: items}
+	if len(items) > 0 {
+		result.LatestID = items[0].ID
+	}
+	writeJSON(response, http.StatusOK, result)
+}
+
+// suggestionVersion 返回单个 AI 建议版本的只读详情。
+func (h *runtimeHandler) suggestionVersion(response http.ResponseWriter, request *http.Request, articleID, suggestionID string) {
+	current, err := h.loadSuggestionArticle(request, articleID)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	version, err := repository.NewSuggestionRepository(h.db).FindByArticleID(request.Context(), current.WorkspaceID, current.ID, suggestionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		mapError(response, ErrNotFound)
+		return
+	}
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, suggestionDetailView(version, current.ContentHash))
+}
+
+func suggestionDetailView(version editorialapp.SuggestionSet, currentHash string) articleSuggestionDetailView {
+	return articleSuggestionDetailView{
+		ID: version.ID, GeneratedAt: version.CreatedAt, Model: version.Model,
+		InputContentHash: version.InputContentHash, State: string(version.State),
+		Suggestions: suggestionViews(version.Items), SuggestionsStale: version.InputContentHash != currentHash,
+	}
+}
+
+func parseSuggestionPath(path string) (articleID, suggestionID string, ok bool) {
+	parts := strings.Split(strings.TrimPrefix(path, "/api/v1/articles/"), "/")
+	if len(parts) < 2 || len(parts) > 3 || parts[0] == "" || parts[1] != "suggestions" {
+		return "", "", false
+	}
+	if len(parts) == 3 && parts[2] == "" {
+		return "", "", false
+	}
+	if len(parts) == 2 {
+		return parts[0], "", true
+	}
+	return parts[0], parts[2], true
 }
 
 // newSuggestionID 为每次 AI 生成创建不可预测且不会覆盖历史的建议版本 ID。
@@ -125,10 +233,15 @@ func suggestionViews(items []editorialapp.SuggestionItem) []articleSuggestionVie
 	views := make([]articleSuggestionView, 0, len(items))
 	for _, item := range items {
 		var name string
-		if json.Unmarshal(item.Value, &name) != nil {
+		if json.Unmarshal(item.Value, &name) == nil {
+			views = append(views, articleSuggestionView{ID: item.ID, Field: item.Field, Name: name, Value: name, Reason: item.Rationale, NewTerm: item.NewTerm, UsageCount: item.UsageCount, Accepted: item.Accepted})
 			continue
 		}
-		views = append(views, articleSuggestionView{ID: item.ID, Field: item.Field, Name: name, Reason: item.Rationale, NewTerm: item.NewTerm, UsageCount: item.UsageCount})
+		var values []string
+		if json.Unmarshal(item.Value, &values) != nil {
+			continue
+		}
+		views = append(views, articleSuggestionView{ID: item.ID, Field: item.Field, Name: strings.Join(values, "、"), Value: values, Reason: item.Rationale, NewTerm: item.NewTerm, UsageCount: item.UsageCount, Accepted: item.Accepted})
 	}
 	return views
 }

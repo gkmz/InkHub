@@ -169,6 +169,15 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.generateArticleSuggestions(response, request)
 		}
+	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/articles/") && strings.Contains(request.URL.Path, "/suggestions"):
+		articleID, suggestionID, ok := parseSuggestionPath(request.URL.Path)
+		if !ok {
+			writeError(response, http.StatusNotFound, "resource.not_found", "请求的资源不存在")
+		} else if suggestionID == "" {
+			h.suggestionHistory(response, request, articleID)
+		} else {
+			h.suggestionVersion(response, request, articleID, suggestionID)
+		}
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/articles/"):
 		h.articleDetail(response, request)
 	case request.Method == http.MethodPut && strings.HasSuffix(request.URL.Path, "/metadata"):
@@ -363,9 +372,13 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 	metadata := map[string]any{"title": title, "description": description, "category": category, "series": series, "tags": tags, "keywords": keywords, "slug": slug, "cover": cover}
 	suggestionItems := []articleSuggestionView{}
 	suggestionsStale := false
+	suggestionsID := ""
+	suggestionsGeneratedAt := ""
 	if latest, found, findErr := repository.NewSuggestionRepository(h.db).FindLatestByArticle(request.Context(), workspaceID, id); findErr == nil && found {
 		suggestionItems = suggestionViews(latest.Items)
 		suggestionsStale = latest.InputContentHash != contentHash
+		suggestionsID = latest.ID
+		suggestionsGeneratedAt = latest.CreatedAt
 	}
 	disposition, err := h.effectiveArticleDisposition(request.Context(), workspaceID, id, contentHash)
 	if err != nil {
@@ -378,7 +391,7 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 			resourceDiagnostics = append(resourceDiagnostics, map[string]any{"code": diagnostic.Code, "message": diagnostic.Message, "blocking": diagnostic.Blocking})
 		}
 	}
-	result := map[string]any{"id": id, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "resource_diagnostics": resourceDiagnostics, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
+	result := map[string]any{"id": id, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "resource_diagnostics": resourceDiagnostics, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_id": suggestionsID, "suggestions_generated_at": suggestionsGeneratedAt, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
 	if disposition != nil {
 		result["disposition"] = disposition
 	}
