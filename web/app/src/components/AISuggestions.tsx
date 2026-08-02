@@ -26,11 +26,13 @@ export function AISuggestions({ suggestions, stale, generating = false, historyC
   const [ignored, setIgnored] = useState<string[]>([]);
   const [accepted, setAccepted] = useState<string[]>([]);
   const [showIgnored, setShowIgnored] = useState(false);
+  const [confirmingGenerate, setConfirmingGenerate] = useState(false);
   const suggestionKey = suggestions.map((suggestion) => suggestion.id).join("\0");
   useEffect(() => {
     setIgnored([]);
     setAccepted([]);
     setShowIgnored(false);
+    setConfirmingGenerate(false);
   }, [suggestionKey]);
 
   const accept = (suggestion: AISuggestion) => {
@@ -39,14 +41,22 @@ export function AISuggestions({ suggestions, stale, generating = false, historyC
     onAccept(suggestion);
   };
   const ignore = (suggestionID: string) => setIgnored((current) => current.includes(suggestionID) ? current : [...current, suggestionID]);
+  const requestGenerate = () => {
+    if (suggestions.length === 0) {
+      onGenerate();
+      return;
+    }
+    setConfirmingGenerate(true);
+  };
   const visibleSuggestionCount = suggestions.filter((suggestion) => !ignored.includes(suggestion.id)).length;
 
   return <section className="tool-section ai-section">
     <div className="tool-heading">
       <h2><Sparkles size={16} />AI 建议中心</h2>
       <div className="ai-heading-actions">
+        {ignored.length > 0 && <button className="ai-show-ignored" type="button" onClick={() => setShowIgnored((current) => !current)}>{showIgnored ? "隐藏已忽略" : `显示已忽略（${ignored.length}）`}</button>}
         {onOpenHistory && <button className="secondary ai-history" type="button" onClick={onOpenHistory}><History size={14} />历史{historyCount > 0 ? ` ${historyCount}` : ""}</button>}
-        <button className="secondary ai-generate" type="button" disabled={generating} onClick={onGenerate}>{generating ? "正在生成…" : "生成 AI 建议"}</button>
+        {confirmingGenerate && !generating ? <div className="ai-generate-confirm"><span>重新生成会创建新的建议版本，继续吗？</span><button type="button" onClick={() => setConfirmingGenerate(false)}>取消</button><button type="button" onClick={() => { setConfirmingGenerate(false); onGenerate(); }}>确认生成</button></div> : <button className="secondary ai-generate" type="button" disabled={generating} onClick={requestGenerate}>{generating ? "正在生成…" : "生成 AI 建议"}</button>}
       </div>
     </div>
     <p className="ai-draft-notice">AI 建议只会加入当前草稿，保存后才写入文章。</p>
@@ -62,7 +72,6 @@ export function AISuggestions({ suggestions, stale, generating = false, historyC
         {visible.map((suggestion) => <SuggestionRow key={suggestion.id} suggestion={suggestion} stale={stale} accepted={accepted.includes(suggestion.id) || Boolean(suggestion.accepted)} ignored={ignored.includes(suggestion.id)} onAccept={() => accept(suggestion)} onIgnore={() => ignore(suggestion.id)} />)}
       </section>;
     })}
-    {ignored.length > 0 && <button className="ai-show-ignored" type="button" onClick={() => setShowIgnored((current) => !current)}>{showIgnored ? "隐藏已忽略" : `显示已忽略（${ignored.length}）`}</button>}
   </section>;
 }
 

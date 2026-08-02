@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { AISuggestions } from "../../components/AISuggestions";
@@ -204,6 +204,30 @@ test("AI 建议只能逐字段采用并写入表单草稿", async () => {
   expect(screen.getByText("7 篇文章")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "采用 SQLite" }));
   expect(accept).toHaveBeenCalledWith(expect.objectContaining({ name: "SQLite" }));
+});
+
+test("重新生成 AI 建议需要二次确认", async () => {
+  const generate = vi.fn();
+  render(<AISuggestions stale={false} suggestions={[{ id: "s1", field: "tags", name: "SQLite", reason: "主题匹配", new_term: false, usage_count: 7 }]} onAccept={vi.fn()} onGenerate={generate} />);
+  await userEvent.click(screen.getByRole("button", { name: "生成 AI 建议" }));
+  expect(generate).not.toHaveBeenCalled();
+  expect(screen.getByText("重新生成会创建新的建议版本，继续吗？")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "取消" }));
+  expect(generate).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "生成 AI 建议" }));
+  await userEvent.click(screen.getByRole("button", { name: "确认生成" }));
+  expect(generate).toHaveBeenCalledTimes(1);
+});
+
+test("已忽略建议的显示切换位于建议中心标题栏", async () => {
+  render(<AISuggestions stale={false} suggestions={[{ id: "s1", field: "tags", name: "SQLite", reason: "主题匹配", new_term: false, usage_count: 7 }]} onAccept={vi.fn()} onGenerate={vi.fn()} />);
+  await userEvent.click(screen.getByRole("button", { name: "忽略 SQLite" }));
+  const heading = screen.getByRole("heading", { name: "AI 建议中心" });
+  const headingActions = heading.closest(".tool-heading");
+  expect(headingActions).not.toBeNull();
+  expect(within(headingActions as HTMLElement).getByRole("button", { name: "显示已忽略（1）" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "显示已忽略（1）" }));
+  expect(within(headingActions as HTMLElement).getByRole("button", { name: "隐藏已忽略" })).toBeInTheDocument();
 });
 
 test("文章更新后 AI 建议过期且不能继续采用", () => {

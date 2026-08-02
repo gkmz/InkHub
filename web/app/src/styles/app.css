@@ -245,14 +245,21 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .checks small { color: var(--action); font-size: 9px; }
 .suggestion { margin-bottom: 12px; padding: 11px; border: 1px solid #cfe1dc; background: #f7faf8; border-radius: 4px; }
 .suggestion > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.suggestion > div:first-child { display: grid; align-items: start; justify-content: initial; gap: 4px; min-width: 0; }
+.suggestion b { display: block; min-width: 0; overflow-wrap: anywhere; font-size: 11px; line-height: 1.45; }
 .suggestion small { color: var(--muted); font-size: 9px; }
 .suggestion p { display: grid; gap: 6px; margin: 10px 0; font-size: 11px; }
 .suggestion del { color: var(--muted); }
 .suggestion p span { color: var(--ink); }
 .suggestion button { border: 0; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 3px; cursor: pointer; font-size: 10px; }
 .suggestion button:last-child { color: var(--action); }
-.ai-heading-actions { display: flex; align-items: center; gap: 6px; }
+.ai-heading-actions { min-width: 0; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
 .ai-heading-actions button { min-height: 30px; padding: 0 8px; font-size: 10px; }
+.ai-heading-actions .ai-show-ignored { min-height: 30px; padding: 0 4px; }
+.ai-generate-confirm { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 6px; color: var(--warning); font-size: 10px; }
+.ai-generate-confirm span { max-width: 220px; line-height: 1.35; }
+.ai-generate-confirm button { min-height: 28px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--action); cursor: pointer; }
+.ai-generate-confirm button:first-of-type { color: var(--muted); }
 .ai-draft-notice { margin: -7px 0 12px; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .suggestion-group { margin: 14px 0 18px; }
 .suggestion-group-heading { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
