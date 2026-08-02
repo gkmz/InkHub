@@ -20,6 +20,7 @@ export function ArticleRow({ article, dashboard = false, onOpen, selected = fals
       <span className="status-label">{statusText}</span>
       <span className="channel-state"><b>H</b>{article.hugo_state}</span>
       <span className="channel-state"><b>微</b>{article.wechat_state}</span>
+      <span className="channel-state"><b>小</b>{article.xiaohongshu_state ?? "尚未准备"}</span>
       <button className="row-action" type="button" onClick={() => onOpen?.(article.id)}>{actionLabel}<ActionIcon size={16} aria-hidden="true" /></button>
     </article>
   );

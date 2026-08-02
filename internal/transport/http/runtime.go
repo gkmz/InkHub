@@ -178,6 +178,11 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		} else {
 			h.suggestionVersion(response, request, articleID, suggestionID)
 		}
+	case strings.HasPrefix(request.URL.Path, "/api/v1/articles/") && strings.Contains(request.URL.Path, "/xiaohongshu"):
+		if request.Method != http.MethodGet && !validateWriteRequest(response, request) {
+			return
+		}
+		h.xiaohongshu(response, request)
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/articles/"):
 		h.articleDetail(response, request)
 	case request.Method == http.MethodPut && strings.HasSuffix(request.URL.Path, "/metadata"):
@@ -346,6 +351,7 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 		}
 	}
 	hugoState, wechatState, wechatCopied := "尚未同步", "尚未准备", false
+	xiaohongshuState := "尚未准备"
 	if contentStage != "ready" {
 		reviewState, hugoState, wechatState = "不适用", "未进入发布流程", "未进入发布流程"
 	}
@@ -369,6 +375,10 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 			}
 		}
 	}
+	var xhsDraftState, xhsDraftHash string
+	if h.db.QueryRowContext(request.Context(), `SELECT state,source_content_hash FROM xiaohongshu_drafts WHERE article_id=? ORDER BY created_at DESC,id DESC LIMIT 1`, id).Scan(&xhsDraftState, &xhsDraftHash) == nil {
+		xiaohongshuState = runtimeXiaohongshuLabel(xhsDraftState, xhsDraftHash, contentHash)
+	}
 	metadata := map[string]any{"title": title, "description": description, "category": category, "series": series, "tags": tags, "keywords": keywords, "slug": slug, "cover": cover}
 	suggestionItems := []articleSuggestionView{}
 	suggestionsStale := false
@@ -391,7 +401,7 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 			resourceDiagnostics = append(resourceDiagnostics, map[string]any{"code": diagnostic.Code, "message": diagnostic.Message, "blocking": diagnostic.Blocking})
 		}
 	}
-	result := map[string]any{"id": id, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "resource_diagnostics": resourceDiagnostics, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_id": suggestionsID, "suggestions_generated_at": suggestionsGeneratedAt, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
+	result := map[string]any{"id": id, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "xiaohongshu_state": xiaohongshuState, "resource_diagnostics": resourceDiagnostics, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信 · 小红书"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_id": suggestionsID, "suggestions_generated_at": suggestionsGeneratedAt, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
 	if disposition != nil {
 		result["disposition"] = disposition
 	}

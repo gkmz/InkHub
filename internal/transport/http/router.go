@@ -45,6 +45,7 @@ type ArticleSummary struct {
 	State             string `json:"state"`
 	HugoState         string `json:"hugo_state"`
 	WeChatState       string `json:"wechat_state"`
+	XiaohongshuState  string `json:"xiaohongshu_state"`
 	ContentVersion    string `json:"content_version"`
 	Disposition       string `json:"disposition,omitempty"`
 	ContentStage      string `json:"content_stage"`

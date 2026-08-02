@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, SuggestionHistoryResponse, SuggestionVersionView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, SuggestionHistoryResponse, SuggestionVersionView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft, XiaohongshuDraft, XiaohongshuView } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -157,6 +157,31 @@ export function confirmWeChatDraft(article: Pick<ArticleDetail, "id" | "content_
 /** markWeChatCopied 仅在浏览器成功写入当前模板 HTML 后记录复制状态。 */
 export function markWeChatCopied(article: Pick<ArticleDetail, "id" | "content_version" | "wechat_provider_id">) {
   return request<{ state: string }>("/wechat/copied", { method: "POST", body: JSON.stringify({ article_id: article.id, provider_instance_id: article.wechat_provider_id, content_hash: article.content_version }) });
+}
+
+/** getXiaohongshu 读取小红书当前草稿和版本历史。 */
+export function getXiaohongshu(articleID: string, signal?: AbortSignal) {
+  return request<XiaohongshuView>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu`, { signal });
+}
+
+/** generateXiaohongshuDraft 生成一个新的完整小红书草稿版本，不覆盖历史。 */
+export function generateXiaohongshuDraft(articleID: string) {
+  return request<XiaohongshuDraft>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/drafts/generate`, { method: "POST", body: "{}" });
+}
+
+/** saveXiaohongshuDraft 保存用户整体编辑后的小红书草稿。 */
+export function saveXiaohongshuDraft(articleID: string, draft: Pick<XiaohongshuDraft, "id" | "title" | "body_html" | "topics" | "source_note" | "comment_copy">) {
+  return request<XiaohongshuDraft>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/drafts`, { method: "POST", body: JSON.stringify({ draft_id: draft.id, title: draft.title, body_html: draft.body_html, topics: draft.topics, source_note: draft.source_note, comment_copy: draft.comment_copy }) });
+}
+
+/** saveXiaohongshuRender 记录浏览器完成的手机模板渲染版本。 */
+export function saveXiaohongshuRender(articleID: string, input: { draft_id: string; template_id: string; template_version: string; viewport_width: number; page_height: number; html_hash: string; page_count: number }) {
+  return request<{ id: string; draft_id: string; state: string; page_count: number }>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/renders`, { method: "POST", body: JSON.stringify(input) });
+}
+
+/** markXiaohongshuPublished 记录用户已经手动上传图片并发布。 */
+export function markXiaohongshuPublished(articleID: string, draftID: string) {
+  return request<{ state: string }>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/published`, { method: "POST", body: JSON.stringify({ draft_id: draftID }) });
 }
 
 /** getPreparedWeChatHTML 读取当前文章已经准备完成的安全模板 HTML。 */

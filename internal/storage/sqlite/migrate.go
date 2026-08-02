@@ -168,6 +168,9 @@ var tableComments = map[string]string{
 	"templates":            "保存按渲染目标隔离的已安装模板版本与来源",
 	"jobs":                 "保存可恢复后台任务及执行结果",
 	"settings":             "保存工作区非敏感设置",
+	"xiaohongshu_drafts":   "保存小红书完整内容草稿及版本历史",
+	"xiaohongshu_renders":  "保存小红书手机模板渲染版本",
+	"xiaohongshu_events":   "追加保存小红书草稿、渲染和发布审计事件",
 }
 
 var columnComments = map[string]string{
@@ -176,6 +179,12 @@ var columnComments = map[string]string{
 	"name": "可读名称", "version": "版本号", "checksum": "内容 SHA-256 校验摘要", "applied_at": "应用时间（UTC）",
 	"object_type": "注释对象类型", "object_name": "注释对象完整名称", "comment": "对象中文说明",
 	"created_at": "创建时间（UTC）", "updated_at": "最后更新时间（UTC）", "deleted_at": "软删除时间（UTC）",
+	"source_content_hash": "草稿生成时对应的文章内容版本", "body_html": "小红书正文 HTML", "topics_json": "小红书话题 JSON 数组",
+	"source_note": "小红书来源说明", "comment_copy": "小红书评论区文案", "ai_model": "生成草稿使用的模型标识",
+	"prompt_version": "生成草稿使用的提示词版本", "draft_id": "关联小红书草稿标识", "render_id": "关联小红书渲染标识",
+	"template_id": "手机页面模板标识", "template_version": "手机页面模板版本", "viewport_width": "渲染视口宽度（像素）",
+	"page_height": "渲染页面高度（像素）", "html_hash": "渲染 HTML 内容摘要", "page_count": "渲染图片页数",
+	"event_type": "审计事件类型",
 	"cleared_at": "文章恢复管理的时间（UTC）", "kind": "记录的业务类型",
 	"state": "当前状态", "content_hash": "实际使用的文章内容版本", "frontmatter_hash": "标准元数据版本",
 	"config_json": "经过 schema 校验的非敏感配置", "capabilities_json": "Provider 能力快照", "payload_json": "结构化任务或事件输入",

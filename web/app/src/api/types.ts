@@ -1,7 +1,7 @@
 export type ArticleState = "draft" | "blocked" | "changed" | "incomplete" | "pending_review" | "approved";
 export type ContentStage = "draft" | "ready";
 export type ArticleDisposition = "published" | "ignored";
-export type PublicationChannel = "hugo" | "wechat";
+export type PublicationChannel = "hugo" | "wechat" | "xiaohongshu";
 
 export interface WorkspaceSummary {
   id: string;
@@ -22,6 +22,7 @@ export interface ArticleSummary {
   state: ArticleState;
   hugo_state: string;
   wechat_state: string;
+  xiaohongshu_state?: string;
   content_version: string;
   disposition?: ArticleDisposition;
   content_stage: ContentStage;
@@ -32,7 +33,7 @@ export interface ArticleSummary {
 export interface ArticlePage {
   items: ArticleSummary[];
   next_cursor?: string;
-  available_channels: Array<"hugo" | "wechat">;
+  available_channels: PublicationChannel[];
 }
 
 export interface DashboardView {
@@ -219,6 +220,7 @@ export interface ArticleDetail {
   review_state: string;
   hugo_state: string;
   wechat_state: string;
+  xiaohongshu_state?: string;
   checks: CheckResult[];
   ai_configured: boolean;
   suggestions: AISuggestion[];
@@ -228,6 +230,31 @@ export interface ArticleDetail {
   wechat_copied: boolean;
   resource_diagnostics: Array<{ code: string; message: string; blocking: boolean }>;
   disposition?: { kind: ArticleDisposition; channels: PublicationChannel[] };
+}
+
+export interface XiaohongshuDraft {
+  id: string;
+  article_id: string;
+  source_content_hash: string;
+  title: string;
+  body_html: string;
+  topics: string[];
+  source_note: string;
+  comment_copy: string;
+  ai_model: string;
+  prompt_version: string;
+  state: "draft" | "published" | "stale";
+  stale: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface XiaohongshuView {
+  article_id: string;
+  current_content_hash: string;
+  state: string;
+  latest: XiaohongshuDraft | null;
+  history: XiaohongshuDraft[];
 }
 
 export interface ObsidianSettingsView {

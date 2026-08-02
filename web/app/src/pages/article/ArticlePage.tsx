@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, Bot, Check, CloudUpload, Send } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, Check, CloudUpload, Send, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { generateArticleSuggestions, getArticle, getPublicationWorkflow, getSuggestionHistory, getSuggestionVersion, getTaxonomyOverview, reviewArticle, saveMetadata } from "../../api/client";
 import { previewHasHeading } from "../../api/safeHTML";
@@ -107,11 +107,11 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
     <div className="article-toolbar"><button type="button" onClick={() => onNavigate("/library")}><ArrowLeft size={16} />返回内容库</button><span>{article.relative_path}</span></div>
     {isDraft && <section className="draft-guidance" role="status"><strong>草稿</strong><span>文章仍在创作阶段，不会进入审核或发布流程。</span><code>publish.status: ready</code>{article.content_stage_issue && <small>{article.content_stage_issue}</small>}</section>}
     {resourceDiagnostics.length > 0 && <section className="resource-guidance" role="status"><AlertTriangle size={16} /><div><strong>图片引用需要处理</strong>{resourceDiagnostics.map((diagnostic) => <p key={`${diagnostic.code}:${diagnostic.message}`}>{diagnostic.message}</p>)}<small>文章内容阶段不受影响，但发布前必须修复这些引用。</small></div></section>}
-    <PublicationTrack review={article.review_state} hugo={article.hugo_state} wechat={article.wechat_state} />
+    <PublicationTrack review={article.review_state} hugo={article.hugo_state} wechat={article.wechat_state} xiaohongshu={article.xiaohongshu_state ?? "尚未准备"} />
     {article.disposition && <p className={`article-disposition state-${article.disposition.kind}`}>
       {article.disposition.kind === "ignored"
         ? "此文章已忽略，可在内容库恢复"
-        : `当前版本已标记为外部发表：${article.disposition.channels.map((channel: PublicationChannel) => channel === "hugo" ? "Hugo" : "微信").join("、")}`}
+        : `当前版本已标记为外部发表：${article.disposition.channels.map((channel: PublicationChannel) => channel === "hugo" ? "Hugo" : channel === "wechat" ? "微信" : "小红书").join("、")}`}
     </p>}
     <div className="mobile-tabs" role="tablist" aria-label="文章详情"><button role="tab" aria-selected={tab === "content"} onClick={() => setTab("content")}>内容</button><button role="tab" aria-selected={tab === "review"} onClick={() => setTab("review")}>审核</button><button role="tab" aria-selected={tab === "publish"} onClick={() => setTab("publish")}>发布</button></div>
     <div className="article-layout">
@@ -122,6 +122,7 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
         {article.ai_configured ? <><AISuggestions stale={article.suggestions_stale} suggestions={article.suggestions} generating={generatingAI} historyCount={suggestionHistoryItems.length} onOpenHistory={openSuggestionHistory} onAccept={(suggestion) => setExternalSuggestions((current) => [...current, { id: `${suggestion.id}:${Date.now()}`, field: suggestion.field, value: suggestion.value ?? suggestion.name }])} onGenerate={async () => { setExternalSuggestions([]); setGeneratingAI(true); try { const result = await generateArticleSuggestions(article.id); setArticle({ ...article, ...result }); setSuggestionHistoryLoaded(false); setNotice("AI 建议已生成"); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "AI 建议生成失败"); } finally { setGeneratingAI(false); } }} />{suggestionHistoryOpen && <SuggestionHistory items={suggestionHistoryItems} selected={selectedSuggestionVersion} loading={suggestionHistoryLoading} detailLoading={suggestionVersionLoading} error={suggestionHistoryError} onSelect={(id) => void selectSuggestionVersion(id)} onRetry={() => void loadSuggestionHistory()} onClose={() => setSuggestionHistoryOpen(false)} />}</> : <section className="tool-section ai-unconfigured"><Bot size={17} /><span><b>AI 建议未启用</b><small>不影响手工审核</small></span><button onClick={() => onNavigate("/settings")}>配置 AI</button></section>}
         {!isDraft && !hidePrimaryForHugoFlow && primary && PrimaryIcon && <div className="primary-action"><button className="primary" onClick={() => void primary.action()}><PrimaryIcon size={17} />{primary.label}</button>{notice && <span role="status">{notice}</span>}</div>}
         {!isDraft && showHugoFlow && article.hugo_state !== "已同步" && <HugoPublishFlow articleID={article.id} contentHash={article.content_version} onPublished={async () => { setShowHugoFlow(false); setHistoryRefreshKey((value) => value + 1); await load(); }} />}
+        {!isDraft && <section className="tool-section xiaohongshu-entry"><div className="tool-heading"><h2><Sparkles size={16} />小红书</h2><span>{article.xiaohongshu_state ?? "尚未准备"}</span></div><p>将文章适配为手机图片集，标题和文案在 InkHub 中整体编辑。</p><button className="secondary compact-button" onClick={() => onNavigate(`/articles/${article.id}/xiaohongshu`)}><Sparkles size={15} />打开内容中心</button></section>}
         <PublicationHistory articleID={article.id} refreshKey={historyRefreshKey} />
       </aside>
     </div>

@@ -73,6 +73,10 @@ COALESCE((SELECT publications.state
 COALESCE((SELECT publications.content_hash
   FROM publications JOIN provider_instances ON provider_instances.id=publications.provider_instance_id
   WHERE publications.article_id=articles.id AND provider_instances.workspace_id=articles.workspace_id AND provider_instances.provider_type='wechat' LIMIT 1),''),
+COALESCE((SELECT xiaohongshu_drafts.state FROM xiaohongshu_drafts
+  WHERE xiaohongshu_drafts.article_id=articles.id ORDER BY xiaohongshu_drafts.created_at DESC,xiaohongshu_drafts.id DESC LIMIT 1),'never'),
+COALESCE((SELECT xiaohongshu_drafts.source_content_hash FROM xiaohongshu_drafts
+  WHERE xiaohongshu_drafts.article_id=articles.id ORDER BY xiaohongshu_drafts.created_at DESC,xiaohongshu_drafts.id DESC LIMIT 1),''),
 articles.content_hash,
 COALESCE(article_dispositions.kind,''),COALESCE(article_dispositions.content_hash,''),
 CASE WHEN article_dispositions.cleared_at IS NULL
@@ -134,12 +138,13 @@ AND NOT COALESCE(article_dispositions.kind='published' AND article_dispositions.
 
 func scanArticleSummary(rows interface{ Scan(...any) error }, channels []string) (httptransport.ArticleSummary, error) {
 	var item httptransport.ArticleSummary
-	var relative, stage, issue, reviewState, approvedHash, hugoState, hugoHash, wechatState, wechatHash, dispositionKind, dispositionHash string
-	if err := rows.Scan(&item.ID, &item.Title, &relative, &item.Category, &item.ModifiedAt, &stage, &issue, &reviewState, &approvedHash, &hugoState, &hugoHash, &wechatState, &wechatHash, &item.ContentVersion, &dispositionKind, &dispositionHash, &item.Disposition); err != nil {
+	var relative, stage, issue, reviewState, approvedHash, hugoState, hugoHash, wechatState, wechatHash, xiaohongshuState, xiaohongshuHash, dispositionKind, dispositionHash string
+	if err := rows.Scan(&item.ID, &item.Title, &relative, &item.Category, &item.ModifiedAt, &stage, &issue, &reviewState, &approvedHash, &hugoState, &hugoHash, &wechatState, &wechatHash, &xiaohongshuState, &xiaohongshuHash, &item.ContentVersion, &dispositionKind, &dispositionHash, &item.Disposition); err != nil {
 		return httptransport.ArticleSummary{}, err
 	}
 	item.ContentStage = stage
 	item.ContentStageIssue = issue
+	item.XiaohongshuState = xiaohongshuLabel(xiaohongshuState, xiaohongshuHash, item.ContentVersion)
 	workflow := deriveArticleWorkflow(articleWorkflowInput{ContentStage: article.ContentStage(stage), ContentIssue: issue, ReviewState: reviewState, ApprovedHash: approvedHash, ContentHash: item.ContentVersion, Disposition: dispositionKind, DispositionHash: dispositionHash, HugoState: hugoState, HugoHash: hugoHash, WeChatState: wechatState, WeChatHash: wechatHash, AvailableChannels: channels})
 	return finalizeArticleSummary(item, relative, workflow), nil
 }
@@ -156,10 +161,24 @@ func finalizeArticleSummary(item httptransport.ArticleSummary, relative string, 
 	return item
 }
 
+// xiaohongshuLabel 将小红书草稿版本与文章当前版本转换为用户可读状态。
+func xiaohongshuLabel(state, processedHash, currentHash string) string {
+	if state == "published" && processedHash == currentHash {
+		return "已发布"
+	}
+	if state != "" && state != "never" && processedHash != currentHash {
+		return "内容已更新"
+	}
+	if state == "draft" {
+		return "草稿"
+	}
+	return "尚未准备"
+}
+
 func (api databaseAPI) listAvailableChannels(ctx context.Context) ([]string, error) {
 	rows, err := api.db.QueryContext(ctx, `SELECT provider_type FROM provider_instances
 WHERE workspace_id=`+currentWorkspaceSQL+` AND enabled=1 AND provider_type IN ('hugo','wechat')
-ORDER BY CASE provider_type WHEN 'hugo' THEN 1 ELSE 2 END`)
+		ORDER BY CASE provider_type WHEN 'hugo' THEN 1 WHEN 'wechat' THEN 2 ELSE 3 END`)
 	if err != nil {
 		return nil, err
 	}
