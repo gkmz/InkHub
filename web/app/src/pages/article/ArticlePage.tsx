@@ -1,8 +1,8 @@
 import { AlertTriangle, ArrowLeft, Bot, Check, CloudUpload, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { generateArticleSuggestions, getArticle, getPublicationWorkflow, getTaxonomyOverview, reviewArticle, saveMetadata } from "../../api/client";
+import { generateArticleSuggestions, getArticle, getPublicationWorkflow, getSuggestionHistory, getSuggestionVersion, getTaxonomyOverview, reviewArticle, saveMetadata } from "../../api/client";
 import { previewHasHeading } from "../../api/safeHTML";
-import type { ArticleDetail, ArticleMetadata, PublicationChannel, TaxonomyOverview } from "../../api/types";
+import type { ArticleDetail, ArticleMetadata, PublicationChannel, SuggestionHistoryItem, SuggestionVersionView, TaxonomyOverview } from "../../api/types";
 import { AISuggestions } from "../../components/AISuggestions";
 import { Checks } from "../../components/Checks";
 import { HugoPublishFlow } from "../../components/HugoPublishFlow";
@@ -10,6 +10,7 @@ import { MetadataForm } from "../../components/MetadataForm";
 import type { TaxonomyFieldState } from "../../components/SingleTaxonomyField";
 import { PublicationTrack } from "../../components/PublicationTrack";
 import { PublicationHistory } from "../../components/PublicationHistory";
+import { SuggestionHistory } from "../../components/SuggestionHistory";
 import { CreateTaxonomyTermDialog } from "../taxonomy/CreateTaxonomyTermDialog";
 import { MarkdownPreview } from "../../components/MarkdownPreview";
 
@@ -26,11 +27,18 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   const [taxonomyState, setTaxonomyState] = useState<TaxonomyFieldState>("loading");
   const [taxonomySelection, setTaxonomySelection] = useState<PendingTaxonomySelection>(null);
   const [generatingAI, setGeneratingAI] = useState(false);
-  const [externalSuggestion, setExternalSuggestion] = useState<{ id: string; field: keyof ArticleMetadata; value: string | string[] } | null>(null);
+  const [externalSuggestions, setExternalSuggestions] = useState<Array<{ id: string; field: keyof ArticleMetadata; value: string | string[] }>>([]);
   const [showHugoFlow, setShowHugoFlow] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [suggestionHistoryOpen, setSuggestionHistoryOpen] = useState(false);
+  const [suggestionHistoryLoaded, setSuggestionHistoryLoaded] = useState(false);
+  const [suggestionHistoryItems, setSuggestionHistoryItems] = useState<SuggestionHistoryItem[]>([]);
+  const [selectedSuggestionVersion, setSelectedSuggestionVersion] = useState<SuggestionVersionView | null>(null);
+  const [suggestionHistoryLoading, setSuggestionHistoryLoading] = useState(false);
+  const [suggestionVersionLoading, setSuggestionVersionLoading] = useState(false);
+  const [suggestionHistoryError, setSuggestionHistoryError] = useState("");
   const load = useCallback(() => getArticle(articleID).then(setArticle).catch((reason: Error) => setNotice(reason.message)), [articleID]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setExternalSuggestions([]); void load(); }, [load]);
   // 工作流读取属于增强能力：恢复未完成任务，但失败时不能阻断文章详情。
   useEffect(() => {
     const controller = new AbortController();
@@ -54,6 +62,33 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
     });
     return () => controller.abort();
   }, []);
+  const loadSuggestionHistory = async () => {
+    setSuggestionHistoryLoading(true);
+    setSuggestionHistoryError("");
+    try {
+      const result = await getSuggestionHistory(articleID);
+      setSuggestionHistoryItems(result.items);
+      setSuggestionHistoryLoaded(true);
+    } catch (reason) {
+      setSuggestionHistoryError(reason instanceof Error ? reason.message : "建议历史读取失败");
+    } finally {
+      setSuggestionHistoryLoading(false);
+    }
+  };
+  const openSuggestionHistory = () => {
+    setSuggestionHistoryOpen(true);
+    if (!suggestionHistoryLoaded && !suggestionHistoryLoading) void loadSuggestionHistory();
+  };
+  const selectSuggestionVersion = async (suggestionID: string) => {
+    setSuggestionVersionLoading(true);
+    try {
+      setSelectedSuggestionVersion(await getSuggestionVersion(articleID, suggestionID));
+    } catch (reason) {
+      setSuggestionHistoryError(reason instanceof Error ? reason.message : "建议版本读取失败");
+    } finally {
+      setSuggestionVersionLoading(false);
+    }
+  };
   if (!article) return <div className="page-state">{notice || "正在打开文章…"}</div>;
   // 旧版本或降级响应可能缺少 terms，页面必须退化为空候选而不是白屏。
   const taxonomyTerms = Array.isArray(taxonomy?.terms) ? taxonomy.terms : [];
@@ -82,9 +117,9 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
     <div className="article-layout">
       <article className={`article-preview mobile-${tab}`}><p className="eyebrow">文章预览</p>{showMetadataTitle && <h1>{article.metadata.title}</h1>}<p className="article-description">{article.metadata.description}</p><MarkdownPreview html={article.preview_html} className="prose" /></article>
       <aside className={`review-panel mobile-${tab}`}>
-        <MetadataForm value={article.metadata} sourceChanged={article.source_changed} categoryOptions={categoryOptions} seriesOptions={seriesOptions} tagOptions={tagOptions} taxonomyState={taxonomyState} canCreateTaxonomy={canCreateTaxonomy} onCreateTaxonomy={(kind, select) => setTaxonomySelection({ kind, select })} externalSuggestion={externalSuggestion} onReload={load} onSave={async (metadata) => { const next = await saveMetadata(article.id, metadata); setArticle(next); setNotice("元数据已保存"); }} />
+        <MetadataForm value={article.metadata} sourceChanged={article.source_changed} categoryOptions={categoryOptions} seriesOptions={seriesOptions} tagOptions={tagOptions} taxonomyState={taxonomyState} canCreateTaxonomy={canCreateTaxonomy} onCreateTaxonomy={(kind, select) => setTaxonomySelection({ kind, select })} externalSuggestions={externalSuggestions} onReload={() => { setExternalSuggestions([]); void load(); }} onSave={async (metadata) => { const next = await saveMetadata(article.id, metadata); setArticle(next); setExternalSuggestions([]); setNotice("元数据已保存"); }} />
         <Checks items={article.checks} />
-        {article.ai_configured ? <AISuggestions stale={article.suggestions_stale} suggestions={article.suggestions} generating={generatingAI} onAccept={(suggestion) => setExternalSuggestion({ id: `${suggestion.id}:${Date.now()}`, field: suggestion.field, value: suggestion.value ?? suggestion.name })} onGenerate={async () => { setGeneratingAI(true); try { const result = await generateArticleSuggestions(article.id); setArticle({ ...article, ...result }); setNotice("AI 建议已生成"); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "AI 建议生成失败"); } finally { setGeneratingAI(false); } }} /> : <section className="tool-section ai-unconfigured"><Bot size={17} /><span><b>AI 建议未启用</b><small>不影响手工审核</small></span><button onClick={() => onNavigate("/settings")}>配置 AI</button></section>}
+        {article.ai_configured ? <><AISuggestions stale={article.suggestions_stale} suggestions={article.suggestions} generating={generatingAI} historyCount={suggestionHistoryItems.length} onOpenHistory={openSuggestionHistory} onAccept={(suggestion) => setExternalSuggestions((current) => [...current, { id: `${suggestion.id}:${Date.now()}`, field: suggestion.field, value: suggestion.value ?? suggestion.name }])} onGenerate={async () => { setExternalSuggestions([]); setGeneratingAI(true); try { const result = await generateArticleSuggestions(article.id); setArticle({ ...article, ...result }); setSuggestionHistoryLoaded(false); setNotice("AI 建议已生成"); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "AI 建议生成失败"); } finally { setGeneratingAI(false); } }} />{suggestionHistoryOpen && <SuggestionHistory items={suggestionHistoryItems} selected={selectedSuggestionVersion} loading={suggestionHistoryLoading} detailLoading={suggestionVersionLoading} error={suggestionHistoryError} onSelect={(id) => void selectSuggestionVersion(id)} onRetry={() => void loadSuggestionHistory()} onClose={() => setSuggestionHistoryOpen(false)} />}</> : <section className="tool-section ai-unconfigured"><Bot size={17} /><span><b>AI 建议未启用</b><small>不影响手工审核</small></span><button onClick={() => onNavigate("/settings")}>配置 AI</button></section>}
         {!isDraft && !hidePrimaryForHugoFlow && primary && PrimaryIcon && <div className="primary-action"><button className="primary" onClick={() => void primary.action()}><PrimaryIcon size={17} />{primary.label}</button>{notice && <span role="status">{notice}</span>}</div>}
         {!isDraft && showHugoFlow && article.hugo_state !== "已同步" && <HugoPublishFlow articleID={article.id} contentHash={article.content_version} onPublished={async () => { setShowHugoFlow(false); setHistoryRefreshKey((value) => value + 1); await load(); }} />}
         <PublicationHistory articleID={article.id} refreshKey={historyRefreshKey} />

@@ -65,6 +65,17 @@ test("Keywords 建议替换数组，Tags 建议大小写不敏感去重", async 
   expect(screen.getAllByText("Go")).toHaveLength(1);
 });
 
+test("批量采用多个 AI 建议时全部进入文章草稿", async () => {
+  render(<MetadataForm value={metadata} sourceChanged={false} externalSuggestions={[
+    { id: "description-1", field: "description", value: "新的摘要" },
+    { id: "category-1", field: "category", value: "AI 应用开发" },
+    { id: "tag-1", field: "tags", value: "AI" },
+  ]} onSave={vi.fn()} />);
+  expect(await screen.findByDisplayValue("新的摘要")).toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("AI 应用开发");
+  expect(screen.getByText("AI")).toBeInTheDocument();
+});
+
 test("Category 从 Hugo 快照选择并进入文章草稿", async () => {
   render(<MetadataForm value={metadata} sourceChanged={false} taxonomyState="ready" categoryOptions={[{ key: "engineering", name: "工程实践" }, { key: "product", name: "产品" }]} onSave={vi.fn()} />);
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Category" }), "产品");
@@ -188,16 +199,30 @@ test("文章页创建 Series 时提交正确 kind 且只回填 Series 草稿", a
 test("AI 建议只能逐字段采用并写入表单草稿", async () => {
   const accept = vi.fn();
   render(<AISuggestions stale={false} suggestions={[{ id: "s1", field: "tags", name: "SQLite", reason: "主题匹配", new_term: false, usage_count: 7 }]} onAccept={accept} onGenerate={vi.fn()} />);
-  expect(screen.queryByRole("button", { name: /全部/ })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "AI 建议中心" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "采用全部" })).toBeInTheDocument();
   expect(screen.getByText("7 篇文章")).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "采用 Tag SQLite" }));
+  await userEvent.click(screen.getByRole("button", { name: "采用 SQLite" }));
   expect(accept).toHaveBeenCalledWith(expect.objectContaining({ name: "SQLite" }));
 });
 
 test("文章更新后 AI 建议过期且不能继续采用", () => {
   render(<AISuggestions stale suggestions={[{ id: "s1", field: "tags", name: "Agent", reason: "主题匹配", new_term: true, usage_count: 0 }]} onAccept={vi.fn()} onGenerate={vi.fn()} />);
   expect(screen.getByText("文章已更新，请重新分析")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "采用 Tag Agent" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "采用 Agent" })).toBeDisabled();
+});
+
+test("AI 建议中心按字段展示字符串和数组建议", () => {
+  render(<AISuggestions stale={false} suggestions={[
+    { id: "description-1", field: "description", name: "新的描述", value: "新的描述", reason: "摘要", new_term: false, usage_count: 0 },
+    { id: "category-1", field: "category", name: "AI 应用开发", reason: "分类", new_term: false, usage_count: 0 },
+    { id: "series-1", field: "series", name: "入门系列", reason: "系列", new_term: false, usage_count: 0 },
+    { id: "slug-1", field: "slug", name: "ai-guide", reason: "地址", new_term: false, usage_count: 0 },
+    { id: "keywords-1", field: "keywords", name: "Go、AI", value: ["Go", "AI"], reason: "关键词", new_term: false, usage_count: 0 },
+    { id: "tags-1", field: "tags", name: "agent", reason: "标签", new_term: true, usage_count: 0 },
+  ]} onAccept={vi.fn()} onGenerate={vi.fn()} />);
+  for (const label of ["Description", "Category", "Series", "Slug", "Keywords", "Tags"]) expect(screen.getByRole("heading", { name: label })).toBeInTheDocument();
+  expect(screen.getByText("Go、AI")).toBeInTheDocument();
 });
 
 test("文章页生成 AI Tag 并逐项加入草稿", async () => {
@@ -208,10 +233,10 @@ test("文章页生成 AI Tag 并逐项加入草稿", async () => {
     return Response.json({ ...article, ai_configured: true });
   });
   render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
-  await screen.findByRole("button", { name: "生成 AI Tag" });
-  await userEvent.click(screen.getByRole("button", { name: "生成 AI Tag" }));
+  await screen.findByRole("button", { name: "生成 AI 建议" });
+  await userEvent.click(screen.getByRole("button", { name: "生成 AI 建议" }));
   expect(await screen.findByText("新 Tag")).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "采用 Tag SQLite" }));
+  await userEvent.click(screen.getByRole("button", { name: "采用 SQLite" }));
   expect(screen.getByText("Tags：Go、React → Go、React、SQLite")).toBeInTheDocument();
 });
 

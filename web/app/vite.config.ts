@@ -16,7 +16,14 @@ const demoArticle = {
   preview_html: "<h2>为什么需要模板标准</h2><p>排版不是把 CSS 塞进 HTML，而是建立一条可验证、可恢复的内容交付链路。</p><blockquote>模板只负责呈现，不应掌握文章状态。</blockquote><h2>三个明确阶段</h2><p>准备内容、复制格式化内容、人工确认草稿，三个动作必须彼此独立。</p><pre><code>Obsidian → 审核 → 微信预览</code></pre>",
   source_changed: false, review_state: "等待审核", hugo_state: "尚未同步", wechat_state: "尚未准备",
   checks: [{ id: "c1", level: "recommended", title: "Description 可以更具体", detail: "补充读者能获得的结果。", channel: "Hugo · 微信" }, { id: "c2", level: "passed", title: "Slug 格式正确", detail: "可以用于 Hugo 页面路径。", channel: "Hugo" }],
-  ai_configured: true, suggestions: [{ field: "description", original: "从安全约束、模板变量和复制流程出发，记录一套可分享的公众号排版方案。", suggested: "拆解安全模板、CSS 内联与人工确认，构建可靠的公众号内容交付流程。", reason: "突出文章覆盖的工程环节" }], suggestions_stale: false, wechat_copied: false,
+  ai_configured: true, suggestions: [
+    { id: "demo-description", field: "description", name: "拆解安全模板、CSS 内联与人工确认，构建可靠的公众号内容交付流程。", value: "拆解安全模板、CSS 内联与人工确认，构建可靠的公众号内容交付流程。", reason: "突出文章覆盖的工程环节", new_term: false, usage_count: 0 },
+    { id: "demo-category", field: "category", name: "工程实践", value: "工程实践", reason: "文章聚焦模板和内容交付的实现方法。", new_term: false, usage_count: 8 },
+    { id: "demo-series", field: "series", name: "InkHub 构建记录", value: "InkHub 构建记录", reason: "与产品构建过程主题一致。", new_term: false, usage_count: 4 },
+    { id: "demo-keywords", field: "keywords", name: "公众号排版、内容工作流", value: ["公众号排版", "内容工作流"], reason: "覆盖文章的核心搜索词。", new_term: false, usage_count: 0 },
+    { id: "demo-tag-template", field: "tags", name: "模板", value: "模板", reason: "文章讨论模板标准。", new_term: false, usage_count: 6 },
+    { id: "demo-tag-css", field: "tags", name: "CSS 内联", value: "CSS 内联", reason: "正文包含 CSS 内联处理。", new_term: true, usage_count: 0 },
+  ], suggestions_stale: false, wechat_copied: false,
 };
 
 let demoWeChatPrepared = false;
@@ -110,6 +117,9 @@ const demoAPI: Plugin = {
         }
         body = { processed: articles.length, changed, unchanged: articles.length - changed };
       } else if (url.pathname === "/workspaces") body = { workspace: { id: "demo", name: "我的写作空间" }, job_id: "demo-scan" };
+      else if (/^\/articles\/[^/]+\/suggestions$/.test(url.pathname) && request.method === "POST") body = { suggestions: demoArticle.suggestions, suggestions_id: "demo-suggestion-current", suggestions_generated_at: "2026-08-02T10:00:00Z", suggestions_stale: false };
+      else if (/^\/articles\/[^/]+\/suggestions$/.test(url.pathname)) body = { items: [{ id: "demo-suggestion-current", generated_at: "2026-08-02T10:00:00Z", model: "demo-model", input_content_hash: "demo-current-version", state: "pending", suggestion_count: demoArticle.suggestions.length, current: true }] };
+      else if (/^\/articles\/[^/]+\/suggestions\/[^/]+$/.test(url.pathname)) body = { id: "demo-suggestion-current", generated_at: "2026-08-02T10:00:00Z", model: "demo-model", input_content_hash: "demo-current-version", state: "pending", suggestions: demoArticle.suggestions, suggestions_stale: false };
       else if (/^\/articles\/[^/]+$/.test(url.pathname)) {
         const articleID = url.pathname.split("/").pop() ?? demoArticle.id;
         const summary = demoArticles.find((article) => article.id === articleID);

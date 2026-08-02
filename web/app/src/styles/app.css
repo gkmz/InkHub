@@ -251,6 +251,37 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .suggestion p span { color: var(--ink); }
 .suggestion button { border: 0; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 3px; cursor: pointer; font-size: 10px; }
 .suggestion button:last-child { color: var(--action); }
+.ai-heading-actions { display: flex; align-items: center; gap: 6px; }
+.ai-heading-actions button { min-height: 30px; padding: 0 8px; font-size: 10px; }
+.ai-draft-notice { margin: -7px 0 12px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.suggestion-group { margin: 14px 0 18px; }
+.suggestion-group-heading { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.suggestion-group-heading h3 { margin: 0; font-size: 11px; }
+.suggestion-group-heading > span { color: var(--muted); font-size: 9px; }
+.suggestion-group-actions { display: flex; gap: 6px; margin-left: auto; }
+.suggestion-group-actions button, .ai-show-ignored { border: 0; padding: 0; background: transparent; color: var(--action); cursor: pointer; font-size: 9px; }
+.suggestion-group-actions button:disabled { color: var(--muted); cursor: not-allowed; }
+.suggestion-ignored { opacity: .65; }
+.ai-show-ignored { margin: 2px 0 4px; }
+.suggestion-history { margin-top: 18px; }
+.suggestion-history .tool-heading > button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.suggestion-history-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.suggestion-history-list li { border-bottom: 1px solid var(--line); }
+.suggestion-history-list button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border: 0; background: transparent; color: var(--ink); cursor: pointer; text-align: left; }
+.suggestion-history-list button.selected, .suggestion-history-list button:hover { color: var(--action); }
+.suggestion-history-list button > span:first-child { display: grid; gap: 3px; min-width: 0; }
+.suggestion-history-list b { font-size: 10px; }
+.suggestion-history-list small, .history-item-meta { color: var(--muted); font-size: 9px; }
+.history-item-meta { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.history-state { color: var(--muted); font-size: 10px; }
+.history-error { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--danger); font-size: 10px; }
+.history-error button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--action); cursor: pointer; font-size: 10px; }
+.suggestion-version-detail { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.suggestion-version-heading { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; }
+.suggestion-version-heading span { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); }
+.suggestion-version-detail ul { display: grid; gap: 6px; margin: 9px 0 0; padding: 0; list-style: none; }
+.suggestion-version-detail li { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px; font-size: 10px; }
+.suggestion-version-detail li span { overflow-wrap: anywhere; color: var(--muted); }
 .stale-notice { padding: 8px; background: #fff8ee; color: var(--warning); font-size: 11px; }
 .ai-unconfigured { display: flex; align-items: center; gap: 8px; }
 .ai-unconfigured > span { display: grid; font-size: 11px; }

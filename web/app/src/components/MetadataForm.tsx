@@ -4,6 +4,8 @@ import type { ArticleMetadata } from "../api/types";
 import { SingleTaxonomyField, type TaxonomyFieldOption, type TaxonomyFieldState } from "./SingleTaxonomyField";
 import { TagMultiSelect, type TagOption } from "./TagMultiSelect";
 
+const emptySuggestions: Array<{ id: string; field: keyof ArticleMetadata; value: string | string[] }> = [];
+
 interface MetadataFormProps {
   value: ArticleMetadata;
   sourceChanged: boolean;
@@ -16,26 +18,18 @@ interface MetadataFormProps {
   canCreateTaxonomy?: boolean;
   onCreateTaxonomy?: (kind: "category" | "series", select: (name: string) => void) => void;
   externalSuggestion?: { id: string; field: keyof ArticleMetadata; value: string | string[] } | null;
+  externalSuggestions?: Array<{ id: string; field: keyof ArticleMetadata; value: string | string[] }>;
 }
 
 /** MetadataForm 编辑标准元数据，并在源文件变化时停止写回。 */
-export function MetadataForm({ value, sourceChanged, onSave, onReload, taxonomyState = "unavailable", categoryOptions = [], seriesOptions = [], tagOptions = [], canCreateTaxonomy = false, onCreateTaxonomy, externalSuggestion }: MetadataFormProps) {
+export function MetadataForm({ value, sourceChanged, onSave, onReload, taxonomyState = "unavailable", categoryOptions = [], seriesOptions = [], tagOptions = [], canCreateTaxonomy = false, onCreateTaxonomy, externalSuggestion, externalSuggestions = emptySuggestions }: MetadataFormProps) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   useEffect(() => {
-    if (!externalSuggestion) return;
-    setDraft((current) => {
-      if (externalSuggestion.field === "tags") {
-        if (typeof externalSuggestion.value !== "string") return current;
-        const exists = current.tags.some((tag) => normalize(tag) === normalize(externalSuggestion.value as string));
-        return exists ? current : { ...current, tags: [...current.tags, externalSuggestion.value as string] };
-      }
-      if (externalSuggestion.field === "keywords" && Array.isArray(externalSuggestion.value)) {
-        return { ...current, keywords: externalSuggestion.value };
-      }
-      return typeof externalSuggestion.value === "string" ? { ...current, [externalSuggestion.field]: externalSuggestion.value } as ArticleMetadata : current;
-    });
-  }, [externalSuggestion]);
+    const incoming = [...(externalSuggestion ? [externalSuggestion] : []), ...externalSuggestions];
+    if (incoming.length === 0) return;
+    setDraft((current) => incoming.reduce(applySuggestion, current));
+  }, [externalSuggestion, externalSuggestions]);
   const update = <K extends keyof ArticleMetadata>(field: K, next: ArticleMetadata[K]) => setDraft((current) => ({ ...current, [field]: next }));
   const keywords = (text: string) => update("keywords", text.split(/[,，]/).map((item) => item.trim()).filter(Boolean));
   const changed = JSON.stringify(draft) !== JSON.stringify(value);
@@ -51,6 +45,19 @@ export function MetadataForm({ value, sourceChanged, onSave, onReload, taxonomyS
     {changes.length > 0 && <div className="change-summary"><b>本次将写入</b>{changes.map((field) => <p key={field}>{fieldLabel(field)}：{formatValue(value[field]) || "未填写"} → {formatValue(draft[field]) || "未填写"}</p>)}</div>}
     <button className="primary compact-button" type="button" disabled={!changed || sourceChanged} onClick={() => void onSave(draft)}><Save size={15} />保存到文章</button>
   </section>;
+}
+
+/** 将一个 AI 建议合并到表单草稿，保证批量采用时每一项都被处理。 */
+function applySuggestion(current: ArticleMetadata, suggestion: { field: keyof ArticleMetadata; value: string | string[] }) {
+  if (suggestion.field === "tags") {
+    if (typeof suggestion.value !== "string") return current;
+    const exists = current.tags.some((tag) => normalize(tag) === normalize(suggestion.value as string));
+    return exists ? current : { ...current, tags: [...current.tags, suggestion.value as string] };
+  }
+  if (suggestion.field === "keywords" && Array.isArray(suggestion.value)) {
+    return { ...current, keywords: suggestion.value };
+  }
+  return typeof suggestion.value === "string" ? { ...current, [suggestion.field]: suggestion.value } as ArticleMetadata : current;
 }
 
 function fieldLabel(field: keyof ArticleMetadata) {
