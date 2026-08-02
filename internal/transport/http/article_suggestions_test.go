@@ -51,15 +51,52 @@ func TestArticleSuggestionsUsesPersistedTagCounts(t *testing.T) {
 	}
 }
 
+func TestArticleSuggestionsKeepHistoryAcrossGenerations(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','测试','/tmp','2026-01-01','2026-01-01','2026-01-01'); INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES('s1','w1','obsidian','/tmp','2026-01-01','2026-01-01'); INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,description,tags_json,keywords_json,content_hash,frontmatter_hash,indexed_at,created_at,updated_at) VALUES('a1','w1','s1','article_ONE','one.md','Go 服务','摘要','[]','[]','hash-v1','front','2026-01-01','2026-01-01','2026-01-01'); INSERT INTO provider_instances(id,workspace_id,provider_type,name,enabled,config_json,created_at,updated_at) VALUES('ai1','w1','openai-compatible','AI',1,'{"base_url":"https://example.com/v1","model":"test","timeout":30000000000,"secret_ref":"ai-key"}','2026-01-01','2026-01-01'); INSERT INTO provider_instances(id,workspace_id,provider_type,name,enabled,created_at,updated_at) VALUES('h1','w1','hugo','Hugo',1,'2026-01-01','2026-01-01')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &suggestionAI{responses: []contracts.AIResponse{
+		{InputContentHash: "hash-v1", Model: "test", Suggestions: []contracts.Suggestion{{Field: "tags", Value: json.RawMessage(`["first"]`)}}},
+		{InputContentHash: "hash-v1", Model: "test", Suggestions: []contracts.Suggestion{{Field: "tags", Value: json.RawMessage(`["second"]`)}}},
+	}}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{ProviderRuntime: suggestionRuntime{ai: provider}})
+	for index := 0; index < 2; index++ {
+		request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/suggestions", strings.NewReader(`{}`))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Origin", "http://localhost")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("第 %d 次生成失败: %d %s", index+1, response.Code, response.Body.String())
+		}
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM ai_suggestions WHERE article_id='a1'`).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("建议历史记录数 = %d, err=%v", count, err)
+	}
+}
+
 type suggestionAI struct {
-	request  contracts.AIRequest
-	response contracts.AIResponse
+	request   contracts.AIRequest
+	response  contracts.AIResponse
+	responses []contracts.AIResponse
 }
 
 func (p *suggestionAI) Descriptor() contracts.AIDescriptor { return contracts.AIDescriptor{} }
 func (p *suggestionAI) Validate(context.Context) error     { return nil }
 func (p *suggestionAI) Generate(_ context.Context, request contracts.AIRequest) (contracts.AIResponse, error) {
 	p.request = request
+	if len(p.responses) > 0 {
+		response := p.responses[0]
+		p.responses = p.responses[1:]
+		return response, nil
+	}
 	return p.response, nil
 }
 

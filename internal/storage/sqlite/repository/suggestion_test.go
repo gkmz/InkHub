@@ -42,6 +42,35 @@ func TestSuggestionRepositorySavesAndUpdatesFieldState(t *testing.T) {
 	}
 }
 
+func TestSuggestionRepositoryListsHistoryByArticle(t *testing.T) {
+	t.Parallel()
+
+	db := openRepositoryTestDB(t)
+	seedSuggestionParents(t, db)
+	repository := NewSuggestionRepository(db)
+	for _, id := range []string{"suggestion_1", "suggestion_2"} {
+		value := domaineditorial.SuggestionSet{
+			ID: id, ArticleID: "a1", WorkspaceID: "w1", ProviderInstanceID: "provider_ai",
+			InputContentHash: "hash-v1", Model: "test-model", State: domaineditorial.SuggestionPending,
+			Items: []domaineditorial.SuggestionItem{{ID: id + "_item", Field: "tags", Value: json.RawMessage(`"Go"`)}},
+		}
+		if err := repository.Save(context.Background(), value); err != nil {
+			t.Fatalf("保存历史建议 %s: %v", id, err)
+		}
+	}
+
+	items, err := repository.ListByArticle(context.Background(), "w1", "a1", 20)
+	if err != nil {
+		t.Fatalf("查询建议历史: %v", err)
+	}
+	if len(items) != 2 || items[0].ID != "suggestion_2" || items[1].ID != "suggestion_1" {
+		t.Fatalf("建议历史 = %+v", items)
+	}
+	if _, err := repository.FindByArticleID(context.Background(), "w1", "a1", "suggestion_1"); err != nil {
+		t.Fatalf("查询指定建议版本: %v", err)
+	}
+}
+
 func seedSuggestionParents(t *testing.T, db *sql.DB) {
 	t.Helper()
 	seedWorkspace(t, db)

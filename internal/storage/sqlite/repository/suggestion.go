@@ -63,6 +63,42 @@ func (r *SuggestionRepository) FindByID(ctx context.Context, id string) (domaine
 	return scanSuggestion(r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state FROM ai_suggestions WHERE id=?`, id))
 }
 
+// ListByArticle 查询指定工作区文章的建议历史，最新生成的版本排在最前面。
+func (r *SuggestionRepository) ListByArticle(ctx context.Context, workspaceID, articleID string, limit int) ([]domaineditorial.SuggestionSet, error) {
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state
+FROM ai_suggestions
+WHERE workspace_id=? AND article_id=?
+ORDER BY created_at DESC,id DESC LIMIT ?`, workspaceID, articleID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("查询 AI 建议历史: %w", err)
+	}
+	defer rows.Close()
+	items := make([]domaineditorial.SuggestionSet, 0, limit)
+	for rows.Next() {
+		item, scanErr := scanSuggestion(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("读取 AI 建议历史: %w", err)
+	}
+	return items, nil
+}
+
+// FindByArticleID 在工作区和文章边界内查询指定的建议版本。
+func (r *SuggestionRepository) FindByArticleID(ctx context.Context, workspaceID, articleID, suggestionID string) (domaineditorial.SuggestionSet, error) {
+	return scanSuggestion(r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state
+FROM ai_suggestions WHERE workspace_id=? AND article_id=? AND id=?`, workspaceID, articleID, suggestionID))
+}
+
 // FindLatestByArticle 查询当前工作区文章最近更新的一组 AI 建议。
 func (r *SuggestionRepository) FindLatestByArticle(ctx context.Context, workspaceID, articleID string) (domaineditorial.SuggestionSet, bool, error) {
 	value, err := scanSuggestion(r.db.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state FROM ai_suggestions WHERE workspace_id=? AND article_id=? ORDER BY updated_at DESC LIMIT 1`, workspaceID, articleID))

@@ -1,7 +1,10 @@
 package httptransport
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -53,8 +56,13 @@ func (h *runtimeHandler) generateArticleSuggestions(response http.ResponseWriter
 		mapError(response, err)
 		return
 	}
+	suggestionID, err := newSuggestionID()
+	if err != nil {
+		mapError(response, err)
+		return
+	}
 	result, err := editorialapp.GenerateSuggestions(request.Context(), provider, repository.NewSuggestionRepository(h.db), editorialapp.GenerateSuggestionOptions{
-		SuggestionID: stableRuntimeID("suggestion", current.ID+"\x00"+current.ContentHash), ProviderInstanceID: providerID,
+		SuggestionID: suggestionID, ProviderInstanceID: providerID,
 		Article: current, AllowBody: false, TagCandidates: candidates, Taxonomy: taxonomy,
 	})
 	if err != nil {
@@ -62,6 +70,15 @@ func (h *runtimeHandler) generateArticleSuggestions(response http.ResponseWriter
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"suggestions": suggestionViews(result.Items), "suggestions_stale": false})
+}
+
+// newSuggestionID 为每次 AI 生成创建不可预测且不会覆盖历史的建议版本 ID。
+func newSuggestionID() (string, error) {
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", fmt.Errorf("生成 AI 建议版本 ID: %w", err)
+	}
+	return "suggestion_" + hex.EncodeToString(random[:]), nil
 }
 
 func (h *runtimeHandler) loadSuggestionArticle(request *http.Request, id string) (article.Article, error) {
