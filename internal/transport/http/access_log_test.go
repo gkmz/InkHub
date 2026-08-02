@@ -100,3 +100,41 @@ func TestAccessLogReplacesInvalidRequestID(t *testing.T) {
 		t.Fatalf("generated request id = %q", requestID)
 	}
 }
+
+func TestAccessLogSkipsSuccessfulStaticAssets(t *testing.T) {
+	t.Parallel()
+
+	core, observed := observer.New(zap.InfoLevel)
+	handler := AccessLog(zap.New(core), http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(response, "asset")
+	}))
+	request := httptest.NewRequest(http.MethodGet, "http://localhost/assets/index.js", nil)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("static response status = %d", response.Code)
+	}
+	if entries := observed.All(); len(entries) != 0 {
+		t.Fatalf("successful static request should be omitted, got %#v", entries)
+	}
+}
+
+func TestAccessLogKeepsFailedStaticAssets(t *testing.T) {
+	t.Parallel()
+
+	core, observed := observer.New(zap.WarnLevel)
+	handler := AccessLog(zap.New(core), http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNotFound)
+	}))
+	request := httptest.NewRequest(http.MethodGet, "http://localhost/assets/missing.js", nil)
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if len(observed.All()) != 1 {
+		t.Fatalf("failed static request should be logged, got %d entries", len(observed.All()))
+	}
+}

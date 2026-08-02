@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	platformlogging "github.com/gkmz/InkHub/internal/platform/logging"
@@ -32,7 +33,8 @@ func RequestLogger(ctx context.Context) *zap.Logger {
 	return logger
 }
 
-// AccessLog 为 HTTP 请求补充 request ID，并记录不含正文和查询参数的访问摘要。
+// AccessLog 为 HTTP 请求补充 request ID，并记录 API 请求及失败请求的访问摘要。
+// 成功的 SPA 静态资源请求不写访问日志，避免 JS/CSS/图片加载造成噪音。
 func AccessLog(logger *zap.Logger, next http.Handler) http.Handler {
 	if logger == nil {
 		logger = zap.NewNop()
@@ -50,6 +52,9 @@ func AccessLog(logger *zap.Logger, next http.Handler) http.Handler {
 		wrapped := &accessResponseWriter{ResponseWriter: response, status: http.StatusOK, request: request}
 
 		next.ServeHTTP(wrapped, request)
+		if !shouldLogAccess(request, wrapped.status) {
+			return
+		}
 
 		fields := []zap.Field{
 			zap.String("request_id", requestID),
@@ -71,6 +76,13 @@ func AccessLog(logger *zap.Logger, next http.Handler) http.Handler {
 			logger.Info("HTTP 请求完成", fields...)
 		}
 	})
+}
+
+func shouldLogAccess(request *http.Request, status int) bool {
+	if request == nil || request.URL == nil {
+		return true
+	}
+	return strings.HasPrefix(request.URL.Path, "/api/") || status >= http.StatusBadRequest
 }
 
 type accessResponseWriter struct {
