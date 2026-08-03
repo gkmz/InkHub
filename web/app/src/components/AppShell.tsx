@@ -7,6 +7,7 @@ interface AppShellProps {
   workspaceName: string;
   children: ReactNode;
   onNavigate: (path: string) => void;
+  contentClassName?: string;
 }
 
 const links = [
@@ -17,7 +18,7 @@ const links = [
 ];
 
 /** AppShell 提供桌面侧栏和移动端底栏共用的四项主导航。 */
-export function AppShell({ path, title, workspaceName, children, onNavigate }: AppShellProps) {
+export function AppShell({ path, title, workspaceName, children, onNavigate, contentClassName = "" }: AppShellProps) {
   return (
     <div className="app-shell">
       <aside className="side-rail">
@@ -32,7 +33,7 @@ export function AppShell({ path, title, workspaceName, children, onNavigate }: A
           <div><p className="mobile-brand">InkHub</p><h1>{title}</h1></div>
           <span className="scan-state">扫描已完成</span>
         </header>
-        <main id="main-content" tabIndex={-1}>{children}</main>
+        <main id="main-content" className={contentClassName} tabIndex={-1}>{children}</main>
       </div>
       <div className="mobile-nav"><Navigation path={path} onNavigate={onNavigate} /></div>
     </div>
