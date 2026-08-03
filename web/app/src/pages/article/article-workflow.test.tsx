@@ -240,8 +240,18 @@ test("已忽略建议的显示切换位于建议中心标题栏", async () => {
 
 test("文章更新后 AI 建议过期且不能继续采用", () => {
   render(<AISuggestions stale suggestions={[{ id: "s1", field: "tags", name: "Agent", reason: "主题匹配", new_term: true, usage_count: 0 }]} onAccept={vi.fn()} onGenerate={vi.fn()} />);
-  expect(screen.getByText("文章已更新，请重新分析")).toBeInTheDocument();
+  expect(screen.getByText("文章已更新，当前建议已失效，请重新生成后再采用")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "采用 Agent" })).toBeDisabled();
+});
+
+test("过期建议明确提示先重新生成并提供重新生成入口", async () => {
+  const generate = vi.fn();
+  render(<AISuggestions stale suggestions={[{ id: "s1", field: "tags", name: "Agent", reason: "主题匹配", new_term: true, usage_count: 0 }]} onAccept={vi.fn()} onGenerate={generate} />);
+  expect(screen.getByText("文章已更新，当前建议已失效，请重新生成后再采用")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "重新生成" }));
+  expect(screen.getByText("重新生成会创建新的建议版本，继续吗？")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "确认生成" }));
+  expect(generate).toHaveBeenCalledOnce();
 });
 
 test("AI 建议中心按字段展示字符串和数组建议", () => {

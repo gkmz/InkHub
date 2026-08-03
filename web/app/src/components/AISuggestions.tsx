@@ -85,7 +85,7 @@ export function AISuggestions({ suggestions, stale, generating = false, historyC
       </div>
     </div>
     <p className="ai-draft-notice">AI 建议只会加入当前草稿，保存后才写入文章。</p>
-    {stale && <p className="stale-notice">文章已更新，请重新分析</p>}
+    {stale && <div className="stale-notice ai-stale-notice" role="status"><span>文章已更新，当前建议已失效，请重新生成后再采用</span><button className="secondary compact-button" type="button" onClick={requestGenerate}>重新生成</button></div>}
     {actionError && <p className="stale-notice" role="alert">{actionError}</p>}
     {visibleSuggestionCount === 0 && <p className="ai-empty">尚无可用建议</p>}
     {fieldGroups.map((group) => {
@@ -107,6 +107,6 @@ function SuggestionRow({ suggestion, stale, accepted, ignored, processing, onAcc
     <div><b>{value}</b>{suggestion.reason && <small>{suggestion.reason}</small>}</div>
     {suggestion.field === "tags" && <p><span>{suggestion.new_term ? "新 Tag" : `${suggestion.usage_count} 篇文章`}</span></p>}
     {suggestion.field === "keywords" && Array.isArray(suggestion.value) && <p><span>{suggestion.value.length} 个关键词</span></p>}
-    <div><button aria-label={`忽略 ${value}`} type="button" disabled={processing || accepted || ignored} onClick={onIgnore}><X size={14} />忽略</button><button aria-label={`采用 ${value}`} type="button" disabled={stale || accepted || ignored || processing} onClick={onAccept}>{accepted ? <Check size={14} /> : <Check size={14} />}{accepted ? "已加入草稿" : ignored ? "已忽略" : processing ? "处理中" : "采用"}</button></div>
+    <div><button aria-label={`忽略 ${value}`} type="button" disabled={processing || accepted || ignored} onClick={onIgnore}><X size={14} />忽略</button><button aria-label={`采用 ${value}`} title={stale ? "文章已更新，请先重新生成 AI 建议" : undefined} type="button" disabled={stale || accepted || ignored || processing} onClick={onAccept}>{accepted ? <Check size={14} /> : <Check size={14} />}{accepted ? "已加入草稿" : ignored ? "已忽略" : processing ? "处理中" : "采用"}</button></div>
   </article>;
 }

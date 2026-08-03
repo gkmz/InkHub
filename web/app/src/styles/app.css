@@ -280,6 +280,8 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .suggestion p span { color: var(--ink); }
 .suggestion button { border: 0; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 3px; cursor: pointer; font-size: 10px; }
 .suggestion button:last-child { color: var(--action); }
+.suggestion button:disabled { color: var(--muted); cursor: not-allowed; opacity: .5; }
+.suggestion button:disabled:hover { color: var(--muted); }
 .ai-heading-actions { min-width: 0; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
 .ai-heading-actions button { min-height: 30px; padding: 0 8px; font-size: 10px; }
 .ai-heading-actions .ai-show-ignored { min-height: 30px; padding: 0 4px; }
@@ -320,6 +322,9 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .suggestion-status.status-accepted { color: var(--action); }
 .suggestion-status.status-ignored { color: var(--warning); }
 .stale-notice { padding: 8px; background: #fff8ee; color: var(--warning); font-size: 11px; }
+.ai-stale-notice { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ai-stale-notice > span { min-width: 0; line-height: 1.45; }
+.ai-stale-notice > button { width: auto; flex: none; min-height: 28px; padding: 0 10px; }
 .ai-unconfigured { display: flex; align-items: center; gap: 8px; }
 .ai-unconfigured > span { display: grid; font-size: 11px; }
 .ai-unconfigured small { color: var(--muted); }
