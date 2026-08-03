@@ -1,5 +1,5 @@
 import { RotateCcw, Save } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ArticleMetadata } from "../api/types";
 import { SingleTaxonomyField, type TaxonomyFieldOption, type TaxonomyFieldState } from "./SingleTaxonomyField";
 import { TagMultiSelect, type TagOption } from "./TagMultiSelect";
@@ -24,12 +24,16 @@ interface MetadataFormProps {
 /** MetadataForm 编辑标准元数据，并在源文件变化时停止写回。 */
 export function MetadataForm({ value, sourceChanged, onSave, onReload, taxonomyState = "unavailable", categoryOptions = [], seriesOptions = [], tagOptions = [], canCreateTaxonomy = false, onCreateTaxonomy, externalSuggestion, externalSuggestions = emptySuggestions }: MetadataFormProps) {
   const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
+  const previousValue = useRef(value);
   useEffect(() => {
     const incoming = [...(externalSuggestion ? [externalSuggestion] : []), ...externalSuggestions];
-    if (incoming.length === 0) return;
-    setDraft((current) => incoming.reduce(applySuggestion, current));
-  }, [externalSuggestion, externalSuggestions]);
+    // 基线和 AI 建议在同一轮合并，避免异步 effect 先重置表单再丢掉刚采用的值。
+    setDraft((current) => {
+      const base = previousValue.current === value ? current : value;
+      previousValue.current = value;
+      return incoming.reduce(applySuggestion, base);
+    });
+  }, [value, externalSuggestion, externalSuggestions]);
   const update = <K extends keyof ArticleMetadata>(field: K, next: ArticleMetadata[K]) => setDraft((current) => ({ ...current, [field]: next }));
   const keywords = (text: string) => update("keywords", text.split(/[,，]/).map((item) => item.trim()).filter(Boolean));
   const changed = JSON.stringify(draft) !== JSON.stringify(value);

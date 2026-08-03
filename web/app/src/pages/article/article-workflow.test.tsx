@@ -76,6 +76,14 @@ test("批量采用多个 AI 建议时全部进入文章草稿", async () => {
   expect(screen.getByText("AI")).toBeInTheDocument();
 });
 
+test("文章基线刷新与 AI 采用同时发生时不丢失建议值", async () => {
+  const view = render(<MetadataForm value={metadata} sourceChanged={false} externalSuggestions={[{ id: "description-1", field: "description", value: "AI 摘要" }]} onSave={vi.fn()} />);
+  expect(await screen.findByDisplayValue("AI 摘要")).toBeInTheDocument();
+  view.rerender(<MetadataForm value={{ ...metadata, title: "刷新后的标题" }} sourceChanged={false} externalSuggestions={[{ id: "description-1", field: "description", value: "AI 摘要" }]} onSave={vi.fn()} />);
+  expect(await screen.findByDisplayValue("AI 摘要")).toBeInTheDocument();
+  expect(screen.getByDisplayValue("刷新后的标题")).toBeInTheDocument();
+});
+
 test("Category 从 Hugo 快照选择并进入文章草稿", async () => {
   render(<MetadataForm value={metadata} sourceChanged={false} taxonomyState="ready" categoryOptions={[{ key: "engineering", name: "工程实践" }, { key: "product", name: "产品" }]} onSave={vi.fn()} />);
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "Category" }), "产品");
@@ -262,6 +270,21 @@ test("文章页生成 AI Tag 并逐项加入草稿", async () => {
   expect(await screen.findByText("新 Tag")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "采用 SQLite" }));
   expect(screen.getByText("Tags：Go、React → Go、React、SQLite")).toBeInTheDocument();
+});
+
+test("文章页采用 AI 分类和描述建议后更新表单草稿", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/suggestions") && init?.method === "POST") return Response.json({ suggestions: [{ id: "s-description", field: "description", name: "AI 摘要", reason: "", new_term: false, usage_count: 0 }, { id: "s-category", field: "category", name: "AI 应用开发", reason: "", new_term: false, usage_count: 0 }], suggestions_stale: false });
+    if (url.endsWith("/taxonomy")) return Response.json(taxonomy);
+    return Response.json({ ...article, ai_configured: true });
+  });
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  await userEvent.click(await screen.findByRole("button", { name: "生成 AI 建议" }));
+  await userEvent.click(await screen.findByRole("button", { name: "采用 AI 摘要" }));
+  await userEvent.click(screen.getByRole("button", { name: "采用 AI 应用开发" }));
+  expect(await screen.findByDisplayValue("AI 摘要")).toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("AI 应用开发");
 });
 
 test("发布轨道不暴露内部 hash 和任务 ID", () => {
