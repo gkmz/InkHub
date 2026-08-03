@@ -77,7 +77,7 @@ func (h *runtimeHandler) updateSuggestionItems(response http.ResponseWriter, req
 		return
 	}
 	store := repository.NewSuggestionRepository(h.db)
-	storedVersion, err := store.FindByArticleID(request.Context(), current.WorkspaceID, current.ID, suggestionID)
+	_, err = store.FindByArticleID(request.Context(), current.WorkspaceID, current.ID, suggestionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		mapError(response, ErrNotFound)
 		return
@@ -86,10 +86,7 @@ func (h *runtimeHandler) updateSuggestionItems(response http.ResponseWriter, req
 		mapError(response, err)
 		return
 	}
-	if storedVersion.InputContentHash != current.ContentHash {
-		writeError(response, http.StatusConflict, "suggestion.stale", "文章已更新，请重新生成 AI 建议")
-		return
-	}
+	// 文章更新后建议仍可作为元数据草稿使用；版本哈希只用于界面提示和历史审计，不阻断用户决定。
 	version, err := store.UpdateItemStates(request.Context(), current.WorkspaceID, current.ID, suggestionID, input.Action, input.ItemIDs)
 	if err != nil {
 		if strings.Contains(err.Error(), "已经处理") {

@@ -238,16 +238,16 @@ test("已忽略建议的显示切换位于建议中心标题栏", async () => {
   expect(within(headingActions as HTMLElement).getByRole("button", { name: "隐藏已忽略" })).toBeInTheDocument();
 });
 
-test("文章更新后 AI 建议过期且不能继续采用", () => {
+test("文章更新后 AI 建议标记过期但仍可继续采用", async () => {
   render(<AISuggestions stale suggestions={[{ id: "s1", field: "tags", name: "Agent", reason: "主题匹配", new_term: true, usage_count: 0 }]} onAccept={vi.fn()} onGenerate={vi.fn()} />);
-  expect(screen.getByText("文章已更新，当前建议已失效，请重新生成后再采用")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "采用 Agent" })).toBeDisabled();
+  expect(screen.getByText("文章已更新，当前建议基于旧版本，仍可继续采用")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "采用 Agent" })).toBeEnabled();
 });
 
-test("过期建议明确提示先重新生成并提供重新生成入口", async () => {
+test("过期建议提示可选重新生成并提供入口", async () => {
   const generate = vi.fn();
   render(<AISuggestions stale suggestions={[{ id: "s1", field: "tags", name: "Agent", reason: "主题匹配", new_term: true, usage_count: 0 }]} onAccept={vi.fn()} onGenerate={generate} />);
-  expect(screen.getByText("文章已更新，当前建议已失效，请重新生成后再采用")).toBeInTheDocument();
+  expect(screen.getByText("文章已更新，当前建议基于旧版本，仍可继续采用")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "重新生成" }));
   expect(screen.getByText("重新生成会创建新的建议版本，继续吗？")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "确认生成" }));

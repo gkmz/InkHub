@@ -42,7 +42,8 @@ export function AISuggestions({ suggestions, stale, generating = false, historyC
 
   const applyAction = async (action: "accepted" | "ignored", selected: AISuggestion[]) => {
     const candidates = selected.filter((suggestion) => !processing.includes(suggestion.id) && !accepted.includes(suggestion.id) && !ignored.includes(suggestion.id) && !suggestion.accepted && !suggestion.ignored);
-    if (stale || candidates.length === 0) return;
+    // 文章更新只会让建议标记为旧版本，不阻断用户采用或忽略已有建议。
+    if (candidates.length === 0) return;
     const ids = candidates.map((suggestion) => suggestion.id);
     setActionError("");
     setProcessing((current) => [...current, ...ids]);
@@ -85,7 +86,7 @@ export function AISuggestions({ suggestions, stale, generating = false, historyC
       </div>
     </div>
     <p className="ai-draft-notice">AI 建议只会加入当前草稿，保存后才写入文章。</p>
-    {stale && <div className="stale-notice ai-stale-notice" role="status"><span>文章已更新，当前建议已失效，请重新生成后再采用</span><button className="secondary compact-button" type="button" onClick={requestGenerate}>重新生成</button></div>}
+    {stale && <div className="stale-notice ai-stale-notice" role="status"><span>文章已更新，当前建议基于旧版本，仍可继续采用</span><button className="secondary compact-button" type="button" onClick={requestGenerate}>重新生成</button></div>}
     {actionError && <p className="stale-notice" role="alert">{actionError}</p>}
     {visibleSuggestionCount === 0 && <p className="ai-empty">尚无可用建议</p>}
     {fieldGroups.map((group) => {
@@ -94,19 +95,19 @@ export function AISuggestions({ suggestions, stale, generating = false, historyC
       const visible = groupSuggestions.filter((suggestion) => showIgnored ? ignored.includes(suggestion.id) : !ignored.includes(suggestion.id) && !accepted.includes(suggestion.id) && !suggestion.accepted && !suggestion.ignored);
       const pending = visible.filter((suggestion) => !accepted.includes(suggestion.id) && !ignored.includes(suggestion.id) && !suggestion.accepted && !suggestion.ignored);
       return <section className="suggestion-group" key={group.field}>
-        <div className="suggestion-group-heading"><h3>{group.label}</h3><span>{pending.length || visible.length} 条</span><div className="suggestion-group-actions">{!showIgnored && <><button type="button" disabled={stale || pending.length === 0 || processing.length > 0} onClick={() => applyAction("accepted", pending)}>采用全部</button><button type="button" disabled={pending.length === 0 || processing.length > 0} onClick={() => applyAction("ignored", pending)}>忽略全部</button></>}</div></div>
-        {visible.map((suggestion) => <SuggestionRow key={suggestion.id} suggestion={suggestion} stale={stale} accepted={accepted.includes(suggestion.id) || Boolean(suggestion.accepted)} ignored={ignored.includes(suggestion.id) || Boolean(suggestion.ignored)} processing={processing.includes(suggestion.id)} onAccept={() => accept(suggestion)} onIgnore={() => ignore(suggestion)} />)}
+        <div className="suggestion-group-heading"><h3>{group.label}</h3><span>{pending.length || visible.length} 条</span><div className="suggestion-group-actions">{!showIgnored && <><button type="button" disabled={pending.length === 0 || processing.length > 0} onClick={() => applyAction("accepted", pending)}>采用全部</button><button type="button" disabled={pending.length === 0 || processing.length > 0} onClick={() => applyAction("ignored", pending)}>忽略全部</button></>}</div></div>
+        {visible.map((suggestion) => <SuggestionRow key={suggestion.id} suggestion={suggestion} accepted={accepted.includes(suggestion.id) || Boolean(suggestion.accepted)} ignored={ignored.includes(suggestion.id) || Boolean(suggestion.ignored)} processing={processing.includes(suggestion.id)} onAccept={() => accept(suggestion)} onIgnore={() => ignore(suggestion)} />)}
       </section>;
     })}
   </section>;
 }
 
-function SuggestionRow({ suggestion, stale, accepted, ignored, processing, onAccept, onIgnore }: { suggestion: AISuggestion; stale: boolean; accepted: boolean; ignored: boolean; processing: boolean; onAccept: () => void; onIgnore: () => void }) {
+function SuggestionRow({ suggestion, accepted, ignored, processing, onAccept, onIgnore }: { suggestion: AISuggestion; accepted: boolean; ignored: boolean; processing: boolean; onAccept: () => void; onIgnore: () => void }) {
   const value = Array.isArray(suggestion.value) ? suggestion.value.join("、") : suggestion.value ?? suggestion.name;
   return <article className={`suggestion${ignored ? " suggestion-ignored" : ""}`}>
     <div><b>{value}</b>{suggestion.reason && <small>{suggestion.reason}</small>}</div>
     {suggestion.field === "tags" && <p><span>{suggestion.new_term ? "新 Tag" : `${suggestion.usage_count} 篇文章`}</span></p>}
     {suggestion.field === "keywords" && Array.isArray(suggestion.value) && <p><span>{suggestion.value.length} 个关键词</span></p>}
-    <div><button aria-label={`忽略 ${value}`} type="button" disabled={processing || accepted || ignored} onClick={onIgnore}><X size={14} />忽略</button><button aria-label={`采用 ${value}`} title={stale ? "文章已更新，请先重新生成 AI 建议" : undefined} type="button" disabled={stale || accepted || ignored || processing} onClick={onAccept}>{accepted ? <Check size={14} /> : <Check size={14} />}{accepted ? "已加入草稿" : ignored ? "已忽略" : processing ? "处理中" : "采用"}</button></div>
+    <div><button aria-label={`忽略 ${value}`} type="button" disabled={processing || accepted || ignored} onClick={onIgnore}><X size={14} />忽略</button><button aria-label={`采用 ${value}`} type="button" disabled={accepted || ignored || processing} onClick={onAccept}>{accepted ? <Check size={14} /> : <Check size={14} />}{accepted ? "已加入草稿" : ignored ? "已忽略" : processing ? "处理中" : "采用"}</button></div>
   </article>;
 }

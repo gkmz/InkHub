@@ -103,13 +103,27 @@ func TestSuggestionHistoryAndDetailExposeTypedValues(t *testing.T) {
 	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"value":["go","ai"]`) || !strings.Contains(detail.Body.String(), `"name":"Go"`) {
 		t.Fatalf("建议详情类型化值错误: %d %s", detail.Code, detail.Body.String())
 	}
+	if _, err := db.Exec(`UPDATE articles SET content_hash='hash-v2' WHERE id='a1'`); err != nil {
+		t.Fatal(err)
+	}
+	accepted := httptest.NewRecorder()
+	acceptedRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/suggestions/suggestion_typed/actions", strings.NewReader(`{"action":"accepted","item_ids":["description_1"]}`))
+	acceptedRequest.Header.Set("Content-Type", "application/json")
+	acceptedRequest.Header.Set("Origin", "http://localhost")
+	handler.ServeHTTP(accepted, acceptedRequest)
+	if accepted.Code != http.StatusOK || !strings.Contains(accepted.Body.String(), `"status":"accepted"`) || !strings.Contains(accepted.Body.String(), `"accepted":true`) {
+		t.Fatalf("文章更新后采用建议失败: %d %s", accepted.Code, accepted.Body.String())
+	}
+	if !strings.Contains(accepted.Body.String(), `"suggestions_stale":true`) {
+		t.Fatalf("文章更新后应保留建议过期标记: %s", accepted.Body.String())
+	}
 	action := httptest.NewRecorder()
 	actionRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/suggestions/suggestion_typed/actions", strings.NewReader(`{"action":"ignored","item_ids":["tag_1","keywords_1"]}`))
 	actionRequest.Header.Set("Content-Type", "application/json")
 	actionRequest.Header.Set("Origin", "http://localhost")
 	handler.ServeHTTP(action, actionRequest)
 	if action.Code != http.StatusOK || !strings.Contains(action.Body.String(), `"status":"ignored"`) || !strings.Contains(action.Body.String(), `"ignored":true`) {
-		t.Fatalf("批量忽略建议失败: %d %s", action.Code, action.Body.String())
+		t.Fatalf("文章更新后批量忽略建议失败: %d %s", action.Code, action.Body.String())
 	}
 	repeated := httptest.NewRecorder()
 	repeatedRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/suggestions/suggestion_typed/actions", strings.NewReader(`{"action":"ignored","item_ids":["tag_1"]}`))
