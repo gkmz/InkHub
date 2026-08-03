@@ -1,6 +1,6 @@
 import { AlertTriangle, ArrowLeft, Bot, Check, CloudUpload, Send, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { generateArticleSuggestions, getArticle, getPublicationWorkflow, getSuggestionHistory, getSuggestionVersion, getTaxonomyOverview, reviewArticle, saveMetadata } from "../../api/client";
+import { generateArticleSuggestions, getArticle, getPublicationWorkflow, getSuggestionHistory, getSuggestionVersion, getTaxonomyOverview, reviewArticle, saveMetadata, updateSuggestionItems } from "../../api/client";
 import { previewHasHeading } from "../../api/safeHTML";
 import type { ArticleDetail, ArticleMetadata, PublicationChannel, SuggestionHistoryItem, SuggestionVersionView, TaxonomyOverview } from "../../api/types";
 import { AISuggestions } from "../../components/AISuggestions";
@@ -89,6 +89,14 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
       setSuggestionVersionLoading(false);
     }
   };
+  const updateSuggestionAction = async (action: "accepted" | "ignored", suggestionIDs: string[]) => {
+    // 兼容旧版生成接口暂时缺少 suggestions_id 的响应，真实版本始终由后端返回该 ID。
+    if (!article?.suggestions_id) return;
+    await updateSuggestionItems(articleID, article.suggestions_id, action, suggestionIDs);
+    setArticle((current) => current ? { ...current, suggestions: current.suggestions.filter((suggestion) => !suggestionIDs.includes(suggestion.id)) } : current);
+    setSuggestionHistoryLoaded(false);
+    if (suggestionHistoryOpen) void loadSuggestionHistory();
+  };
   if (!article) return <div className="page-state">{notice || "正在打开文章…"}</div>;
   // 旧版本或降级响应可能缺少 terms，页面必须退化为空候选而不是白屏。
   const taxonomyTerms = Array.isArray(taxonomy?.terms) ? taxonomy.terms : [];
@@ -119,7 +127,7 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
       <aside className={`review-panel mobile-${tab}`}>
         <MetadataForm value={article.metadata} sourceChanged={article.source_changed} categoryOptions={categoryOptions} seriesOptions={seriesOptions} tagOptions={tagOptions} taxonomyState={taxonomyState} canCreateTaxonomy={canCreateTaxonomy} onCreateTaxonomy={(kind, select) => setTaxonomySelection({ kind, select })} externalSuggestions={externalSuggestions} onReload={() => { setExternalSuggestions([]); void load(); }} onSave={async (metadata) => { const next = await saveMetadata(article.id, metadata); setArticle(next); setExternalSuggestions([]); setNotice("元数据已保存"); }} />
         <Checks items={article.checks} />
-        {article.ai_configured ? <><AISuggestions stale={article.suggestions_stale} suggestions={article.suggestions} generating={generatingAI} historyCount={suggestionHistoryItems.length} onOpenHistory={openSuggestionHistory} onAccept={(suggestion) => setExternalSuggestions((current) => [...current, { id: `${suggestion.id}:${Date.now()}`, field: suggestion.field, value: suggestion.value ?? suggestion.name }])} onGenerate={async () => { setExternalSuggestions([]); setGeneratingAI(true); try { const result = await generateArticleSuggestions(article.id); setArticle({ ...article, ...result }); setSuggestionHistoryLoaded(false); setNotice("AI 建议已生成"); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "AI 建议生成失败"); } finally { setGeneratingAI(false); } }} />{suggestionHistoryOpen && <SuggestionHistory items={suggestionHistoryItems} selected={selectedSuggestionVersion} loading={suggestionHistoryLoading} detailLoading={suggestionVersionLoading} error={suggestionHistoryError} onSelect={(id) => void selectSuggestionVersion(id)} onRetry={() => void loadSuggestionHistory()} onClose={() => setSuggestionHistoryOpen(false)} />}</> : <section className="tool-section ai-unconfigured"><Bot size={17} /><span><b>AI 建议未启用</b><small>不影响手工审核</small></span><button onClick={() => onNavigate("/settings")}>配置 AI</button></section>}
+        {article.ai_configured ? <><AISuggestions stale={article.suggestions_stale} suggestions={article.suggestions} generating={generatingAI} historyCount={suggestionHistoryItems.length} onOpenHistory={openSuggestionHistory} onAction={updateSuggestionAction} onAccept={(suggestion) => setExternalSuggestions((current) => [...current, { id: `${suggestion.id}:${Date.now()}`, field: suggestion.field, value: suggestion.value ?? suggestion.name }])} onGenerate={async () => { setExternalSuggestions([]); setGeneratingAI(true); try { const result = await generateArticleSuggestions(article.id); setArticle({ ...article, ...result }); setSuggestionHistoryLoaded(false); setNotice("AI 建议已生成"); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "AI 建议生成失败"); } finally { setGeneratingAI(false); } }} />{suggestionHistoryOpen && <SuggestionHistory items={suggestionHistoryItems} selected={selectedSuggestionVersion} loading={suggestionHistoryLoading} detailLoading={suggestionVersionLoading} error={suggestionHistoryError} onSelect={(id) => void selectSuggestionVersion(id)} onRetry={() => void loadSuggestionHistory()} onClose={() => setSuggestionHistoryOpen(false)} />}</> : <section className="tool-section ai-unconfigured"><Bot size={17} /><span><b>AI 建议未启用</b><small>不影响手工审核</small></span><button onClick={() => onNavigate("/settings")}>配置 AI</button></section>}
         {!isDraft && !hidePrimaryForHugoFlow && primary && PrimaryIcon && <div className="primary-action"><button className="primary" onClick={() => void primary.action()}><PrimaryIcon size={17} />{primary.label}</button>{notice && <span role="status">{notice}</span>}</div>}
         {!isDraft && showHugoFlow && article.hugo_state !== "已同步" && <HugoPublishFlow articleID={article.id} contentHash={article.content_version} onPublished={async () => { setShowHugoFlow(false); setHistoryRefreshKey((value) => value + 1); await load(); }} />}
         {!isDraft && <section className="tool-section xiaohongshu-entry"><div className="tool-heading"><h2><Sparkles size={16} />小红书</h2><span>{article.xiaohongshu_state ?? "尚未准备"}</span></div><p>将文章适配为手机图片集，标题和文案在 InkHub 中整体编辑。</p><button className="secondary compact-button" onClick={() => onNavigate(`/articles/${article.id}/xiaohongshu`)}><Sparkles size={15} />打开内容中心</button></section>}

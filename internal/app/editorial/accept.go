@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/gkmz/InkHub/internal/domain/article"
+	domaineditorial "github.com/gkmz/InkHub/internal/domain/editorial"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
 
@@ -123,17 +124,5 @@ func decodeString(item SuggestionItem) (string, error) {
 }
 
 func deriveSuggestionState(items []SuggestionItem) SuggestionState {
-	accepted := 0
-	for _, item := range items {
-		if item.Accepted {
-			accepted++
-		}
-	}
-	if accepted == len(items) && len(items) > 0 {
-		return SuggestionAccepted
-	}
-	if accepted > 0 {
-		return SuggestionPartiallyAccepted
-	}
-	return SuggestionPending
+	return domaineditorial.DeriveSuggestionState(items)
 }

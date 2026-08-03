@@ -26,6 +26,8 @@ type articleSuggestionView struct {
 	NewTerm    bool   `json:"new_term"`
 	UsageCount int    `json:"usage_count"`
 	Accepted   bool   `json:"accepted"`
+	Ignored    bool   `json:"ignored"`
+	Status     string `json:"status"`
 }
 
 type articleSuggestionHistoryView struct {
@@ -51,6 +53,57 @@ type articleSuggestionDetailView struct {
 	State            string                  `json:"state"`
 	Suggestions      []articleSuggestionView `json:"suggestions"`
 	SuggestionsStale bool                    `json:"suggestions_stale"`
+}
+
+type suggestionActionRequest struct {
+	Action  string   `json:"action"`
+	ItemIDs []string `json:"item_ids"`
+}
+
+// updateSuggestionItems 持久化一批建议项的采用或忽略动作，并返回完整版本供历史审计使用。
+func (h *runtimeHandler) updateSuggestionItems(response http.ResponseWriter, request *http.Request, articleID, suggestionID string) {
+	current, err := h.loadSuggestionArticle(request, articleID)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	var input suggestionActionRequest
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+		writeError(response, http.StatusBadRequest, "request.invalid", "AI 建议操作参数无效")
+		return
+	}
+	if input.Action != "accepted" && input.Action != "ignored" {
+		writeError(response, http.StatusBadRequest, "request.invalid", "AI 建议操作必须是 accepted 或 ignored")
+		return
+	}
+	store := repository.NewSuggestionRepository(h.db)
+	storedVersion, err := store.FindByArticleID(request.Context(), current.WorkspaceID, current.ID, suggestionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		mapError(response, ErrNotFound)
+		return
+	}
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	if storedVersion.InputContentHash != current.ContentHash {
+		writeError(response, http.StatusConflict, "suggestion.stale", "文章已更新，请重新生成 AI 建议")
+		return
+	}
+	version, err := store.UpdateItemStates(request.Context(), current.WorkspaceID, current.ID, suggestionID, input.Action, input.ItemIDs)
+	if err != nil {
+		if strings.Contains(err.Error(), "已经处理") {
+			writeError(response, http.StatusConflict, "suggestion.already_processed", err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "找不到") || strings.Contains(err.Error(), "不能为空") {
+			writeError(response, http.StatusBadRequest, "request.invalid", err.Error())
+			return
+		}
+		mapError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, suggestionDetailView(version, current.ContentHash))
 }
 
 // generateArticleSuggestions 通过当前工作区 AI Provider 生成并持久化结构化建议。
@@ -180,6 +233,14 @@ func parseSuggestionPath(path string) (articleID, suggestionID string, ok bool) 
 	return parts[0], parts[2], true
 }
 
+func parseSuggestionActionPath(path string) (articleID, suggestionID string, ok bool) {
+	parts := strings.Split(strings.TrimPrefix(path, "/api/v1/articles/"), "/")
+	if len(parts) != 4 || parts[0] == "" || parts[1] != "suggestions" || parts[2] == "" || parts[3] != "actions" {
+		return "", "", false
+	}
+	return parts[0], parts[2], true
+}
+
 // newSuggestionID 为每次 AI 生成创建不可预测且不会覆盖历史的建议版本 ID。
 func newSuggestionID() (string, error) {
 	var random [16]byte
@@ -234,14 +295,24 @@ func suggestionViews(items []editorialapp.SuggestionItem) []articleSuggestionVie
 	for _, item := range items {
 		var name string
 		if json.Unmarshal(item.Value, &name) == nil {
-			views = append(views, articleSuggestionView{ID: item.ID, Field: item.Field, Name: name, Value: name, Reason: item.Rationale, NewTerm: item.NewTerm, UsageCount: item.UsageCount, Accepted: item.Accepted})
+			views = append(views, articleSuggestionView{ID: item.ID, Field: item.Field, Name: name, Value: name, Reason: item.Rationale, NewTerm: item.NewTerm, UsageCount: item.UsageCount, Accepted: item.Accepted, Ignored: item.Ignored, Status: item.Status()})
 			continue
 		}
 		var values []string
 		if json.Unmarshal(item.Value, &values) != nil {
 			continue
 		}
-		views = append(views, articleSuggestionView{ID: item.ID, Field: item.Field, Name: strings.Join(values, "、"), Value: values, Reason: item.Rationale, NewTerm: item.NewTerm, UsageCount: item.UsageCount, Accepted: item.Accepted})
+		views = append(views, articleSuggestionView{ID: item.ID, Field: item.Field, Name: strings.Join(values, "、"), Value: values, Reason: item.Rationale, NewTerm: item.NewTerm, UsageCount: item.UsageCount, Accepted: item.Accepted, Ignored: item.Ignored, Status: item.Status()})
 	}
 	return views
+}
+
+func pendingSuggestionItems(items []editorialapp.SuggestionItem) []editorialapp.SuggestionItem {
+	pending := make([]editorialapp.SuggestionItem, 0, len(items))
+	for _, item := range items {
+		if item.Status() == "pending" {
+			pending = append(pending, item)
+		}
+	}
+	return pending
 }

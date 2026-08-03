@@ -306,8 +306,11 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .suggestion-version-heading { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; }
 .suggestion-version-heading span { display: inline-flex; align-items: center; gap: 4px; color: var(--warning); }
 .suggestion-version-detail ul { display: grid; gap: 6px; margin: 9px 0 0; padding: 0; list-style: none; }
-.suggestion-version-detail li { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px; font-size: 10px; }
+.suggestion-version-detail li { display: grid; grid-template-columns: 80px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 10px; }
 .suggestion-version-detail li span { overflow-wrap: anywhere; color: var(--muted); }
+.suggestion-status { font-style: normal; white-space: nowrap; color: var(--muted); }
+.suggestion-status.status-accepted { color: var(--action); }
+.suggestion-status.status-ignored { color: var(--warning); }
 .stale-notice { padding: 8px; background: #fff8ee; color: var(--warning); font-size: 11px; }
 .ai-unconfigured { display: flex; align-items: center; gap: 8px; }
 .ai-unconfigured > span { display: grid; font-size: 11px; }

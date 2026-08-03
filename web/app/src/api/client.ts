@@ -134,6 +134,14 @@ export function getSuggestionVersion(articleID: string, suggestionID: string, si
   return request<SuggestionVersionView>(`/articles/${encodeURIComponent(articleID)}/suggestions/${encodeURIComponent(suggestionID)}`, { signal });
 }
 
+/** updateSuggestionItems 持久化指定建议版本的一批采用或忽略动作。 */
+export function updateSuggestionItems(articleID: string, suggestionID: string, action: "accepted" | "ignored", itemIDs: string[]) {
+  return request<SuggestionVersionView>(`/articles/${encodeURIComponent(articleID)}/suggestions/${encodeURIComponent(suggestionID)}/actions`, {
+    method: "POST",
+    body: JSON.stringify({ action, item_ids: itemIDs }),
+  });
+}
+
 /** saveMetadata 使用源文件指纹约束写回，冲突由服务端拒绝。 */
 export function saveMetadata(articleID: string, metadata: ArticleMetadata) {
   return request<ArticleDetail>(`/articles/${encodeURIComponent(articleID)}/metadata`, { method: "PUT", body: JSON.stringify({ metadata }) });

@@ -29,11 +29,20 @@ const demoArticle = {
 let demoWeChatPrepared = false;
 const demoIgnored = new Set<string>();
 const demoPublished = new Map<string, Set<string>>();
+const demoSuggestionStates = new Map<string, "accepted" | "ignored">();
 
 function resetDemoState() {
   demoWeChatPrepared = false;
   demoIgnored.clear();
   demoPublished.clear();
+  demoSuggestionStates.clear();
+}
+
+function demoSuggestionViews(includeHandled = false) {
+  return demoArticle.suggestions.filter((suggestion) => includeHandled || !demoSuggestionStates.has(suggestion.id)).map((suggestion) => {
+    const status = demoSuggestionStates.get(suggestion.id) ?? "pending";
+    return { ...suggestion, status, accepted: status === "accepted", ignored: status === "ignored" };
+  });
 }
 
 function demoSummary(article: typeof demoArticles[number]) {
@@ -117,15 +126,22 @@ const demoAPI: Plugin = {
         }
         body = { processed: articles.length, changed, unchanged: articles.length - changed };
       } else if (url.pathname === "/workspaces") body = { workspace: { id: "demo", name: "我的写作空间" }, job_id: "demo-scan" };
-      else if (/^\/articles\/[^/]+\/suggestions$/.test(url.pathname) && request.method === "POST") body = { suggestions: demoArticle.suggestions, suggestions_id: "demo-suggestion-current", suggestions_generated_at: "2026-08-02T10:00:00Z", suggestions_stale: false };
+      else if (/^\/articles\/[^/]+\/suggestions$/.test(url.pathname) && request.method === "POST") { demoSuggestionStates.clear(); body = { suggestions: demoSuggestionViews(), suggestions_id: "demo-suggestion-current", suggestions_generated_at: "2026-08-02T10:00:00Z", suggestions_stale: false }; }
+      else if (/^\/articles\/[^/]+\/suggestions\/[^/]+\/actions$/.test(url.pathname) && request.method === "POST") {
+        const command = await readJSONBody(request);
+        const action = String(command.action ?? "") as "accepted" | "ignored";
+        const itemIDs = Array.isArray(command.item_ids) ? command.item_ids.map(String) : [];
+        itemIDs.forEach((id) => demoSuggestionStates.set(id, action));
+        body = { id: "demo-suggestion-current", generated_at: "2026-08-02T10:00:00Z", model: "demo-model", input_content_hash: "demo-current-version", state: "partially_accepted", suggestions: demoSuggestionViews(true), suggestions_stale: false };
+      }
       else if (/^\/articles\/[^/]+\/suggestions$/.test(url.pathname)) body = { items: [{ id: "demo-suggestion-current", generated_at: "2026-08-02T10:00:00Z", model: "demo-model", input_content_hash: "demo-current-version", state: "pending", suggestion_count: demoArticle.suggestions.length, current: true }] };
-      else if (/^\/articles\/[^/]+\/suggestions\/[^/]+$/.test(url.pathname)) body = { id: "demo-suggestion-current", generated_at: "2026-08-02T10:00:00Z", model: "demo-model", input_content_hash: "demo-current-version", state: "pending", suggestions: demoArticle.suggestions, suggestions_stale: false };
+      else if (/^\/articles\/[^/]+\/suggestions\/[^/]+$/.test(url.pathname)) body = { id: "demo-suggestion-current", generated_at: "2026-08-02T10:00:00Z", model: "demo-model", input_content_hash: "demo-current-version", state: "pending", suggestions: demoSuggestionViews(true), suggestions_stale: false };
       else if (/^\/articles\/[^/]+$/.test(url.pathname)) {
         const articleID = url.pathname.split("/").pop() ?? demoArticle.id;
         const summary = demoArticles.find((article) => article.id === articleID);
         const channels = [...(demoPublished.get(articleID) ?? [])];
         const disposition = demoIgnored.has(articleID) ? { kind: "ignored", channels: [] } : channels.length > 0 ? { kind: "published", channels } : undefined;
-        body = { ...demoArticle, id: articleID, content_version: summary?.content_version ?? demoArticle.content_version, content_stage: summary?.content_stage ?? "draft", content_stage_issue: summary?.content_stage_issue ?? "", disposition, review_state: summary?.content_stage === "draft" ? "不适用" : articleID === "a2" ? "已通过" : demoArticle.review_state, hugo_state: summary?.content_stage === "draft" ? "未进入发布流程" : articleID === "a2" ? "需要同步" : demoArticle.hugo_state, wechat_state: summary?.content_stage === "draft" ? "未进入发布流程" : demoWeChatPrepared ? "已准备" : demoArticle.wechat_state };
+        body = { ...demoArticle, suggestions: demoSuggestionViews(), id: articleID, content_version: summary?.content_version ?? demoArticle.content_version, content_stage: summary?.content_stage ?? "draft", content_stage_issue: summary?.content_stage_issue ?? "", disposition, review_state: summary?.content_stage === "draft" ? "不适用" : articleID === "a2" ? "已通过" : demoArticle.review_state, hugo_state: summary?.content_stage === "draft" ? "未进入发布流程" : articleID === "a2" ? "需要同步" : demoArticle.hugo_state, wechat_state: summary?.content_stage === "draft" ? "未进入发布流程" : demoWeChatPrepared ? "已准备" : demoArticle.wechat_state };
       }
       else if (/^\/articles\/[^/]+\/metadata$/.test(url.pathname)) body = demoArticle;
       else if (/^\/articles\/[^/]+\/review$/.test(url.pathname)) body = { state: "approved" };

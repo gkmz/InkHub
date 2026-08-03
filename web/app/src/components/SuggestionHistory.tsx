@@ -28,8 +28,14 @@ export function SuggestionHistory({ items, selected, loading, detailLoading, err
 function SuggestionVersionDetail({ version }: { version: SuggestionVersionView }) {
   return <div className="suggestion-version-detail">
     <div className="suggestion-version-heading"><strong>{formatGeneratedAt(version.generated_at)}</strong>{version.suggestions_stale && <span><AlertTriangle size={13} />内容已变化</span>}</div>
-    {version.suggestions.length === 0 ? <p className="history-state">该版本没有有效建议。</p> : <ul>{version.suggestions.map((suggestion) => <li key={suggestion.id}><b>{suggestion.field}</b><span>{Array.isArray(suggestion.value) ? suggestion.value.join("、") : suggestion.value ?? suggestion.name}</span></li>)}</ul>}
+    {version.suggestions.length === 0 ? <p className="history-state">该版本没有有效建议。</p> : <ul>{version.suggestions.map((suggestion) => <li key={suggestion.id}><b>{suggestion.field}</b><span>{Array.isArray(suggestion.value) ? suggestion.value.join("、") : suggestion.value ?? suggestion.name}</span><em className={`suggestion-status status-${suggestion.status ?? (suggestion.accepted ? "accepted" : suggestion.ignored ? "ignored" : "pending")}`}>{suggestionStatusLabel(suggestion.status ?? (suggestion.accepted ? "accepted" : suggestion.ignored ? "ignored" : "pending"))}</em></li>)}</ul>}
   </div>;
+}
+
+function suggestionStatusLabel(status: string) {
+  if (status === "accepted") return "已采用";
+  if (status === "ignored") return "已忽略";
+  return "待处理";
 }
 
 function formatGeneratedAt(value: string) {

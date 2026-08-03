@@ -53,6 +53,7 @@ Repository 增加：
 
 - 按 workspace 和 article 查询建议版本摘要，按 `created_at DESC, id DESC` 排序。
 - 按 workspace、article 和 suggestion ID 查询完整版本，防止跨工作区读取。
+- 在事务中批量更新建议项的 `pending`、`accepted`、`ignored` 状态，保留原版本 JSON 供历史审计。
 
 历史摘要至少包含：建议 ID、生成时间、内容哈希、模型、处理状态、建议数量和是否为当前内容版本。
 
@@ -67,8 +68,9 @@ Repository 增加：
 
 - `GET /api/v1/articles/{id}/suggestions`：返回建议历史摘要，支持 `limit`，默认最近 20 个版本。
 - `GET /api/v1/articles/{id}/suggestions/{suggestionID}`：返回指定版本的完整建议，只允许读取当前 workspace 下属于该文章的记录。
+- `POST /api/v1/articles/{id}/suggestions/{suggestionID}/actions`：批量采用或忽略建议项，请求包含 `action` 和 `item_ids`；重复处理或文章版本过期时拒绝更新。
 
-建议项使用类型化值，字符串字段返回字符串，Keywords 返回字符串数组；Tags 仍拆成多个可单独采用的建议项。保留 `reason`、`new_term` 和 `usage_count`，不暴露 Provider 原始响应、Secret 或完整提示词。
+文章详情只返回最新版本中仍为 `pending` 的建议；历史版本返回全量建议，并为每一项标记 `pending`、`accepted` 或 `ignored`。建议项使用类型化值，字符串字段返回字符串，Keywords 返回字符串数组；Tags 仍拆成多个可单独采用的建议项。保留 `reason`、`new_term` 和 `usage_count`，不暴露 Provider 原始响应、Secret 或完整提示词。
 
 ### 4.3 生成并发与失败
 

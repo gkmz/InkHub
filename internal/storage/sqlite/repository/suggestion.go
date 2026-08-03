@@ -108,6 +108,76 @@ func (r *SuggestionRepository) FindLatestByArticle(ctx context.Context, workspac
 	return value, err == nil, err
 }
 
+// UpdateItemStates 在指定建议版本内原子更新一批建议项的采用或忽略状态。
+func (r *SuggestionRepository) UpdateItemStates(ctx context.Context, workspaceID, articleID, suggestionID, action string, itemIDs []string) (domaineditorial.SuggestionSet, error) {
+	if workspaceID == "" || articleID == "" || suggestionID == "" {
+		return domaineditorial.SuggestionSet{}, fmt.Errorf("AI 建议身份字段不完整")
+	}
+	if action != "accepted" && action != "ignored" {
+		return domaineditorial.SuggestionSet{}, fmt.Errorf("不支持的 AI 建议操作: %s", action)
+	}
+	if len(itemIDs) == 0 {
+		return domaineditorial.SuggestionSet{}, fmt.Errorf("至少需要一个 AI 建议项")
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domaineditorial.SuggestionSet{}, fmt.Errorf("开启 AI 建议状态事务: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	value, err := scanSuggestion(tx.QueryRowContext(ctx, `SELECT id,article_id,input_content_hash,provider_instance_id,workspace_id,suggestion_json,state,created_at,updated_at
+FROM ai_suggestions WHERE workspace_id=? AND article_id=? AND id=?`, workspaceID, articleID, suggestionID))
+	if err != nil {
+		return domaineditorial.SuggestionSet{}, err
+	}
+	requested := make(map[string]struct{}, len(itemIDs))
+	for _, id := range itemIDs {
+		if id == "" {
+			return domaineditorial.SuggestionSet{}, fmt.Errorf("AI 建议项 ID 不能为空")
+		}
+		if _, exists := requested[id]; exists {
+			continue
+		}
+		requested[id] = struct{}{}
+	}
+	updated := 0
+	for index := range value.Items {
+		if _, exists := requested[value.Items[index].ID]; !exists {
+			continue
+		}
+		if value.Items[index].Accepted || value.Items[index].Ignored {
+			return domaineditorial.SuggestionSet{}, fmt.Errorf("AI 建议项已经处理: %s", value.Items[index].ID)
+		}
+		if action == "accepted" {
+			value.Items[index].Accepted = true
+		} else {
+			value.Items[index].Ignored = true
+		}
+		updated++
+	}
+	if updated != len(requested) {
+		return domaineditorial.SuggestionSet{}, fmt.Errorf("找不到 AI 建议项")
+	}
+	value.State = domaineditorial.DeriveSuggestionState(value.Items)
+	payload, err := json.Marshal(suggestionPayload{Model: value.Model, Items: value.Items})
+	if err != nil {
+		return domaineditorial.SuggestionSet{}, fmt.Errorf("序列化 AI 建议状态: %w", err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := tx.ExecContext(ctx, `UPDATE ai_suggestions SET suggestion_json=?,state=?,updated_at=? WHERE id=? AND article_id=? AND workspace_id=?`, string(payload), value.State, now, suggestionID, articleID, workspaceID)
+	if err != nil {
+		return domaineditorial.SuggestionSet{}, fmt.Errorf("更新 AI 建议状态: %w", err)
+	}
+	if affected, affectedErr := result.RowsAffected(); affectedErr != nil || affected != 1 {
+		return domaineditorial.SuggestionSet{}, fmt.Errorf("更新 AI 建议状态失败")
+	}
+	if err := tx.Commit(); err != nil {
+		return domaineditorial.SuggestionSet{}, fmt.Errorf("提交 AI 建议状态: %w", err)
+	}
+	value.UpdatedAt = now
+	return value, nil
+}
+
 func scanSuggestion(row rowScanner) (domaineditorial.SuggestionSet, error) {
 	var value domaineditorial.SuggestionSet
 	var payloadJSON string

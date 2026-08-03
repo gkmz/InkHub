@@ -178,6 +178,8 @@ export interface AISuggestion {
   new_term: boolean;
   usage_count: number;
   accepted?: boolean;
+  ignored?: boolean;
+  status?: "pending" | "accepted" | "ignored";
 }
 
 export interface SuggestionHistoryItem {

@@ -169,6 +169,15 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.generateArticleSuggestions(response, request)
 		}
+	case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/actions") && strings.Contains(request.URL.Path, "/suggestions/"):
+		if validateWriteRequest(response, request) {
+			articleID, suggestionID, ok := parseSuggestionActionPath(request.URL.Path)
+			if !ok {
+				writeError(response, http.StatusNotFound, "resource.not_found", "请求的资源不存在")
+			} else {
+				h.updateSuggestionItems(response, request, articleID, suggestionID)
+			}
+		}
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/articles/") && strings.Contains(request.URL.Path, "/suggestions"):
 		articleID, suggestionID, ok := parseSuggestionPath(request.URL.Path)
 		if !ok {
@@ -385,7 +394,7 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 	suggestionsID := ""
 	suggestionsGeneratedAt := ""
 	if latest, found, findErr := repository.NewSuggestionRepository(h.db).FindLatestByArticle(request.Context(), workspaceID, id); findErr == nil && found {
-		suggestionItems = suggestionViews(latest.Items)
+		suggestionItems = suggestionViews(pendingSuggestionItems(latest.Items))
 		suggestionsStale = latest.InputContentHash != contentHash
 		suggestionsID = latest.ID
 		suggestionsGeneratedAt = latest.CreatedAt

@@ -24,6 +24,44 @@ type SuggestionItem struct {
 	NewTerm    bool            `json:"new_term,omitempty"`
 	UsageCount int             `json:"usage_count,omitempty"`
 	Accepted   bool            `json:"accepted,omitempty"`
+	Ignored    bool            `json:"ignored,omitempty"`
+}
+
+// Status 返回建议项当前可审计的处理状态。
+func (item SuggestionItem) Status() string {
+	if item.Accepted {
+		return "accepted"
+	}
+	if item.Ignored {
+		return "ignored"
+	}
+	return "pending"
+}
+
+// DeriveSuggestionState 根据建议项处理结果计算建议版本状态。
+func DeriveSuggestionState(items []SuggestionItem) SuggestionState {
+	if len(items) == 0 {
+		return SuggestionPending
+	}
+	accepted, ignored := 0, 0
+	for _, item := range items {
+		if item.Accepted {
+			accepted++
+		}
+		if item.Ignored {
+			ignored++
+		}
+	}
+	if accepted == len(items) {
+		return SuggestionAccepted
+	}
+	if ignored == len(items) {
+		return SuggestionRejected
+	}
+	if accepted+ignored > 0 {
+		return SuggestionPartiallyAccepted
+	}
+	return SuggestionPending
 }
 
 // SuggestionSet 保存一次 AI 分析产生的可审计建议集合。

@@ -103,6 +103,22 @@ func TestSuggestionHistoryAndDetailExposeTypedValues(t *testing.T) {
 	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"value":["go","ai"]`) || !strings.Contains(detail.Body.String(), `"name":"Go"`) {
 		t.Fatalf("建议详情类型化值错误: %d %s", detail.Code, detail.Body.String())
 	}
+	action := httptest.NewRecorder()
+	actionRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/suggestions/suggestion_typed/actions", strings.NewReader(`{"action":"ignored","item_ids":["tag_1","keywords_1"]}`))
+	actionRequest.Header.Set("Content-Type", "application/json")
+	actionRequest.Header.Set("Origin", "http://localhost")
+	handler.ServeHTTP(action, actionRequest)
+	if action.Code != http.StatusOK || !strings.Contains(action.Body.String(), `"status":"ignored"`) || !strings.Contains(action.Body.String(), `"ignored":true`) {
+		t.Fatalf("批量忽略建议失败: %d %s", action.Code, action.Body.String())
+	}
+	repeated := httptest.NewRecorder()
+	repeatedRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/suggestions/suggestion_typed/actions", strings.NewReader(`{"action":"ignored","item_ids":["tag_1"]}`))
+	repeatedRequest.Header.Set("Content-Type", "application/json")
+	repeatedRequest.Header.Set("Origin", "http://localhost")
+	handler.ServeHTTP(repeated, repeatedRequest)
+	if repeated.Code != http.StatusConflict {
+		t.Fatalf("重复处理建议状态码 = %d, body=%s", repeated.Code, repeated.Body.String())
+	}
 	blocked := httptest.NewRecorder()
 	handler.ServeHTTP(blocked, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/articles/a1/suggestions/unknown", nil))
 	if blocked.Code != http.StatusNotFound {
