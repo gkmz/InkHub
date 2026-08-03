@@ -236,6 +236,8 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .review-command-bar strong { overflow-wrap: anywhere; font-size: 14px; }
 .review-command-bar small { color: var(--muted); font-size: 10px; line-height: 1.45; }
 .review-command-bar .primary { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; white-space: nowrap; padding-inline: 14px; font-size: 11px; }
+.review-command-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.review-command-actions .secondary { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; white-space: nowrap; padding-inline: 12px; font-size: 11px; }
 .review-command-notice { grid-column: 1 / -1; color: var(--action); font-size: 10px; }
 .metadata-form > label, .field-pair label { display: grid; gap: 6px; margin-bottom: 13px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .metadata-form input, .metadata-form textarea, .metadata-form select { width: 100%; border: 1px solid var(--line); border-radius: 4px; padding: 8px 9px; background: var(--surface); color: var(--ink); font-size: 12px; resize: vertical; }
@@ -595,7 +597,8 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
   .review-panel.mobile-publish .tool-section { display: none; }
   .review-panel.mobile-publish .review-command-bar { min-height: 220px; margin: 0; padding: 0; border: 0; place-content: center; }
   .review-panel.mobile-publish .review-command-bar > div { text-align: center; }
-  .review-panel.mobile-publish .review-command-bar .primary { width: 100%; }
+  .review-panel.mobile-publish .review-command-actions { width: 100%; display: grid; }
+  .review-panel.mobile-publish .review-command-bar .primary, .review-panel.mobile-publish .review-command-actions .secondary { width: 100%; }
   .tool-section { padding-left: 0; }
   .hugo-publish-flow { margin-left: 0; }
   .publication-history { margin-left: 0; }

@@ -312,6 +312,18 @@ test("文章页显示当前版本已发表渠道提示", async () => {
   expect(await screen.findByText("当前版本已标记为外部发表：Hugo、微信")).toBeInTheDocument();
 });
 
+test("小红书入口只出现在发布操作区，不出现在审核工具列表底部", async () => {
+  const navigate = vi.fn();
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy")
+    ? Response.json(taxonomy)
+    : Response.json({ ...article, review_state: "已通过", hugo_state: "已同步", wechat_state: "尚未准备" }));
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={navigate} /></ToastProvider>);
+  const publishButton = await screen.findByRole("button", { name: "发布到小红书" });
+  expect(screen.queryByRole("button", { name: "打开内容中心" })).not.toBeInTheDocument();
+  await userEvent.click(publishButton);
+  expect(navigate).toHaveBeenCalledWith("/articles/article-1/xiaohongshu");
+});
+
 test("文章页显示长期忽略提示", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy")
     ? Response.json(taxonomy)
