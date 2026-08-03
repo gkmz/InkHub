@@ -58,6 +58,14 @@ func TestHugoPreviewRoutesReturnSafeViewsAndProtectConfirmation(t *testing.T) {
 	}
 }
 
+func TestSafeHugoPreviewViewIncludesActionableFailure(t *testing.T) {
+	view := safeHugoPreviewView(publication.PreviewView{ID: "preview_failed", State: "failed", Failure: &publication.PublicationFailure{Stage: "preflight", Code: "source.image_unresolved", Message: "图片引用无法解析", Action: "修复图片引用后重试", Retryable: true}})
+	failure, ok := view["failure"].(map[string]any)
+	if !ok || failure["stage"] != "preflight" || failure["code"] != "source.image_unresolved" || failure["action"] != "修复图片引用后重试" || failure["retryable"] != true {
+		t.Fatalf("失败视图未安全序列化: %+v", view)
+	}
+}
+
 type fakeHugoPreviewAPI struct {
 	view         publication.PreviewView
 	confirmCalls int

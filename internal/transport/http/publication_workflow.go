@@ -64,8 +64,15 @@ func safeWorkflowView(view publication.WorkflowView) map[string]any {
 		return result
 	}
 	hugo := map[string]any{"state": view.Hugo.State, "progress": view.Hugo.Progress, "stage": view.Hugo.Stage, "error": view.Hugo.Error}
+	if view.Hugo.Failure != nil {
+		hugo["failure"] = safePublicationFailure(view.Hugo.Failure)
+	}
 	if view.Hugo.Delivery != nil {
-		hugo["delivery"] = map[string]any{"state": view.Hugo.Delivery.State, "progress": view.Hugo.Delivery.Progress, "stage": view.Hugo.Delivery.Stage, "error": view.Hugo.Delivery.Error}
+		delivery := map[string]any{"state": view.Hugo.Delivery.State, "progress": view.Hugo.Delivery.Progress, "stage": view.Hugo.Delivery.Stage, "error": view.Hugo.Delivery.Error}
+		if view.Hugo.Delivery.Failure != nil {
+			delivery["failure"] = safePublicationFailure(view.Hugo.Delivery.Failure)
+		}
+		hugo["delivery"] = delivery
 	}
 	if view.Hugo.Preview != nil {
 		preview := view.Hugo.Preview
@@ -77,7 +84,11 @@ func safeWorkflowView(view publication.WorkflowView) map[string]any {
 		for _, diagnostic := range preview.Diagnostics {
 			diagnostics = append(diagnostics, map[string]string{"code": diagnostic.Code, "level": diagnostic.Level, "message": diagnostic.Message})
 		}
-		hugo["preview"] = map[string]any{"preview_id": preview.ID, "section": preview.Section, "target_path": preview.TargetPath, "change": preview.Change, "files": files, "diagnostics": diagnostics, "preview_url": preview.PreviewURL, "expires_at": preview.ExpiresAt, "state": preview.State, "error": preview.Error}
+		previewView := map[string]any{"preview_id": preview.ID, "section": preview.Section, "target_path": preview.TargetPath, "change": preview.Change, "files": files, "diagnostics": diagnostics, "preview_url": preview.PreviewURL, "expires_at": preview.ExpiresAt, "state": preview.State, "error": preview.Error}
+		if preview.Failure != nil {
+			previewView["failure"] = safePublicationFailure(preview.Failure)
+		}
+		hugo["preview"] = previewView
 	}
 	result["hugo"] = hugo
 	return result

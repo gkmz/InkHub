@@ -40,6 +40,22 @@ func TestPublicationWorkflowReturnsEmptyAndMapsPreviewStage(t *testing.T) {
 	}
 }
 
+func TestPublicationWorkflowRestoresFailedPreviewReason(t *testing.T) {
+	resolver := staticWorkflowResolver{article: WorkflowArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", ContentHash: "hash"}}
+	store := staticWorkflowJobStore{jobs: map[string]domainjob.Job{
+		"hugo_preview": {ID: "preview_failed", Kind: "hugo_preview", State: domainjob.StateFailed, ErrorCode: "source.image_unresolved", ErrorMessage: "图片引用无法解析: missing.png"},
+	}}
+	service := NewPublicationWorkflowService(resolver, store, staticWorkflowPreviewFinder{})
+
+	view, err := service.Find(context.Background(), "a1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Hugo == nil || view.Hugo.State != "failed" || view.Hugo.Failure == nil || view.Hugo.Failure.Stage != "preflight" || view.Hugo.Failure.Action == "" {
+		t.Fatalf("失败工作流未恢复诊断: %+v", view.Hugo)
+	}
+}
+
 type staticWorkflowResolver struct{ article WorkflowArticle }
 
 func (r staticWorkflowResolver) ResolveWorkflowArticle(context.Context, string) (WorkflowArticle, error) {

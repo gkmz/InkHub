@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gkmz/InkHub/internal/domain/article"
@@ -64,6 +65,15 @@ type PreviewFile struct {
 // PreviewDiagnostic 是浏览器可见的检查结果。
 type PreviewDiagnostic struct{ Code, Level, Message string }
 
+// PublicationFailure 是浏览器可见且不包含内部路径的发布失败摘要。
+type PublicationFailure struct {
+	Stage     string `json:"stage"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	Action    string `json:"action"`
+	Retryable bool   `json:"retryable"`
+}
+
 // PreviewView 是不包含 Provider 内部路径的 Hugo 预览视图。
 type PreviewView struct {
 	ID, ArticleID, ContentHash, Section, TargetPath, Change string
@@ -72,6 +82,7 @@ type PreviewView struct {
 	PreviewURL                                              string
 	ExpiresAt                                               *time.Time
 	State, JobID, Error                                     string
+	Failure                                                 *PublicationFailure
 }
 
 // HugoPreviewJobStore 是预览服务所需的最小持久化任务接口。
@@ -139,6 +150,9 @@ func (s *HugoPreviewService) Find(ctx context.Context, id string) (PreviewView, 
 		return PreviewView{}, err
 	}
 	view := PreviewView{ID: id, JobID: job.ID, State: previewState(job), Error: job.ErrorMessage}
+	if job.State == domainjob.StateFailed || job.State == domainjob.StateCancelled {
+		view.Failure = NewPublicationFailure(job.Kind, job.ErrorCode, job.ErrorMessage)
+	}
 	if job.State != domainjob.StateSucceeded {
 		return view, nil
 	}
@@ -162,6 +176,40 @@ func (s *HugoPreviewService) Find(ctx context.Context, id string) (PreviewView, 
 		view.State = "expired"
 	}
 	return view, nil
+}
+
+// NewPublicationFailure 将持久化任务错误转换为可恢复、可执行的安全失败说明。
+func NewPublicationFailure(kind, code, message string) *PublicationFailure {
+	if code == "" && message == "" {
+		return nil
+	}
+	stage := "prepare"
+	if kind == "hugo_deliver" {
+		stage = "deliver"
+	} else if strings.HasPrefix(code, "source.") || code == "hugo.preflight_failed" || code == "hugo.article_invalid" || code == "hugo.operation_invalid" {
+		stage = "preflight"
+	}
+	action := "检查发布历史和 Hugo 配置后重新生成预览"
+	switch {
+	case code == "source.image_unresolved":
+		action = "修复文章中的图片引用后重新生成预览"
+	case code == "hugo.article_invalid":
+		action = "补充标题、稳定 ID 和内容版本后重新审核"
+	case code == "hugo.operation_invalid":
+		action = "重新打开 Hugo 发布页并生成预览"
+	case code == "hugo.section_invalid" || code == "hugo.section_locked":
+		action = "重新选择文章原有或有效的 Hugo 发布目录"
+	case code == "hugo.build_failed":
+		action = "修复 Hugo 构建错误后重新生成预览"
+	case code == "hugo.config_invalid" || code == "hugo.content_unavailable" || code == "hugo.path_unauthorized":
+		action = "检查设置中的 Hugo 路径和配置后重试"
+	case stage == "deliver":
+		action = "确认 Hugo 站点可写后重新同步"
+	}
+	if message == "" {
+		message = "Hugo 发布操作失败"
+	}
+	return &PublicationFailure{Stage: stage, Code: code, Message: message, Action: action, Retryable: true}
 }
 
 // Confirm 校验预览仍有效后创建确定性交付任务。

@@ -95,7 +95,7 @@ func TestHugoPreviewJobPersistsTerminalFailureEvent(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(vault, ".obsidian"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(vault, "preview.md"), []byte("---\nid: article_PREVIEW\ntitle: Preview\npublish:\n  slug: preview\n---\n正文"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(vault, "preview.md"), []byte("---\nid: article_PREVIEW\ntitle: Preview\npublish:\n  slug: preview\n---\n正文\n![[missing.png]]"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	db, err := inksqlite.Open(ctx, filepath.Join(t.TempDir(), "inkhub.db"))
@@ -125,7 +125,7 @@ func TestHugoPreviewJobPersistsTerminalFailureEvent(t *testing.T) {
 	if err := db.QueryRow(`SELECT COUNT(*),MAX(payload_json) FROM publication_events WHERE event_type='failed'`).Scan(&count, &eventPayload); err != nil || count != 1 {
 		t.Fatalf("终态失败事件错误: count=%d payload=%s err=%v", count, eventPayload, err)
 	}
-	if strings.Contains(eventPayload, site) || strings.Contains(eventPayload, vault) || !strings.Contains(eventPayload, `"error_code"`) {
+	if strings.Contains(eventPayload, site) || strings.Contains(eventPayload, vault) || !strings.Contains(eventPayload, `"error_code":"source.image_unresolved"`) || !strings.Contains(eventPayload, `"stage":"preflight"`) || !strings.Contains(eventPayload, `"action":"修复文章中的图片引用后重新生成预览"`) {
 		t.Fatalf("终态失败事件未脱敏: %s", eventPayload)
 	}
 }

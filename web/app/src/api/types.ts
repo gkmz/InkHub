@@ -2,6 +2,15 @@ export type ArticleState = "draft" | "blocked" | "changed" | "incomplete" | "pen
 export type ContentStage = "draft" | "ready";
 export type ArticleDisposition = "published" | "ignored";
 export type PublicationChannel = "hugo" | "wechat" | "xiaohongshu";
+export type PublicationDisplayState = "blocked" | "not_configured" | "ready" | "running" | "completed" | "failed" | "stale";
+
+export interface PublicationChannelSummary {
+  channel: PublicationChannel;
+  label: string;
+  state: PublicationDisplayState;
+  rawState: string;
+  actionLabel: string;
+}
 
 export interface WorkspaceSummary {
   id: string;
@@ -100,6 +109,15 @@ export interface HugoPreviewView {
   state: "preparing" | "ready" | "expired" | "failed";
   job_id: string;
   error?: string;
+  failure?: PublicationFailureView;
+}
+
+export interface PublicationFailureView {
+  stage: "preflight" | "prepare" | "deliver" | string;
+  code: string;
+  message: string;
+  action: string;
+  retryable: boolean;
 }
 
 export interface RecoveredHugoPreviewView {
@@ -113,6 +131,7 @@ export interface RecoveredHugoPreviewView {
   expires_at?: string;
   state: "preparing" | "ready" | "expired" | "failed";
   error?: string;
+  failure?: PublicationFailureView;
 }
 
 export interface PublicationWorkflowView {
@@ -122,8 +141,9 @@ export interface PublicationWorkflowView {
     progress: number;
     stage: string;
     error?: string;
+    failure?: PublicationFailureView;
     preview?: RecoveredHugoPreviewView;
-    delivery?: { state: string; progress: number; stage: string; error?: string };
+    delivery?: { state: string; progress: number; stage: string; error?: string; failure?: PublicationFailureView };
   };
 }
 

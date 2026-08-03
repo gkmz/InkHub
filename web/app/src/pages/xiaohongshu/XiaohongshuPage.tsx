@@ -4,6 +4,7 @@ import { getArticle, getXiaohongshu, generateXiaohongshuDraft, markXiaohongshuPu
 import { sanitizePreviewHTML } from "../../api/safeHTML";
 import type { ArticleDetail, XiaohongshuDraft, XiaohongshuView } from "../../api/types";
 import { adaptXiaohongshuHTML } from "./xiaohongshuAdapter";
+import { PublicationChannelNav } from "../../components/PublicationChannelNav";
 
 const VIEWPORT_WIDTH = 375;
 const PAGE_HEIGHT = 667;
@@ -66,7 +67,9 @@ export function XiaohongshuPage({ articleID, onNavigate }: { articleID: string; 
     catch (error) { setMessage(error instanceof Error ? error.message : "发布确认失败"); }
   };
   return <div className="xiaohongshu-page">
-    <header className="xiaohongshu-toolbar"><button className="back" onClick={() => onNavigate(`/articles/${articleID}`)}><ArrowLeft size={16} />返回文章</button><div className="xiaohongshu-heading"><Sparkles size={17} /><strong>小红书内容中心</strong><span>{view.state}</span></div><div className="xiaohongshu-actions"><button className="secondary" onClick={() => setShowHistory((value) => !value)}><History size={15} />历史</button><button className="secondary" onClick={() => void generate()} disabled={generating}><RefreshCw size={15} />{generating ? "生成中" : "重新生成"}</button></div></header>
+    <header className="xiaohongshu-toolbar"><button className="back" onClick={() => onNavigate(`/articles/${articleID}`)}><ArrowLeft size={16} />返回审核</button><div className="xiaohongshu-heading"><Sparkles size={17} /><strong>小红书内容中心</strong><span>{view.state}</span></div><div className="xiaohongshu-actions"><button className="secondary" onClick={() => setShowHistory((value) => !value)}><History size={15} />历史</button><button className="secondary" onClick={() => void generate()} disabled={generating}><RefreshCw size={15} />{generating ? "生成中" : "重新生成"}</button></div></header>
+    <PublicationChannelNav article={article} active="xiaohongshu" onNavigate={onNavigate} />
+    {article.review_state !== "已通过" ? <section className="channel-locked" role="status"><h2>审核通过后才能准备小红书内容</h2><p>请先返回审核中心完善元数据并完成审核。</p><button className="secondary" type="button" onClick={() => onNavigate(`/articles/${articleID}`)}>返回审核中心</button></section> : <>
     <div className="xiaohongshu-layout">
       <section className="xiaohongshu-editor"><div className="tool-heading"><h2>完整草稿</h2><span>整体编辑后手动保存</span></div>
         {!draft ? <div className="empty-state compact"><Sparkles size={24} /><p>还没有小红书草稿</p><button className="primary" onClick={() => void generate()}><Sparkles size={15} />生成草稿</button></div> : <>
@@ -82,6 +85,7 @@ export function XiaohongshuPage({ articleID, onNavigate }: { articleID: string; 
       <section className="xiaohongshu-preview"><div className="tool-heading"><h2><ImageIcon size={16} />手机预览</h2><label className="template-select">模板<select value={template} onChange={(event) => setTemplate(event.target.value)}><option value="mobile-clean">Mobile Clean</option><option value="mobile-paper">Mobile Paper</option></select></label></div><p className="xiaohongshu-preview-hint">固定 375 × 667 手机视口，代码自动换行；宽表格会转为结构化文本。</p><div className={`xiaohongshu-phone template-${template}`} ref={previewRef}><h1>{draft?.title || article.metadata.title}</h1><div className="xiaohongshu-rendered" dangerouslySetInnerHTML={{ __html: sanitizePreviewHTML(draft?.body_html || article.preview_html) }} /></div><div className="xiaohongshu-export"><span>预计 {pageCount} 页图片</span><button className="primary" onClick={() => void exportImages()} disabled={!draft}><Download size={15} />导出图片集</button></div></section>
     </div>
     {showHistory && <aside className="xiaohongshu-history"><div className="tool-heading"><h2>版本历史</h2><button className="back" onClick={() => setShowHistory(false)}>关闭</button></div>{view.history.map((item) => <button key={item.id} className={`xiaohongshu-history-item${draft?.id === item.id ? " active" : ""}`} onClick={() => { setDraft(item); setShowHistory(false); }}><strong>{item.title || "未命名草稿"}</strong><span>{item.state}{item.stale ? " · 内容已更新" : ""}</span><time>{new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.created_at))}</time></button>)}</aside>}
+    </>}
   </div>;
 }
 

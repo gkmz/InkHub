@@ -8,6 +8,7 @@ import (
 	"time"
 
 	appjob "github.com/gkmz/InkHub/internal/app/job"
+	apppublication "github.com/gkmz/InkHub/internal/app/publication"
 	domainjob "github.com/gkmz/InkHub/internal/domain/job"
 	domainpublication "github.com/gkmz/InkHub/internal/domain/publication"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
@@ -53,12 +54,19 @@ func (h publicationJobHandler) recordTerminalFailure(ctx context.Context, job do
 		return fmt.Errorf("发布失败事件渠道无效")
 	}
 	recordID := stableAPIID("publication", payload.ArticleID, payload.ProviderID)
+	failureView := apppublication.NewPublicationFailure(job.Kind, failure.Code, failure.Message)
+	failurePayload := map[string]string{"channel": channel, "error_code": failure.Code, "message": failure.Message}
+	if failureView != nil {
+		failurePayload["stage"] = failureView.Stage
+		failurePayload["action"] = failureView.Action
+		failurePayload["retryable"] = fmt.Sprint(failureView.Retryable)
+	}
 	return h.publications.SaveWithEvent(ctx, repository.PublicationRecord{
 		ID: recordID, ArticleID: payload.ArticleID, ProviderInstanceID: payload.ProviderID,
 		WorkspaceID: job.WorkspaceID, State: domainpublication.StateFailed, ContentHash: payload.ContentHash,
 	}, repository.PublicationEvent{
 		ID: stableAPIID("event", recordID, "failed", job.ID, fmt.Sprint(failure.Attempt)), Type: "failed", ContentHash: payload.ContentHash,
-		Payload: map[string]string{"channel": channel, "error_code": failure.Code, "message": failure.Message},
+		Payload: failurePayload,
 	})
 }
 

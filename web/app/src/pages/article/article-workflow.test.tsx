@@ -318,7 +318,7 @@ test("小红书入口只出现在发布操作区，不出现在审核工具列�
     ? Response.json(taxonomy)
     : Response.json({ ...article, review_state: "已通过", hugo_state: "已同步", wechat_state: "尚未准备" }));
   render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={navigate} /></ToastProvider>);
-  const publishButton = await screen.findByRole("button", { name: "发布到小红书" });
+  const publishButton = await screen.findByRole("button", { name: /发布到小红书/ });
   expect(screen.queryByRole("button", { name: "打开内容中心" })).not.toBeInTheDocument();
   await userEvent.click(publishButton);
   expect(navigate).toHaveBeenCalledWith("/articles/article-1/xiaohongshu");
@@ -350,31 +350,42 @@ test("Hugo 任务失败时显示失败步骤和重试且不宣称成功", () => 
   expect(screen.queryByText("同步完成")).not.toBeInTheDocument();
 });
 
-test("文章页同步 Hugo 时展开预览流程而不调用旧发布接口", async () => {
-  const requests: string[] = [];
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    const url = String(input);
-    requests.push(url);
-    if (url.endsWith("/taxonomy")) return Response.json(taxonomy);
-    if (url.endsWith("/hugo-sections")) return Response.json({ sections: [{ name: "posts", article_count: 8 }], existing_section: "", selection_locked: false });
-    return Response.json({ ...article, review_state: "已通过", hugo_state: "需要同步" });
-  });
-  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
-  await userEvent.click(await screen.findByRole("button", { name: "同步到 Hugo" }));
-  expect(await screen.findByRole("combobox", { name: "发布目录" })).toHaveValue("posts");
-  expect(requests.some((url) => url.endsWith("/publications"))).toBe(false);
+test("审核页不展开 Hugo 流程并提供三个独立渠道入口", async () => {
+  const navigate = vi.fn();
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy")
+    ? Response.json(taxonomy)
+    : Response.json({ ...article, review_state: "已通过", hugo_state: "需要同步", wechat_state: "尚未准备", xiaohongshu_state: "尚未准备" }));
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={navigate} /></ToastProvider>);
+
+  expect(await screen.findByRole("button", { name: /同步到 Hugo/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /发布到微信/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /发布到小红书/ })).toBeInTheDocument();
+  expect(screen.queryByRole("combobox", { name: "发布目录" })).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: /同步到 Hugo/ }));
+  expect(navigate).toHaveBeenCalledWith("/articles/article-1/hugo");
 });
 
-test("文章页刷新后自动展开 Ready Hugo 预览", async () => {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-    const url = String(input);
-    if (url.endsWith("/taxonomy")) return Response.json(taxonomy);
-    if (url.endsWith("/publication-workflow")) return Response.json({ article_id: "article-1", hugo: { state: "ready", progress: 100, stage: "预览已准备", preview: { preview_id: "preview_ready", section: "posts", target_path: "content/posts/restored", change: "updated", files: [], diagnostics: [], state: "ready" } } });
-    return Response.json({ ...article, review_state: "已通过", hugo_state: "需要同步" });
-  });
+test("已同步 Hugo 的文章仍可直接进入微信和小红书", async () => {
+  const navigate = vi.fn();
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy")
+    ? Response.json(taxonomy)
+    : Response.json({ ...article, review_state: "已通过", hugo_state: "已同步", wechat_state: "尚未准备", xiaohongshu_state: "尚未准备" }));
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={navigate} /></ToastProvider>);
+
+  await userEvent.click(await screen.findByRole("button", { name: /发布到微信/ }));
+  await userEvent.click(screen.getByRole("button", { name: /发布到小红书/ }));
+  expect(navigate).toHaveBeenNthCalledWith(1, "/articles/article-1/wechat");
+  expect(navigate).toHaveBeenNthCalledWith(2, "/articles/article-1/xiaohongshu");
+  expect(screen.queryByText("content/posts/restored")).not.toBeInTheDocument();
+});
+
+test("审核未通过时发布渠道可见但不可执行", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy") ? Response.json(taxonomy) : Response.json(article));
   render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
-  expect(await screen.findByText("content/posts/restored")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "确认同步到 Hugo" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: /同步到 Hugo.*审核通过后可用/ })).toBeDisabled();
+  expect(screen.getByRole("button", { name: /发布到微信.*审核通过后可用/ })).toBeDisabled();
+  expect(screen.getByRole("button", { name: /发布到小红书.*审核通过后可用/ })).toBeDisabled();
 });
 
 test("微信必须先复制当前内容才能人工确认草稿", async () => {

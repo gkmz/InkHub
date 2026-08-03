@@ -46,6 +46,21 @@ func TestHugoPreviewQueuesDeterministicallyAndReturnsSafeView(t *testing.T) {
 	}
 }
 
+func TestHugoPreviewFailedJobReturnsActionableFailure(t *testing.T) {
+	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{
+		"preview_failed": {ID: "preview_failed", Kind: "hugo_preview", State: domainjob.StateFailed, ErrorCode: "source.image_unresolved", ErrorMessage: "图片引用无法解析: missing.png"},
+	}}
+	service := NewHugoPreviewService(store, staticPreviewResolver{}, time.Now)
+
+	view, err := service.Find(context.Background(), "preview_failed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Failure == nil || view.Failure.Stage != "preflight" || view.Failure.Code != "source.image_unresolved" || view.Failure.Message != "图片引用无法解析: missing.png" || view.Failure.Action != "修复文章中的图片引用后重新生成预览" || !view.Failure.Retryable {
+		t.Fatalf("Hugo 失败视图不可执行: %+v", view.Failure)
+	}
+}
+
 func TestHugoPreviewConfirmRejectsStaleAndReusesDelivery(t *testing.T) {
 	now := time.Date(2026, 7, 17, 8, 0, 0, 0, time.UTC)
 	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{}}

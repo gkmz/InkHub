@@ -1,15 +1,15 @@
-import { AlertTriangle, ArrowLeft, Bot, Check, CloudUpload, Send, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, Check } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { generateArticleSuggestions, getArticle, getPublicationWorkflow, getSuggestionHistory, getSuggestionVersion, getTaxonomyOverview, reviewArticle, saveMetadata, updateSuggestionItems } from "../../api/client";
+import { generateArticleSuggestions, getArticle, getSuggestionHistory, getSuggestionVersion, getTaxonomyOverview, reviewArticle, saveMetadata, updateSuggestionItems } from "../../api/client";
 import { previewHasHeading } from "../../api/safeHTML";
 import type { ArticleDetail, ArticleMetadata, PublicationChannel, SuggestionHistoryItem, SuggestionVersionView, TaxonomyOverview } from "../../api/types";
 import { AISuggestions } from "../../components/AISuggestions";
 import { Checks } from "../../components/Checks";
-import { HugoPublishFlow } from "../../components/HugoPublishFlow";
 import { MetadataForm } from "../../components/MetadataForm";
 import type { TaxonomyFieldState } from "../../components/SingleTaxonomyField";
 import { PublicationTrack } from "../../components/PublicationTrack";
 import { PublicationHistory } from "../../components/PublicationHistory";
+import { PublicationChannelNav } from "../../components/PublicationChannelNav";
 import { SuggestionHistory } from "../../components/SuggestionHistory";
 import { CreateTaxonomyTermDialog } from "../taxonomy/CreateTaxonomyTermDialog";
 import { MarkdownPreview } from "../../components/MarkdownPreview";
@@ -28,8 +28,6 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   const [taxonomySelection, setTaxonomySelection] = useState<PendingTaxonomySelection>(null);
   const [generatingAI, setGeneratingAI] = useState(false);
   const [externalSuggestions, setExternalSuggestions] = useState<Array<{ id: string; field: keyof ArticleMetadata; value: string | string[] }>>([]);
-  const [showHugoFlow, setShowHugoFlow] = useState(false);
-  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [suggestionHistoryOpen, setSuggestionHistoryOpen] = useState(false);
   const [suggestionHistoryLoaded, setSuggestionHistoryLoaded] = useState(false);
   const [suggestionHistoryItems, setSuggestionHistoryItems] = useState<SuggestionHistoryItem[]>([]);
@@ -39,17 +37,6 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   const [suggestionHistoryError, setSuggestionHistoryError] = useState("");
   const load = useCallback(() => getArticle(articleID).then(setArticle).catch((reason: Error) => setNotice(reason.message)), [articleID]);
   useEffect(() => { setExternalSuggestions([]); void load(); }, [load]);
-  // 工作流读取属于增强能力：恢复未完成任务，但失败时不能阻断文章详情。
-  useEffect(() => {
-    const controller = new AbortController();
-    setShowHugoFlow(false);
-    void getPublicationWorkflow(articleID, controller.signal).then((workflow) => {
-      if (workflow.hugo && workflow.hugo.state !== "published") setShowHugoFlow(true);
-    }).catch((error: unknown) => {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-    });
-    return () => controller.abort();
-  }, [articleID]);
   // Taxonomy 是文章编辑的增强数据，加载失败不能阻断文章详情或清空旧 Category/Series。
   useEffect(() => {
     const controller = new AbortController();
@@ -108,16 +95,14 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   const canCreateTaxonomy = Boolean(taxonomy && !taxonomy.readonly && taxonomy.provider_id && taxonomy.revision);
   const isDraft = article.content_stage === "draft";
   const showMetadataTitle = !previewHasHeading(article.preview_html);
-  // 小红书属于独立发布渠道，只有审核通过且 Hugo 已同步后才开放入口。
-  const canPublishXiaohongshu = !isDraft && article.review_state === "已通过" && article.hugo_state === "已同步";
-  const primary = isDraft ? null : article.review_state !== "已通过" ? { label: "审核通过", icon: Check, action: async () => { await reviewArticle(article.id); setArticle({ ...article, review_state: "已通过", hugo_state: "需要同步" }); } } : article.hugo_state !== "已同步" ? { label: "同步到 Hugo", icon: CloudUpload, action: async () => setShowHugoFlow(true) } : { label: "准备微信内容", icon: Send, action: async () => onNavigate(`/articles/${article.id}/wechat`) };
+  const primary = isDraft || article.review_state === "已通过" ? null : { label: "审核通过", icon: Check, action: async () => { await reviewArticle(article.id); await load(); setNotice("审核已通过，可以选择发布渠道"); } };
   const PrimaryIcon = primary?.icon;
-  const hidePrimaryForHugoFlow = showHugoFlow && !isDraft && article.review_state === "已通过" && article.hugo_state !== "已同步";
   return <div className="article-page">
     <div className="article-toolbar"><button type="button" onClick={() => onNavigate("/library")}><ArrowLeft size={16} />返回内容库</button><span>{article.relative_path}</span></div>
     {isDraft && <section className="draft-guidance" role="status"><strong>草稿</strong><span>文章仍在创作阶段，不会进入审核或发布流程。</span><code>publish.status: ready</code>{article.content_stage_issue && <small>{article.content_stage_issue}</small>}</section>}
     {resourceDiagnostics.length > 0 && <section className="resource-guidance" role="status"><AlertTriangle size={16} /><div><strong>图片引用需要处理</strong>{resourceDiagnostics.map((diagnostic) => <p key={`${diagnostic.code}:${diagnostic.message}`}>{diagnostic.message}</p>)}<small>文章内容阶段不受影响，但发布前必须修复这些引用。</small></div></section>}
     <PublicationTrack review={article.review_state} hugo={article.hugo_state} wechat={article.wechat_state} xiaohongshu={article.xiaohongshu_state ?? "尚未准备"} />
+    {!isDraft && <section className="publication-center" aria-label="发布渠道"><div className="section-heading"><div><p className="eyebrow">审核完成后可独立处理</p><h2>发布渠道</h2></div><span>{article.review_state === "已通过" ? "请选择需要处理的渠道" : "先完成审核"}</span></div><PublicationChannelNav article={article} active="review" onNavigate={onNavigate} /></section>}
     {article.disposition && <p className={`article-disposition state-${article.disposition.kind}`}>
       {article.disposition.kind === "ignored"
         ? "此文章已忽略，可在内容库恢复"
@@ -127,12 +112,11 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
     <div className="article-layout">
       <article className={`article-preview mobile-${tab}`}><p className="eyebrow">文章预览</p>{showMetadataTitle && <h1>{article.metadata.title}</h1>}<p className="article-description">{article.metadata.description}</p><MarkdownPreview html={article.preview_html} className="prose" /></article>
       <aside className={`review-panel mobile-${tab}`}>
-        {!isDraft && !hidePrimaryForHugoFlow && primary && PrimaryIcon && <div className="review-command-bar"><div><span className="eyebrow">下一步</span><strong>{primary.label}</strong><small>完成后继续处理文章发布流程</small></div><div className="review-command-actions"><button className="primary" onClick={() => void primary.action()}><PrimaryIcon size={17} />{primary.label}</button>{canPublishXiaohongshu && <button className="secondary" type="button" onClick={() => onNavigate(`/articles/${article.id}/xiaohongshu`)}><Sparkles size={15} />发布到小红书</button>}</div>{notice && <span className="review-command-notice" role="status">{notice}</span>}</div>}
+        {!isDraft && primary && PrimaryIcon && <div className="review-command-bar"><div><span className="eyebrow">审核</span><strong>{primary.label}</strong><small>确认元数据和检查结果后完成审核</small></div><div className="review-command-actions"><button className="primary" onClick={() => void primary.action()}><PrimaryIcon size={17} />{primary.label}</button></div>{notice && <span className="review-command-notice" role="status">{notice}</span>}</div>}
         <MetadataForm value={article.metadata} sourceChanged={article.source_changed} categoryOptions={categoryOptions} seriesOptions={seriesOptions} tagOptions={tagOptions} taxonomyState={taxonomyState} canCreateTaxonomy={canCreateTaxonomy} onCreateTaxonomy={(kind, select) => setTaxonomySelection({ kind, select })} externalSuggestions={externalSuggestions} onReload={() => { setExternalSuggestions([]); void load(); }} onSave={async (metadata) => { const next = await saveMetadata(article.id, metadata); setArticle(next); setExternalSuggestions([]); setNotice("元数据已保存"); }} />
         <Checks items={article.checks} />
         {article.ai_configured ? <><AISuggestions stale={article.suggestions_stale} suggestions={article.suggestions} generating={generatingAI} historyCount={suggestionHistoryItems.length} onOpenHistory={openSuggestionHistory} onAction={updateSuggestionAction} onAccept={(suggestion) => setExternalSuggestions((current) => [...current, { id: `${suggestion.id}:${Date.now()}`, field: suggestion.field, value: suggestion.value ?? suggestion.name }])} onGenerate={async () => { setExternalSuggestions([]); setGeneratingAI(true); try { const result = await generateArticleSuggestions(article.id); setArticle({ ...article, ...result }); setSuggestionHistoryLoaded(false); setNotice("AI 建议已生成"); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "AI 建议生成失败"); } finally { setGeneratingAI(false); } }} />{suggestionHistoryOpen && <SuggestionHistory items={suggestionHistoryItems} selected={selectedSuggestionVersion} loading={suggestionHistoryLoading} detailLoading={suggestionVersionLoading} error={suggestionHistoryError} onSelect={(id) => void selectSuggestionVersion(id)} onRetry={() => void loadSuggestionHistory()} onClose={() => setSuggestionHistoryOpen(false)} />}</> : <section className="tool-section ai-unconfigured"><Bot size={17} /><span><b>AI 建议未启用</b><small>不影响手工审核</small></span><button onClick={() => onNavigate("/settings")}>配置 AI</button></section>}
-        {!isDraft && showHugoFlow && article.hugo_state !== "已同步" && <HugoPublishFlow articleID={article.id} contentHash={article.content_version} onPublished={async () => { setShowHugoFlow(false); setHistoryRefreshKey((value) => value + 1); await load(); }} />}
-        <PublicationHistory articleID={article.id} refreshKey={historyRefreshKey} />
+        <PublicationHistory articleID={article.id} refreshKey={0} />
       </aside>
     </div>
     {taxonomy && taxonomySelection && <CreateTaxonomyTermDialog overview={taxonomy} kind={taxonomySelection.kind} noun={taxonomySelection.kind === "category" ? "类目" : "系列"} onClose={() => setTaxonomySelection(null)} onApplied={setTaxonomy} onCreated={(name) => { taxonomySelection.select(name); setTaxonomySelection(null); }} />}

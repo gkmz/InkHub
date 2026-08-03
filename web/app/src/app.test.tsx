@@ -180,3 +180,27 @@ test("内容库下一页失败时保留现有文章并提示", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("无法读取下一页");
   expect(screen.getByText("发布失败")).toBeInTheDocument();
 });
+
+test("Hugo 渠道 URL 进入独立发布页面", async () => {
+  window.history.replaceState({}, "", "/articles/a1/hugo");
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.includes("/session")) return Response.json({ has_workspace: true, workspace: { id: "w1", name: "我的文章" } });
+    if (url.endsWith("/articles/a1/publication-workflow")) return Response.json({ article_id: "a1", hugo: null });
+    if (url.endsWith("/articles/a1/hugo-sections")) return Response.json({ sections: [{ name: "posts", article_count: 2 }], existing_section: "", selection_locked: false });
+    if (url.includes("/articles/a1/publication-history")) return Response.json({ items: [] });
+    if (url.endsWith("/articles/a1")) return Response.json({
+      id: "a1", content_version: "hash", content_stage: "ready", hugo_provider_id: "h1", wechat_provider_id: "w1",
+      relative_path: "Areas/demo.md", modified_at: "2026-08-03", metadata: { title: "渠道路由测试", description: "", category: "", series: "", tags: [], keywords: [], slug: "demo", cover: "" },
+      preview_html: "<p>正文</p>", source_changed: false, review_state: "已通过", hugo_state: "需要同步", wechat_state: "尚未准备", xiaohongshu_state: "尚未准备",
+      checks: [], ai_configured: false, suggestions: [], suggestions_stale: false, wechat_copied: false, resource_diagnostics: [],
+    });
+    return Response.json({ error: { message: "接口不存在" } }, { status: 404 });
+  });
+
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: "同步到 Hugo" })).toBeInTheDocument();
+  expect(screen.getByText("渠道路由测试")).toBeInTheDocument();
+  expect(screen.queryByRole("navigation", { name: "主导航" })).not.toBeInTheDocument();
+});

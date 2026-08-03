@@ -96,7 +96,15 @@ func safeHugoPreviewView(view publication.PreviewView) map[string]any {
 	for _, diagnostic := range view.Diagnostics {
 		diagnostics = append(diagnostics, map[string]string{"code": diagnostic.Code, "level": diagnostic.Level, "message": diagnostic.Message})
 	}
-	return map[string]any{"id": view.ID, "article_id": view.ArticleID, "content_hash": view.ContentHash, "section": view.Section, "target_path": view.TargetPath, "change": view.Change, "files": files, "diagnostics": diagnostics, "preview_url": view.PreviewURL, "expires_at": view.ExpiresAt, "state": view.State, "job_id": view.JobID, "error": view.Error}
+	result := map[string]any{"id": view.ID, "article_id": view.ArticleID, "content_hash": view.ContentHash, "section": view.Section, "target_path": view.TargetPath, "change": view.Change, "files": files, "diagnostics": diagnostics, "preview_url": view.PreviewURL, "expires_at": view.ExpiresAt, "state": view.State, "job_id": view.JobID, "error": view.Error}
+	if view.Failure != nil {
+		result["failure"] = safePublicationFailure(view.Failure)
+	}
+	return result
+}
+
+func safePublicationFailure(failure *publication.PublicationFailure) map[string]any {
+	return map[string]any{"stage": failure.Stage, "code": failure.Code, "message": failure.Message, "action": failure.Action, "retryable": failure.Retryable}
 }
 
 func writeHugoPreviewError(response http.ResponseWriter, err error) {

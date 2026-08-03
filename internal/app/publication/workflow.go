@@ -37,6 +37,7 @@ type DeliveryJobView struct {
 	Progress int
 	Stage    string
 	Error    string
+	Failure  *PublicationFailure
 }
 
 // HugoWorkflowView 描述当前文章版本的 Hugo 发布流程。
@@ -45,6 +46,7 @@ type HugoWorkflowView struct {
 	Progress int
 	Stage    string
 	Error    string
+	Failure  *PublicationFailure
 	Preview  *PreviewView
 	Delivery *DeliveryJobView
 }
@@ -120,10 +122,11 @@ func (s *PublicationWorkflowService) deliveryView(ctx context.Context, job domai
 	state := "delivering"
 	if job.State == domainjob.StateFailed {
 		state = "failed"
+		delivery.Failure = NewPublicationFailure(job.Kind, job.ErrorCode, job.ErrorMessage)
 	} else if job.State == domainjob.StateSucceeded {
 		state = "published"
 	}
-	return HugoWorkflowView{State: state, Progress: job.Progress, Stage: delivery.Stage, Error: job.ErrorMessage, Preview: &preview, Delivery: &delivery}, nil
+	return HugoWorkflowView{State: state, Progress: job.Progress, Stage: delivery.Stage, Error: job.ErrorMessage, Failure: delivery.Failure, Preview: &preview, Delivery: &delivery}, nil
 }
 
 func (s *PublicationWorkflowService) previewView(ctx context.Context, job domainjob.Job) (HugoWorkflowView, error) {
@@ -138,7 +141,7 @@ func (s *PublicationWorkflowService) previewView(ctx context.Context, job domain
 	if job.State == domainjob.StateFailed || job.State == domainjob.StateCancelled {
 		state = "failed"
 	}
-	return HugoWorkflowView{State: state, Progress: job.Progress, Stage: previewStage(job.Progress), Error: job.ErrorMessage}, nil
+	return HugoWorkflowView{State: state, Progress: job.Progress, Stage: previewStage(job.Progress), Error: job.ErrorMessage, Failure: NewPublicationFailure(job.Kind, job.ErrorCode, job.ErrorMessage)}, nil
 }
 
 func previewStage(progress int) string {

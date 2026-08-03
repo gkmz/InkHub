@@ -54,6 +54,22 @@ test("刷新后直接恢复 Ready Hugo 预览", async () => {
   expect(requests.some((url) => url.endsWith("/hugo-sections"))).toBe(false);
 });
 
+test("失败的 Hugo 预览显示阶段、原因和处理动作", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/articles/a1/publication-workflow")) return Response.json({ article_id: "a1", hugo: { state: "failed", progress: 20, stage: "正在执行发布检查", error: "图片引用无法解析: missing.png", failure: { stage: "preflight", code: "source.image_unresolved", message: "图片引用无法解析: missing.png", action: "修复文章中的图片引用后重新生成预览", retryable: true } } });
+    if (url.endsWith("/articles/a1/hugo-sections")) return Response.json({ sections: [{ name: "posts", article_count: 8 }], existing_section: "", selection_locked: false });
+    throw new Error(`未处理请求: ${url}`);
+  });
+
+  render(<ToastProvider><HugoPublishFlow articleID="a1" contentHash="hash" onPublished={vi.fn()} /></ToastProvider>);
+
+  expect(await screen.findByText("失败阶段：发布前检查")).toBeInTheDocument();
+  expect(screen.getByText("图片引用无法解析: missing.png")).toBeInTheDocument();
+  expect(screen.getByText("修复文章中的图片引用后重新生成预览")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "重新生成预览" })).toBeInTheDocument();
+});
+
 test("手工预览轮询在组件卸载后停止请求", async () => {
   let previewReads = 0;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
