@@ -276,6 +276,8 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .inline-warning { display: grid; gap: 5px; margin-bottom: 14px; padding: 11px; border-left: 3px solid var(--warning); background: #fff8ee; font-size: 11px; }
 .inline-warning span { color: var(--muted); }
 .inline-warning button { width: fit-content; border: 0; background: transparent; padding: 3px 0; color: var(--action); display: flex; gap: 5px; cursor: pointer; }
+.inline-identity { display: grid; gap: 5px; margin-bottom: 14px; padding: 11px; border-left: 3px solid var(--action); background: #f2f7f5; font-size: 11px; }
+.inline-identity span { color: var(--muted); }
 .checks article { display: grid; grid-template-columns: 20px 1fr; gap: 8px; margin-bottom: 14px; }
 .checks article > svg { width: 16px; color: var(--muted); }
 .checks .check-blocking > svg { color: var(--danger); }

@@ -24,15 +24,19 @@ var (
 	ErrPreviewNotReady = errors.New("Hugo 发布预览尚未准备完成")
 	// ErrPreviewInvalid 表示持久化的预览身份或产物信息不可信。
 	ErrPreviewInvalid = errors.New("Hugo 发布预览数据无效")
+	// ErrReviewRequired 表示文章当前版本尚未审核通过。
+	ErrReviewRequired = errors.New("文章需要重新审核")
 )
 
 // PreviewArticle 是预览服务执行身份和版本校验所需的最小文章视图。
 type PreviewArticle struct {
-	ArticleID    string
-	WorkspaceID  string
-	ProviderID   string
-	ContentHash  string
-	ContentStage article.ContentStage
+	ArticleID      string
+	WorkspaceID    string
+	ProviderID     string
+	StableID       article.StableID
+	ContentHash    string
+	ContentStage   article.ContentStage
+	ReviewApproved bool
 }
 
 // PreviewRequest 描述一次 Hugo Artifact 准备请求。
@@ -125,8 +129,14 @@ func (s *HugoPreviewService) Queue(ctx context.Context, request PreviewRequest) 
 	if current.ArticleID != request.ArticleID || current.WorkspaceID == "" || current.ProviderID == "" {
 		return domainjob.Job{}, ErrPreviewInvalid
 	}
+	if current.StableID.Validate() != nil {
+		return domainjob.Job{}, ErrPreviewInvalid
+	}
 	if current.ContentStage != article.ContentStageReady {
 		return domainjob.Job{}, ErrArticleNotReady
+	}
+	if !current.ReviewApproved {
+		return domainjob.Job{}, ErrReviewRequired
 	}
 	if current.ContentHash != request.ContentHash {
 		return domainjob.Job{}, ErrPreviewStale
@@ -186,7 +196,7 @@ func NewPublicationFailure(kind, code, message string) *PublicationFailure {
 	stage := "prepare"
 	if kind == "hugo_deliver" {
 		stage = "deliver"
-	} else if strings.HasPrefix(code, "source.") || code == "hugo.preflight_failed" || code == "hugo.article_invalid" || code == "hugo.operation_invalid" {
+	} else if strings.HasPrefix(code, "source.") || code == "hugo.preflight_failed" || code == "hugo.article_invalid" || code == "hugo.content_version_missing" || code == "hugo.stable_id_missing" || code == "hugo.stable_id_invalid" || code == "hugo.title_missing" || code == "hugo.operation_invalid" {
 		stage = "preflight"
 	}
 	action := "检查发布历史和 Hugo 配置后重新生成预览"
@@ -195,6 +205,14 @@ func NewPublicationFailure(kind, code, message string) *PublicationFailure {
 		action = "修复文章中的图片引用后重新生成预览"
 	case code == "hugo.article_invalid":
 		action = "补充标题、稳定 ID 和内容版本后重新审核"
+	case code == "hugo.content_version_missing":
+		action = "刷新文章内容版本后重新审核"
+	case code == "hugo.stable_id_missing":
+		action = "返回审核页，保存元数据以生成稳定 ID 后重新审核"
+	case code == "hugo.stable_id_invalid":
+		action = "修复源文件中的稳定 ID 后重新审核"
+	case code == "hugo.title_missing":
+		action = "返回审核页，补充标题并保存后重新审核"
 	case code == "hugo.operation_invalid":
 		action = "重新打开 Hugo 发布页并生成预览"
 	case code == "hugo.section_invalid" || code == "hugo.section_locked":
@@ -231,6 +249,12 @@ func (s *HugoPreviewService) Confirm(ctx context.Context, request ConfirmPreview
 	current, err := s.dependencies.ResolvePreviewArticle(ctx, result.ArticleID)
 	if err != nil {
 		return domainjob.Job{}, err
+	}
+	if current.StableID.Validate() != nil {
+		return domainjob.Job{}, ErrPreviewInvalid
+	}
+	if !current.ReviewApproved {
+		return domainjob.Job{}, ErrReviewRequired
 	}
 	if current.WorkspaceID != result.WorkspaceID || current.ProviderID != result.ProviderID || current.ContentHash != result.Artifact.ContentHash {
 		return domainjob.Job{}, ErrPreviewStale

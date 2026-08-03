@@ -37,6 +37,13 @@ INSERT INTO provider_instances(id,workspace_id,provider_type,name,created_at,upd
 	if _, err := api.QueuePublication(context.Background(), command); err == nil {
 		t.Fatal("旧内容版本不应进入队列")
 	}
+	command.ContentHash = "hash-current"
+	if _, err := db.Exec(`UPDATE editorial_reviews SET state='changed' WHERE article_id='a1'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := api.QueuePublication(context.Background(), command); err != httptransport.ErrReviewRequired {
+		t.Fatalf("审核状态已失效时仍可入队: %v", err)
+	}
 }
 
 func TestDatabaseAPIRejectsProviderFromAnotherWorkspace(t *testing.T) {

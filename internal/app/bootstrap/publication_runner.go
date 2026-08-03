@@ -103,7 +103,12 @@ func (h publicationJobHandler) handle(ctx context.Context, execution *appjob.Exe
 		return "", err
 	}
 	if !preflight.Ready {
-		return "", fmt.Errorf("发布前检查未通过")
+		for _, diagnostic := range preflight.Diagnostics {
+			if diagnostic.Blocking {
+				return "", &contracts.ProviderError{Code: diagnostic.Code, Category: contracts.ErrorValidation, Message: diagnostic.Message, Retryable: false}
+			}
+		}
+		return "", &contracts.ProviderError{Code: "publication.preflight_failed", Category: contracts.ErrorValidation, Message: "发布前检查未通过", Retryable: false}
 	}
 	if err := execution.ReportProgress(ctx, 35); err != nil {
 		return "", err

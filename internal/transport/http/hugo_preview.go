@@ -120,6 +120,8 @@ func writeHugoPreviewError(response http.ResponseWriter, err error) {
 		code, message = "hugo.preview_invalid", "Hugo 发布预览数据无效"
 	case errors.Is(err, publication.ErrArticleNotReady):
 		code, message = "article.not_ready", "文章尚未标记为已就绪"
+	case errors.Is(err, publication.ErrReviewRequired):
+		code, message = "article.review_required", "文章需要重新审核后才能发布"
 	}
 	logHTTPError(response, err, status, code)
 	writeError(response, status, code, message)

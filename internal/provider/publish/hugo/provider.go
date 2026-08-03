@@ -111,8 +111,16 @@ func (p *Provider) Preflight(ctx context.Context, input contracts.PublishInput) 
 	if input.OperationID == "" || !operationIDPattern.MatchString(input.OperationID) {
 		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "hugo.operation_invalid", Message: "Hugo OperationID 无效", Blocking: true})
 	}
-	if input.ContentHash == "" || input.Article.StableID == "" || input.Article.Title == "" {
-		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "hugo.article_invalid", Message: "Hugo 文章缺少内容版本、稳定 ID 或标题", Blocking: true})
+	if input.ContentHash == "" {
+		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "hugo.content_version_missing", Message: "Hugo 文章缺少内容版本", Blocking: true})
+	}
+	if input.Article.StableID == "" {
+		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "hugo.stable_id_missing", Message: "Hugo 文章缺少稳定 ID", Blocking: true})
+	} else if input.Article.StableID.Validate() != nil {
+		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "hugo.stable_id_invalid", Message: "Hugo 文章稳定 ID 格式无效", Blocking: true})
+	}
+	if input.Article.Title == "" {
+		diagnostics = append(diagnostics, contracts.Diagnostic{Code: "hugo.title_missing", Message: "Hugo 文章缺少标题", Blocking: true})
 	}
 	return contracts.PreflightResult{Diagnostics: diagnostics, Ready: !hasBlocking(diagnostics)}, nil
 }

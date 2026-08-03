@@ -32,9 +32,11 @@ func (api *hugoPreviewAPI) DiscoverSections(ctx context.Context, articleID strin
 	if err != nil {
 		return contracts.SectionDiscovery{}, err
 	}
-	var stableID string
-	if err := api.db.QueryRowContext(ctx, `SELECT stable_id FROM articles WHERE id=? AND workspace_id=? AND deleted_at IS NULL`, article.ArticleID, article.WorkspaceID).Scan(&stableID); err != nil {
-		return contracts.SectionDiscovery{}, err
+	if article.StableID.Validate() != nil {
+		return contracts.SectionDiscovery{}, publication.ErrPreviewInvalid
+	}
+	if !article.ReviewApproved {
+		return contracts.SectionDiscovery{}, publication.ErrReviewRequired
 	}
 	provider, err := api.buildHugoProvider(ctx, article.WorkspaceID, article.ProviderID)
 	if err != nil {
@@ -44,7 +46,7 @@ func (api *hugoPreviewAPI) DiscoverSections(ctx context.Context, articleID strin
 	if !ok {
 		return contracts.SectionDiscovery{}, fmt.Errorf("Hugo Provider 不支持 Section 发现")
 	}
-	return sectionProvider.DiscoverSections(ctx, stableID)
+	return sectionProvider.DiscoverSections(ctx, string(article.StableID))
 }
 
 // Queue 创建当前内容版本的 Hugo 预览任务。
@@ -82,13 +84,15 @@ func (api *hugoPreviewAPI) Confirm(ctx context.Context, request publication.Conf
 // ResolvePreviewArticle 解析当前工作区文章和唯一启用的 Hugo Provider。
 func (api *hugoPreviewAPI) ResolvePreviewArticle(ctx context.Context, articleID string) (publication.PreviewArticle, error) {
 	var value publication.PreviewArticle
-	var stage string
-	err := api.db.QueryRowContext(ctx, `SELECT articles.id,articles.workspace_id,provider_instances.id,articles.content_hash,articles.content_stage
+	var stage, reviewState, approvedHash string
+	err := api.db.QueryRowContext(ctx, `SELECT articles.id,articles.workspace_id,provider_instances.id,articles.stable_id,articles.content_hash,articles.content_stage,COALESCE(editorial_reviews.state,''),COALESCE(editorial_reviews.approved_content_hash,'')
 FROM articles
 JOIN workspaces ON workspaces.id=articles.workspace_id
 JOIN provider_instances ON provider_instances.workspace_id=articles.workspace_id AND provider_instances.provider_type='hugo' AND provider_instances.enabled=1
-	WHERE articles.id=? AND articles.deleted_at IS NULL AND workspaces.id=(SELECT id FROM workspaces ORDER BY last_used_at DESC,id LIMIT 1)`, articleID).Scan(&value.ArticleID, &value.WorkspaceID, &value.ProviderID, &value.ContentHash, &stage)
+	LEFT JOIN editorial_reviews ON editorial_reviews.article_id=articles.id
+	WHERE articles.id=? AND articles.deleted_at IS NULL AND workspaces.id=(SELECT id FROM workspaces ORDER BY last_used_at DESC,id LIMIT 1)`, articleID).Scan(&value.ArticleID, &value.WorkspaceID, &value.ProviderID, &value.StableID, &value.ContentHash, &stage, &reviewState, &approvedHash)
 	value.ContentStage = article.ContentStage(stage)
+	value.ReviewApproved = reviewState == "approved" && approvedHash == value.ContentHash
 	return value, err
 }
 

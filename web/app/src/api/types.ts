@@ -229,6 +229,7 @@ export interface SuggestionVersionView {
 
 export interface ArticleDetail {
   id: string;
+  stable_id: string;
   content_version: string;
   content_stage: ContentStage;
   content_stage_issue?: string;

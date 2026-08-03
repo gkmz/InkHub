@@ -21,7 +21,7 @@ const metadata = {
 };
 
 const article = {
-  id: "article-1", content_version: "hash-1", hugo_provider_id: "h1", wechat_provider_id: "w1", relative_path: "Areas/article.md", modified_at: "2026-07-15",
+  id: "article-1", stable_id: "article_TEST", content_version: "hash-1", hugo_provider_id: "h1", wechat_provider_id: "w1", relative_path: "Areas/article.md", modified_at: "2026-07-15",
   metadata, preview_html: "<p>正文</p>", source_changed: false, review_state: "待审核", hugo_state: "尚未同步", wechat_state: "尚未准备",
   checks: [], ai_configured: false, suggestions: [], suggestions_stale: false, wechat_copied: false,
 };
@@ -49,6 +49,37 @@ test("保存元数据前展示字段级变更摘要", async () => {
   await userEvent.clear(screen.getByLabelText("Description"));
   await userEvent.type(screen.getByLabelText("Description"), "新摘要");
   expect(screen.getByText("Description：旧摘要 → 新摘要")).toBeInTheDocument();
+});
+
+test("旧文章缺少稳定 ID 时允许直接保存并生成文章 ID", async () => {
+  const save = vi.fn();
+  render(<MetadataForm value={metadata} sourceChanged={false} identityReady={false} onSave={save} />);
+  expect(screen.getByText("这篇文章还没有稳定 ID")).toBeInTheDocument();
+  const button = screen.getByRole("button", { name: "保存并生成文章 ID" });
+  expect(button).toBeEnabled();
+  await userEvent.click(button);
+  expect(save).toHaveBeenCalledWith(metadata);
+});
+
+test("元数据保存期间禁用按钮避免重复生成文章 ID", async () => {
+  let finish: (() => void) | undefined;
+  const save = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+  render(<MetadataForm value={metadata} sourceChanged={false} identityReady={false} onSave={save} />);
+  const button = screen.getByRole("button", { name: "保存并生成文章 ID" });
+  await userEvent.click(button);
+  expect(button).toBeDisabled();
+  await userEvent.click(button);
+  expect(save).toHaveBeenCalledTimes(1);
+  finish?.();
+});
+
+test("待审核文章缺少稳定 ID 时先引导生成 ID 而不展示审核通过", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("/taxonomy")
+    ? Response.json(taxonomy)
+    : Response.json({ ...article, stable_id: "", review_state: "待审核" }));
+  render(<ToastProvider><ArticlePage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  expect(await screen.findByRole("button", { name: "保存并生成文章 ID" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "审核通过" })).not.toBeInTheDocument();
 });
 
 test("采用 AI Description 建议只更新草稿而不立即保存", async () => {
@@ -279,7 +310,7 @@ test("文章页生成 AI Tag 并逐项加入草稿", async () => {
   await userEvent.click(screen.getByRole("button", { name: "生成 AI 建议" }));
   expect(await screen.findByText("新 Tag")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "采用 SQLite" }));
-  expect(screen.getByText("Tags：Go、React → Go、React、SQLite")).toBeInTheDocument();
+  expect(await screen.findByText("Tags：Go、React → Go、React、SQLite")).toBeInTheDocument();
 });
 
 test("文章页采用 AI 分类和描述建议后更新表单草稿", async () => {

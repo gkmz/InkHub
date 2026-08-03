@@ -2,6 +2,7 @@ package httptransport
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -10,9 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	workspaceapp "github.com/gkmz/InkHub/internal/app/workspace"
+	"github.com/gkmz/InkHub/internal/domain/article"
 	"github.com/gkmz/InkHub/internal/platform/dialog"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/provider/source/folder"
@@ -80,6 +83,7 @@ type runtimeHandler struct {
 	hugoPreviews          HugoPreviewAPI
 	publicationWorkflows  PublicationWorkflowAPI
 	wechatPlans           WeChatPlanAPI
+	metadataWriteMu       sync.Mutex
 }
 
 func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
@@ -257,6 +261,9 @@ type metadataRequest struct {
 }
 
 func (h *runtimeHandler) writeMetadata(response http.ResponseWriter, request *http.Request) {
+	// 本地单用户服务按请求串行化源文件写回，确保首次生成身份时文件与索引不会分叉。
+	h.metadataWriteMu.Lock()
+	defer h.metadataWriteMu.Unlock()
 	articleID := strings.TrimSuffix(strings.TrimPrefix(request.URL.Path, "/api/v1/articles/"), "/metadata")
 	var input metadataRequest
 	if decodeJSON(request, &input) != nil || input.Metadata.Title == "" {
@@ -269,12 +276,23 @@ func (h *runtimeHandler) writeMetadata(response http.ResponseWriter, request *ht
 		mapError(response, ErrNotFound)
 		return
 	}
+	sourceStableID := stableID
+	patch := contracts.MetadataPatch{Title: &input.Metadata.Title, Description: &input.Metadata.Description, Category: &input.Metadata.Category, Series: &input.Metadata.Series, Tags: &input.Metadata.Tags, Keywords: &input.Metadata.Keywords, Slug: &input.Metadata.Slug, Cover: &input.Metadata.Cover}
+	if stableID == "" {
+		// 首次受控保存时补充稳定身份，扫描和普通读取不会主动修改用户文件。
+		stableID, err = newArticleStableID()
+		if err != nil {
+			mapError(response, err)
+			return
+		}
+		patch.StableID = &stableID
+	}
 	source, err := h.buildSource(request.Context(), sourceID, nil)
 	if err != nil {
 		mapError(response, err)
 		return
 	}
-	_, err = source.WriteMetadata(request.Context(), contracts.MetadataWriteCommand{Ref: contracts.SourceRef{SourceID: sourceID, RelativePath: relative, StableID: stableID}, ExpectedFingerprint: fingerprint, Patch: contracts.MetadataPatch{Title: &input.Metadata.Title, Description: &input.Metadata.Description, Category: &input.Metadata.Category, Series: &input.Metadata.Series, Tags: &input.Metadata.Tags, Keywords: &input.Metadata.Keywords, Slug: &input.Metadata.Slug, Cover: &input.Metadata.Cover}})
+	written, err := source.WriteMetadata(request.Context(), contracts.MetadataWriteCommand{Ref: contracts.SourceRef{SourceID: sourceID, RelativePath: relative, StableID: sourceStableID}, ExpectedFingerprint: fingerprint, Patch: patch})
 	if sourceConflict(err) {
 		mapError(response, ErrStaleContent)
 		return
@@ -285,6 +303,11 @@ func (h *runtimeHandler) writeMetadata(response http.ResponseWriter, request *ht
 	}
 	if _, err := workspaceapp.ScanWorkspace(request.Context(), source, repository.NewArticleRepository(h.db), workspaceapp.ScanOptions{WorkspaceID: workspaceID, SourceID: sourceID}, contracts.ScanCursor{}); err != nil {
 		mapError(response, err)
+		return
+	}
+	var indexedStableID, indexedFingerprint string
+	if err := h.db.QueryRowContext(request.Context(), `SELECT stable_id,source_fingerprint FROM articles WHERE id=? AND deleted_at IS NULL`, articleID).Scan(&indexedStableID, &indexedFingerprint); err != nil || indexedStableID != stableID || indexedFingerprint != written.Fingerprint {
+		writeError(response, http.StatusInternalServerError, "article.index_refresh_failed", "文章已写入，但索引刷新失败，请刷新工作区后重试")
 		return
 	}
 	request.URL.Path = "/api/v1/articles/" + articleID
@@ -348,6 +371,10 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 	}
 	reviewState := "等待审核"
 	_ = h.db.QueryRowContext(request.Context(), `SELECT CASE state WHEN 'approved' THEN '已通过' WHEN 'changed' THEN '内容已更新' WHEN 'blocked' THEN '处理失败' ELSE '等待审核' END FROM editorial_reviews WHERE article_id=?`, id).Scan(&reviewState)
+	if article.StableID(stableID).Validate() != nil && reviewState == "已通过" {
+		// 旧数据可能在稳定身份规则引入前已审核，详情页不能继续暴露为可发布状态。
+		reviewState = "内容已更新"
+	}
 	providers := map[string]string{"hugo": "", "wechat": "", "openai-compatible": ""}
 	rows, _ := h.db.QueryContext(request.Context(), `SELECT provider_type,id FROM provider_instances WHERE workspace_id=? AND enabled=1`, workspaceID)
 	if rows != nil {
@@ -410,11 +437,19 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 			resourceDiagnostics = append(resourceDiagnostics, map[string]any{"code": diagnostic.Code, "message": diagnostic.Message, "blocking": diagnostic.Blocking})
 		}
 	}
-	result := map[string]any{"id": id, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "xiaohongshu_state": xiaohongshuState, "resource_diagnostics": resourceDiagnostics, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信 · 小红书"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_id": suggestionsID, "suggestions_generated_at": suggestionsGeneratedAt, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
+	result := map[string]any{"id": id, "stable_id": stableID, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "xiaohongshu_state": xiaohongshuState, "resource_diagnostics": resourceDiagnostics, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信 · 小红书"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_id": suggestionsID, "suggestions_generated_at": suggestionsGeneratedAt, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
 	if disposition != nil {
 		result["disposition"] = disposition
 	}
 	writeJSON(response, http.StatusOK, result)
+}
+
+func newArticleStableID() (string, error) {
+	var random [16]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", err
+	}
+	return "article_" + hex.EncodeToString(random[:]), nil
 }
 
 type articleDispositionView struct {
@@ -487,13 +522,21 @@ func runtimePublicationLabel(state, channel string) string {
 
 func (h *runtimeHandler) reviewArticle(response http.ResponseWriter, request *http.Request) {
 	id := strings.TrimSuffix(strings.TrimPrefix(request.URL.Path, "/api/v1/articles/"), "/review")
-	var contentHash, frontmatterHash, contentStage string
-	if err := h.db.QueryRowContext(request.Context(), `SELECT content_hash,frontmatter_hash,content_stage FROM articles WHERE id=?`, id).Scan(&contentHash, &frontmatterHash, &contentStage); err != nil {
+	var stableID, contentHash, frontmatterHash, contentStage string
+	if err := h.db.QueryRowContext(request.Context(), `SELECT stable_id,content_hash,frontmatter_hash,content_stage FROM articles WHERE id=?`, id).Scan(&stableID, &contentHash, &frontmatterHash, &contentStage); err != nil {
 		mapError(response, ErrNotFound)
 		return
 	}
 	if contentStage != "ready" {
 		mapError(response, ErrArticleNotReady)
+		return
+	}
+	if stableID == "" {
+		writeError(response, http.StatusUnprocessableEntity, "article.identity_missing", "请先保存文章元数据以生成稳定 ID")
+		return
+	}
+	if err := article.StableID(stableID).Validate(); err != nil {
+		writeError(response, http.StatusUnprocessableEntity, "article.identity_invalid", "文章稳定 ID 格式无效，请修复源文件后重试")
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)

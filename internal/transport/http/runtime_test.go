@@ -8,9 +8,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/gkmz/InkHub/internal/domain/article"
 	inksqlite "github.com/gkmz/InkHub/internal/storage/sqlite"
 )
 
@@ -103,6 +106,169 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	var sourceConfig string
 	if err := db.QueryRow(`SELECT config_json FROM sources LIMIT 1`).Scan(&sourceConfig); scopeResponse.Code != http.StatusOK || err != nil || !strings.Contains(sourceConfig, `"ignored_file_names":["toc.md"]`) {
 		t.Fatalf("忽略文件名未持久化: code=%d config=%s err=%v", scopeResponse.Code, sourceConfig, err)
+	}
+}
+
+func TestRuntimeMetadataSaveGeneratesStableIDWithoutChangingArticleID(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	vault := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(vault, ".obsidian"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(vault, "Areas"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	articlePath := filepath.Join(vault, "Areas", "待补充身份.md")
+	source := "---\ntitle: 待补充身份\ndescription: 已有摘要\ntags: [Go]\nkeywords: [InkHub]\npublish:\n  status: ready\n  slug: identity-repair\n---\n正文\n"
+	if err := os.WriteFile(articlePath, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{ProviderRuntime: testProviderRuntime(t)})
+	createRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/workspaces", strings.NewReader(`{"name":"身份测试","vault_path":"`+filepath.ToSlash(vault)+`","content_roots":["Areas"],"ignored_folders":[],"wechat_template":"default","ai_enabled":false}`))
+	createRequest.Header.Set("Content-Type", "application/json")
+	createRequest.Header.Set("Origin", "http://localhost")
+	createRequest.Header.Set("Idempotency-Key", "identity-test")
+	createResponse := httptest.NewRecorder()
+	handler.ServeHTTP(createResponse, createRequest)
+	if createResponse.Code != http.StatusCreated {
+		t.Fatalf("创建工作区失败: code=%d body=%s", createResponse.Code, createResponse.Body.String())
+	}
+	var articleID string
+	if err := db.QueryRow(`SELECT id FROM articles WHERE title='待补充身份'`).Scan(&articleID); err != nil {
+		t.Fatal(err)
+	}
+	var contentHash, frontmatterHash string
+	if err := db.QueryRow(`SELECT content_hash,frontmatter_hash FROM articles WHERE id=?`, articleID).Scan(&contentHash, &frontmatterHash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO editorial_reviews(article_id,state,approved_content_hash,approved_frontmatter_hash,approved_at,approved_by,updated_at) VALUES(?,'approved',?,?,'2026-08-03T00:00:00Z','user','2026-08-03T00:00:00Z')`, articleID, contentHash, frontmatterHash); err != nil {
+		t.Fatal(err)
+	}
+	metadataBody := `{"metadata":{"title":"待补充身份","description":"已有摘要","category":"","series":"","tags":["Go"],"keywords":["InkHub"],"slug":"identity-repair","cover":""}}`
+	responses := make([]*httptest.ResponseRecorder, 8)
+	var wait sync.WaitGroup
+	start := make(chan struct{})
+	for index := range responses {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			<-start
+			request := httptest.NewRequest(http.MethodPut, "http://localhost/api/v1/articles/"+articleID+"/metadata", strings.NewReader(metadataBody))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", "http://localhost")
+			responses[index] = httptest.NewRecorder()
+			handler.ServeHTTP(responses[index], request)
+		}(index)
+	}
+	close(start)
+	wait.Wait()
+	metadataResponse := responses[0]
+	for index, response := range responses {
+		if response.Code != http.StatusOK {
+			t.Fatalf("并发补充稳定 ID 第 %d 个请求失败: code=%d body=%s", index, response.Code, response.Body.String())
+		}
+	}
+
+	var stableID, storedArticleID string
+	if err := db.QueryRow(`SELECT id,stable_id FROM articles WHERE relative_path='Areas/待补充身份.md' AND deleted_at IS NULL`).Scan(&storedArticleID, &stableID); err != nil {
+		t.Fatal(err)
+	}
+	if storedArticleID != articleID {
+		t.Fatalf("补充稳定 ID 后内部文章 ID 改变: got=%s want=%s", storedArticleID, articleID)
+	}
+	if err := article.StableID(stableID).Validate(); err != nil {
+		t.Fatalf("生成的稳定 ID 无效: %q err=%v", stableID, err)
+	}
+	var reviewState string
+	if err := db.QueryRow(`SELECT state FROM editorial_reviews WHERE article_id=?`, articleID).Scan(&reviewState); err != nil || reviewState != "changed" {
+		t.Fatalf("补充稳定 ID 后旧审核未失效: state=%s err=%v", reviewState, err)
+	}
+	written, err := os.ReadFile(articlePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`(?m)^id: article_[A-Za-z0-9]+$`).Match(written) || !strings.Contains(metadataResponse.Body.String(), `"stable_id":"`+stableID+`"`) {
+		t.Fatalf("源文件或详情响应未返回稳定 ID: file=%s body=%s", written, metadataResponse.Body.String())
+	}
+	for index, response := range responses {
+		if !strings.Contains(response.Body.String(), `"stable_id":"`+stableID+`"`) {
+			t.Fatalf("并发请求返回了不同稳定 ID: index=%d body=%s want=%s", index, response.Body.String(), stableID)
+		}
+	}
+
+	// 模拟扫描后目标文章指纹没有落库，接口必须明确失败而不是返回旧详情。
+	if _, err := db.Exec(`CREATE TRIGGER keep_old_article_fingerprint AFTER UPDATE OF source_fingerprint ON articles
+BEGIN
+  UPDATE articles SET source_fingerprint=OLD.source_fingerprint WHERE id=NEW.id;
+END`); err != nil {
+		t.Fatal(err)
+	}
+	partialBody := strings.Replace(metadataBody, "待补充身份", "索引失败后的标题", 1)
+	partialRequest := httptest.NewRequest(http.MethodPut, "http://localhost/api/v1/articles/"+articleID+"/metadata", strings.NewReader(partialBody))
+	partialRequest.Header.Set("Content-Type", "application/json")
+	partialRequest.Header.Set("Origin", "http://localhost")
+	partialResponse := httptest.NewRecorder()
+	handler.ServeHTTP(partialResponse, partialRequest)
+	if partialResponse.Code != http.StatusInternalServerError || !strings.Contains(partialResponse.Body.String(), `"code":"article.index_refresh_failed"`) {
+		t.Fatalf("索引未正确落库时仍返回成功: code=%d body=%s", partialResponse.Code, partialResponse.Body.String())
+	}
+}
+
+func TestRuntimeReviewRejectsArticleWithoutStableID(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	now := "2026-08-03T00:00:00Z"
+	_, err = db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','审核测试','/tmp',?,?,?);
+INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES('s1','w1','obsidian','/tmp',?,?);
+INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,content_hash,frontmatter_hash,indexed_at,created_at,updated_at,content_stage)
+VALUES('a1','w1','s1','','article.md','已有标题','content-hash','frontmatter-hash',?,?,?,'ready')`, now, now, now, now, now, now, now, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}))
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/review", nil)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://localhost")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), `"code":"article.identity_missing"`) {
+		t.Fatalf("缺少稳定 ID 的文章仍可审核: code=%d body=%s", response.Code, response.Body.String())
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM editorial_reviews WHERE article_id='a1' AND state='approved'`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("缺少稳定 ID 时写入了审核通过状态: count=%d err=%v", count, err)
+	}
+}
+
+func TestRuntimeReviewRejectsArticleWithInvalidStableID(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	now := "2026-08-03T00:00:00Z"
+	_, err = db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','审核测试','/tmp',?,?,?);
+INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES('s1','w1','obsidian','/tmp',?,?);
+INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,content_hash,frontmatter_hash,indexed_at,created_at,updated_at,content_stage)
+VALUES('a1','w1','s1','legacy-invalid','article.md','已有标题','content-hash','frontmatter-hash',?,?,?,'ready')`, now, now, now, now, now, now, now, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}))
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/review", nil)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://localhost")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), `"code":"article.identity_invalid"`) {
+		t.Fatalf("非法稳定 ID 的文章仍可审核: code=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

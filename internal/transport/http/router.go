@@ -33,6 +33,8 @@ var (
 	ErrDispositionChannelUnavailable = errors.New("批量处置渠道不可用")
 	// ErrArticleNotReady 表示文章尚未由作者明确标记为已就绪。
 	ErrArticleNotReady = errors.New("文章尚未标记为已就绪")
+	// ErrReviewRequired 表示文章尚未通过当前内容版本的审核。
+	ErrReviewRequired = errors.New("文章需要重新审核")
 )
 
 // ArticleSummary 是内容库列表使用的脱敏 DTO。
@@ -360,6 +362,8 @@ func mappedError(err error) (status int, code, message string) {
 		return http.StatusBadRequest, "request.invalid", "文章批量处置请求无效"
 	case errors.Is(err, ErrArticleNotReady):
 		return http.StatusUnprocessableEntity, "article.not_ready", "文章尚未标记为已就绪"
+	case errors.Is(err, ErrReviewRequired):
+		return http.StatusUnprocessableEntity, "article.review_required", "文章需要重新审核后才能发布"
 	}
 	var providerErr *contracts.ProviderError
 	if errors.As(err, &providerErr) && providerErr != nil {

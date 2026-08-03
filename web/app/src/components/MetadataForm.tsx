@@ -9,6 +9,7 @@ const emptySuggestions: Array<{ id: string; field: keyof ArticleMetadata; value:
 interface MetadataFormProps {
   value: ArticleMetadata;
   sourceChanged: boolean;
+  identityReady?: boolean;
   onSave: (value: ArticleMetadata) => void | Promise<void>;
   onReload?: () => void;
   taxonomyState?: TaxonomyFieldState;
@@ -22,8 +23,9 @@ interface MetadataFormProps {
 }
 
 /** MetadataForm 编辑标准元数据，并在源文件变化时停止写回。 */
-export function MetadataForm({ value, sourceChanged, onSave, onReload, taxonomyState = "unavailable", categoryOptions = [], seriesOptions = [], tagOptions = [], canCreateTaxonomy = false, onCreateTaxonomy, externalSuggestion, externalSuggestions = emptySuggestions }: MetadataFormProps) {
+export function MetadataForm({ value, sourceChanged, identityReady = true, onSave, onReload, taxonomyState = "unavailable", categoryOptions = [], seriesOptions = [], tagOptions = [], canCreateTaxonomy = false, onCreateTaxonomy, externalSuggestion, externalSuggestions = emptySuggestions }: MetadataFormProps) {
   const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
   const previousValue = useRef(value);
   useEffect(() => {
     const incoming = [...(externalSuggestion ? [externalSuggestion] : []), ...externalSuggestions];
@@ -38,8 +40,18 @@ export function MetadataForm({ value, sourceChanged, onSave, onReload, taxonomyS
   const keywords = (text: string) => update("keywords", text.split(/[,，]/).map((item) => item.trim()).filter(Boolean));
   const changed = JSON.stringify(draft) !== JSON.stringify(value);
   const changes = (Object.keys(value) as (keyof ArticleMetadata)[]).filter((field) => JSON.stringify(value[field]) !== JSON.stringify(draft[field]));
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave(draft);
+    } finally {
+      setSaving(false);
+    }
+  };
   return <section className="tool-section metadata-form"><div className="tool-heading"><h2>元数据</h2>{changed && <span>有未保存修改</span>}</div>
     {sourceChanged && <div className="inline-warning"><b>文章已在写作工具中更新</b><span>重新加载后才能继续保存，避免覆盖外部修改。</span><button type="button" onClick={onReload}><RotateCcw size={15} />重新加载</button></div>}
+    {!identityReady && <div className="inline-identity" role="status"><b>这篇文章还没有稳定 ID</b><span>保存时会自动生成并写入源文件，之后需要重新审核。</span></div>}
     <label>标题<input value={draft.title} onChange={(event) => update("title", event.target.value)} /></label>
     <label>Description<textarea value={draft.description} onChange={(event) => update("description", event.target.value)} rows={3} /></label>
     <div className="field-pair"><SingleTaxonomyField label="Category" noun="类目" value={draft.category} options={categoryOptions} state={taxonomyState} emptyLabel="未分类" canCreate={canCreateTaxonomy} onChange={(next) => update("category", next)} onCreate={onCreateTaxonomy ? (select) => onCreateTaxonomy("category", select) : undefined} /><SingleTaxonomyField label="Series" noun="系列" value={draft.series} options={seriesOptions} state={taxonomyState} emptyLabel="无系列" canCreate={canCreateTaxonomy} onChange={(next) => update("series", next)} onCreate={onCreateTaxonomy ? (select) => onCreateTaxonomy("series", select) : undefined} /></div>
@@ -47,7 +59,7 @@ export function MetadataForm({ value, sourceChanged, onSave, onReload, taxonomyS
     <label>Keywords<input value={draft.keywords.join(", ")} onChange={(event) => keywords(event.target.value)} /></label>
     <div className="field-pair"><label>Slug<input value={draft.slug} onChange={(event) => update("slug", event.target.value)} /></label><label>Cover<input value={draft.cover} onChange={(event) => update("cover", event.target.value)} /></label></div>
     {changes.length > 0 && <div className="change-summary"><b>本次将写入</b>{changes.map((field) => <p key={field}>{fieldLabel(field)}：{formatValue(value[field]) || "未填写"} → {formatValue(draft[field]) || "未填写"}</p>)}</div>}
-    <button className="primary compact-button" type="button" disabled={!changed || sourceChanged} onClick={() => void onSave(draft)}><Save size={15} />保存到文章</button>
+    <button className="primary compact-button" type="button" disabled={saving || (!changed && identityReady) || sourceChanged} onClick={() => void save()}><Save size={15} />{saving ? "正在保存" : identityReady ? "保存到文章" : "保存并生成文章 ID"}</button>
   </section>;
 }
 

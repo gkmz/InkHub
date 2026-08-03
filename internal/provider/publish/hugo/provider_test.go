@@ -140,6 +140,55 @@ func TestPreflightBlocksUnresolvedSourceImage(t *testing.T) {
 	}
 }
 
+func TestPreflightReportsSpecificMissingArticleFields(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    contracts.PublishInput
+		wantCode string
+		wantText string
+	}{
+		{
+			name:     "缺少内容版本",
+			input:    contracts.PublishInput{OperationID: "operation_content", Article: article.Article{StableID: "article_VALID", Title: "文章"}},
+			wantCode: "hugo.content_version_missing",
+			wantText: "Hugo 文章缺少内容版本",
+		},
+		{
+			name:     "缺少稳定 ID",
+			input:    contracts.PublishInput{OperationID: "operation_identity", ContentHash: "hash", Article: article.Article{Title: "文章"}},
+			wantCode: "hugo.stable_id_missing",
+			wantText: "Hugo 文章缺少稳定 ID",
+		},
+		{
+			name:     "缺少标题",
+			input:    contracts.PublishInput{OperationID: "operation_title", ContentHash: "hash", Article: article.Article{StableID: "article_VALID"}},
+			wantCode: "hugo.title_missing",
+			wantText: "Hugo 文章缺少标题",
+		},
+		{
+			name:     "稳定 ID 非法",
+			input:    contracts.PublishInput{OperationID: "operation_identity_invalid", ContentHash: "hash", Article: article.Article{StableID: "legacy-invalid", Title: "文章"}},
+			wantCode: "hugo.stable_id_invalid",
+			wantText: "Hugo 文章稳定 ID 格式无效",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			provider, err := New(Config{Root: copyHugoFixture(t), StagingRoot: filepath.Join(t.TempDir(), "staging")}, &fakeBuilder{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := provider.Preflight(context.Background(), test.input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Ready || len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != test.wantCode || result.Diagnostics[0].Message != test.wantText || !result.Diagnostics[0].Blocking {
+				t.Fatalf("缺失字段诊断不具体: result=%+v", result)
+			}
+		})
+	}
+}
+
 func TestPreparePreservesRealSiteWhenStagingBuildFails(t *testing.T) {
 	t.Parallel()
 
