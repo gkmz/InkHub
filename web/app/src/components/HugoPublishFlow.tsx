@@ -145,7 +145,7 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
       <ul>{preview.files.map((file) => <li key={file.relative_path}><FileText size={14} /><span>{file.relative_path}</span><small>{formatBytes(file.size)}</small></li>)}</ul>
       {preview.diagnostics.map((item) => <p key={item.code} className={`diagnostic-${item.level}`}>{item.message}</p>)}
       {discovery && discovery.sections.length === 0 && <p className="diagnostic-blocking">当前 Hugo content 目录未发现可用发布目录，请恢复文件夹后重新生成预览。</p>}
-      {preview.state === "expired" ? <button type="button" className="secondary compact-button" disabled={busy} onClick={() => void prepare()}>重新生成预览</button> : <button type="button" className="primary compact-button" disabled={busy} onClick={() => void confirm()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}确认同步到 Hugo</button>}
+      <div className="hugo-artifact-actions"><button type="button" className="secondary compact-button" disabled={busy} onClick={() => void prepare()}>重新生成预览</button>{preview.state === "ready" && <button type="button" className="primary compact-button" disabled={busy} onClick={() => void confirm()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}确认同步到 Hugo</button>}</div>
     </div>}
   </section>;
 }
