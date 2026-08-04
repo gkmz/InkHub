@@ -19,6 +19,7 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
   const controller = useRef<AbortController | null>(null);
   const [discovery, setDiscovery] = useState<HugoSectionView | null>(null);
   const [section, setSection] = useState("");
+  const [directory, setDirectory] = useState("");
   const [preview, setPreview] = useState<HugoPreviewView | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -26,25 +27,37 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
   onPublishedRef.current = onPublished;
 
   const showError = useCallback((reason: unknown) => {
+    // 页面切换或开发模式重挂载会主动取消旧请求，这不是发布失败。
+    if (reason instanceof DOMException && reason.name === "AbortError") return;
     if (mounted.current) toast.show({ kind: "error", message: reason instanceof Error ? reason.message : "Hugo 发布操作失败" });
   }, [toast]);
+
+  /** loadSections 重新扫描 Hugo content 目录，并为恢复预览补齐当前选择。 */
+  const loadSections = useCallback(async (signal?: AbortSignal) => {
+    const value = await getHugoSections(articleID, signal);
+    if (!mounted.current) return value;
+    setDiscovery(value);
+    if (value.selection_locked) {
+      setSection(value.existing_section);
+      setDirectory(value.existing_directory ?? "");
+    } else if (value.sections.length === 1) {
+      setSection(value.sections[0].name);
+      const directories = value.sections[0].directories ?? [];
+      setDirectory(directories.length === 1 ? directories[0].path : "");
+    }
+    return value;
+  }, [articleID]);
 
   useEffect(() => {
     mounted.current = true;
     controller.current = new AbortController();
-    const loadSections = async () => {
-      const value = await getHugoSections(articleID, controller.current?.signal);
-      if (!mounted.current) return;
-      setDiscovery(value);
-      if (value.selection_locked) setSection(value.existing_section);
-      else if (value.sections.length === 1) setSection(value.sections[0].name);
-    };
     const pollWorkflow = async () => {
       const value = await getPublicationWorkflow(articleID, controller.current?.signal);
       if (!mounted.current) return;
       setWorkflow(value.hugo);
       if (value.hugo?.preview) setPreview(recoveredPreview(value.hugo.preview));
-      if (!value.hugo || value.hugo.state === "failed") await loadSections();
+      // 恢复旧预览时也要重新扫描目录，否则删除 Hugo 文件夹后“重新生成”没有可用目标。
+      if (!value.hugo || value.hugo.state === "failed" || value.hugo.state === "expired") await loadSections(controller.current?.signal);
       if (value.hugo?.state === "preparing" || value.hugo?.state === "delivering") timer.current = window.setTimeout(() => void pollWorkflow().catch(showError), 800);
       if (value.hugo?.state === "published") await onPublishedRef.current();
       setLoading(false);
@@ -55,7 +68,7 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
       controller.current?.abort();
       if (timer.current !== null) window.clearTimeout(timer.current);
     };
-  }, [articleID, showError]);
+  }, [articleID, loadSections, showError]);
 
   const pollPreview = async (previewID: string) => {
     const next = await getHugoPreview(previewID);
@@ -65,12 +78,25 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
     if (next.state === "failed") toast.show({ kind: "error", message: next.error || "Hugo 发布预览生成失败" });
   };
   const prepare = async () => {
-    if (!section || busy) return;
+    if (busy) return;
     setBusy(true);
     setPreview(null);
     setWorkflow(null);
     try {
-      const queued = await createHugoPreview(articleID, contentHash, section);
+      // 过期/失败预览可能没有完成目录发现，点击重试时主动刷新一次并使用刷新结果继续提交。
+      const currentDiscovery = await loadSections();
+      const availableSection = currentDiscovery.sections.some((item) => item.name === section)
+        ? section
+        : currentDiscovery.existing_section || (currentDiscovery.sections.length === 1 ? currentDiscovery.sections[0].name : "");
+      const availableDirectories = currentDiscovery.sections.find((item) => item.name === availableSection)?.directories ?? [];
+      const availableDirectory = availableDirectories.some((item) => item.path === directory)
+        ? directory
+        : currentDiscovery.existing_directory || (availableDirectories.length === 1 ? availableDirectories[0].path : "");
+      if (!availableSection) throw new Error("未发现可用的 Hugo 发布目录，请检查 Hugo 根目录后重试");
+      if (availableDirectories.length > 0 && !availableDirectory) throw new Error("请选择 Hugo 分类目录后重试");
+      setSection(availableSection);
+      setDirectory(availableDirectory);
+      const queued = await createHugoPreview(articleID, contentHash, availableSection, availableDirectory);
       await pollPreview(queued.id);
     } catch (reason) {
       showError(reason);
@@ -101,20 +127,24 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
   if (loading) return <section className="hugo-publish-flow" aria-live="polite"><LoaderCircle className="spin" size={16} />正在恢复 Hugo 发布状态…</section>;
   if (workflow && !preview && workflow.state !== "failed") return <section className="hugo-publish-flow" aria-live="polite"><p className="hugo-preview-state"><LoaderCircle className="spin" size={16} />{workflow.stage} · {workflow.progress}%</p>{workflow.error && <p className="hugo-flow-error">{workflow.error}</p>}</section>;
   if (!discovery && !preview) return <section className="hugo-publish-flow" aria-live="polite"><LoaderCircle className="spin" size={16} />正在读取 Hugo 发布目录…</section>;
-  if (discovery && discovery.sections.length === 0) return <section className="hugo-publish-flow"><b>Hugo 中还没有可用发布目录</b><p>请先在 Hugo content 中创建一级目录，再重新打开发布流程。</p></section>;
+  if (discovery && discovery.sections.length === 0 && !preview) return <section className="hugo-publish-flow"><b>Hugo 中还没有可用发布目录</b><p>请先在 Hugo content 中创建一级目录，再重新读取目录。</p><button type="button" className="secondary compact-button" onClick={() => void loadSections().catch(showError)}>重新读取 Hugo 目录</button></section>;
   const failure = preview?.failure ?? workflow?.failure ?? fallbackFailure(preview?.error || workflow?.error);
   const failed = preview?.state === "failed" || workflow?.state === "failed";
+  const directories = discovery?.sections.find((item) => item.name === section)?.directories ?? [];
+  const targetReady = Boolean(section) && (directories.length === 0 || Boolean(directory));
   return <section className="hugo-publish-flow" aria-label="Hugo 发布">
-    {discovery && <label>发布目录<select aria-label="发布目录" value={section} disabled={discovery.selection_locked || busy} onChange={(event) => setSection(event.target.value)}><option value="">请选择</option>{discovery.sections.map((item) => <option key={item.name} value={item.name}>{item.name}（{item.article_count} 篇）</option>)}</select></label>}
-    {discovery?.selection_locked && <p className="hugo-section-lock">已有文章将继续更新 {discovery.existing_section}</p>}
+    {discovery && <label>发布目录<select aria-label="发布目录" value={section} disabled={discovery.selection_locked || busy} onChange={(event) => { const next = event.target.value; setSection(next); const nextDirectories = discovery.sections.find((item) => item.name === next)?.directories ?? []; setDirectory(nextDirectories.length === 1 ? nextDirectories[0].path : ""); }}><option value="">请选择</option>{discovery.sections.map((item) => <option key={item.name} value={item.name}>{item.name}（{item.article_count} 篇）</option>)}</select></label>}
+    {directories.length > 0 && <label>分类目录<select aria-label="分类目录" value={directory} disabled={discovery?.selection_locked || busy} onChange={(event) => setDirectory(event.target.value)}><option value="">请选择</option>{directories.map((item) => <option key={item.path} value={item.path}>{item.path}（{item.article_count} 篇）</option>)}</select></label>}
+    {discovery?.selection_locked && <p className="hugo-section-lock">已有文章将继续更新 {discovery.existing_section}{discovery.existing_directory ? `/${discovery.existing_directory}` : ""}</p>}
     {failed && failure && <PublicationFailure failure={failure} />}
-    {!preview && <button type="button" className="primary compact-button" disabled={!section || busy} onClick={() => void prepare()}>{busy ? <LoaderCircle className="spin" size={16} /> : <CloudUpload size={16} />}{failed ? "重新生成预览" : "生成发布预览"}</button>}
+    {!preview && <button type="button" className="primary compact-button" disabled={!targetReady || busy} onClick={() => void prepare()}>{busy ? <LoaderCircle className="spin" size={16} /> : <CloudUpload size={16} />}{failed ? "重新生成预览" : "生成发布预览"}</button>}
     {preview?.state === "preparing" && <p className="hugo-preview-state"><LoaderCircle className="spin" size={16} />正在构建真实 Hugo 预览…</p>}
-    {preview?.state === "failed" && <button type="button" className="primary compact-button" disabled={!section || busy} onClick={() => void prepare()}>{busy ? <LoaderCircle className="spin" size={16} /> : <CloudUpload size={16} />}重新生成预览</button>}
+    {preview?.state === "failed" && <button type="button" className="primary compact-button" disabled={busy} onClick={() => void prepare()}>{busy ? <LoaderCircle className="spin" size={16} /> : <CloudUpload size={16} />}重新生成预览</button>}
     {preview && (preview.state === "ready" || preview.state === "expired") && <div className="hugo-artifact-summary">
       <div><span>{preview.change === "added" ? "新增" : "更新"}</span><code>{preview.target_path}</code></div>
       <ul>{preview.files.map((file) => <li key={file.relative_path}><FileText size={14} /><span>{file.relative_path}</span><small>{formatBytes(file.size)}</small></li>)}</ul>
       {preview.diagnostics.map((item) => <p key={item.code} className={`diagnostic-${item.level}`}>{item.message}</p>)}
+      {discovery && discovery.sections.length === 0 && <p className="diagnostic-blocking">当前 Hugo content 目录未发现可用发布目录，请恢复文件夹后重新生成预览。</p>}
       {preview.state === "expired" ? <button type="button" className="secondary compact-button" disabled={busy} onClick={() => void prepare()}>重新生成预览</button> : <button type="button" className="primary compact-button" disabled={busy} onClick={() => void confirm()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}确认同步到 Hugo</button>}
     </div>}
   </section>;
