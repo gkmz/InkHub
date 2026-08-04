@@ -14,6 +14,9 @@ import (
 type hugoFrontmatter struct {
 	Title       string   `yaml:"title"`
 	Description string   `yaml:"description,omitempty"`
+	Date        string   `yaml:"date,omitempty"`
+	Updated     string   `yaml:"updated,omitempty"`
+	URL         string   `yaml:"url,omitempty"`
 	Slug        string   `yaml:"slug,omitempty"`
 	Categories  []string `yaml:"categories,omitempty"`
 	Series      []string `yaml:"series,omitempty"`
@@ -35,7 +38,8 @@ func convertArticle(input contracts.PublishInput) ([]byte, error) {
 		return nil, fmt.Errorf("Hugo 文章缺少稳定 ID 或标题")
 	}
 	frontmatter := hugoFrontmatter{
-		Title: input.Article.Title, Description: input.Article.Description, Slug: input.Article.Slug,
+		Title: input.Article.Title, Description: input.Article.Description, Date: input.Article.PublishDate, Updated: input.Article.PublishDate,
+		URL: input.Article.URL, Slug: input.Article.Slug,
 		Tags: input.Article.Tags, Keywords: input.Article.Keywords, Cover: input.Article.Cover,
 		SourceID: string(input.Article.StableID), SourcePath: input.Article.RelativePath,
 	}

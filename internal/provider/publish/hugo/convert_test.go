@@ -17,7 +17,7 @@ func TestConvertArticleMapsMetadataAndObsidianSyntax(t *testing.T) {
 		Article: article.Article{
 			StableID: "article_ONE", RelativePath: "文章/示例.md", Title: "示例标题", Description: "文章摘要",
 			Category: "AI应用开发", Series: "InkHub 开发日志", Tags: []string{"go", "hugo"},
-			Keywords: []string{"InkHub", "Hugo"}, Slug: "inkhub-hugo", Cover: "images/cover.png",
+			Keywords: []string{"InkHub", "Hugo"}, URL: "20260730-inkhub-hugo", PublishDate: "2026-07-30", Slug: "inkhub-hugo", Cover: "images/cover.png",
 		},
 		Body: `参见 [[另一篇文章|相关内容]]。
 
@@ -31,7 +31,7 @@ func TestConvertArticleMapsMetadataAndObsidianSyntax(t *testing.T) {
 	}
 	text := string(content)
 	for _, expected := range []string{
-		"source_id: article_ONE", "source_path: 文章/示例.md", "keywords:", "- InkHub",
+		"source_id: article_ONE", "source_path: 文章/示例.md", "date: \"2026-07-30\"", "updated: \"2026-07-30\"", "url: 20260730-inkhub-hugo", "keywords:", "- InkHub",
 		`[相关内容]({{< relref "另一篇文章" >}})`, "> **注意事项**", "![](cover.png)",
 	} {
 		if !strings.Contains(text, expected) {
