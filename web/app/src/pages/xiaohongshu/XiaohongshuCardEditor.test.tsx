@@ -13,6 +13,7 @@ describe("XiaohongshuCardEditor", () => {
     render(<XiaohongshuCardEditor pages={[page("1"), page("2")]} template="mobile-clean" onPagesChange={vi.fn()} onSelectionChange={vi.fn()} />);
     expect(screen.getByLabelText("第 1 页，共 2 页")).toBeInTheDocument();
     expect(screen.getByLabelText("第 2 页，共 2 页")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上一页" }).closest(".xiaohongshu-card-stage")).not.toBeNull();
   });
 
   it("编辑卡片正文时只更新当前页面", async () => {

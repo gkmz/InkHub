@@ -219,15 +219,20 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .xiaohongshu-editor-shell { min-width: 0; }
 .xiaohongshu-editor, .xiaohongshu-preview { min-width: 0; overflow: hidden; padding: 20px; border: 1px solid var(--line); background: var(--surface); }
 .xiaohongshu-card-editor { min-width: 0; padding: 20px; border: 1px solid var(--line); background: var(--surface); }
-.xiaohongshu-card-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; color: var(--muted); font-size: 11px; }
-.xiaohongshu-card-toolbar .icon-button { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: white; color: var(--ink); cursor: pointer; }
-.xiaohongshu-card-toolbar .icon-button:disabled { opacity: .45; cursor: not-allowed; }
-.xiaohongshu-card-scroller { display: flex; gap: 18px; min-width: 0; overflow-x: auto; padding: 6px 8px 16px; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
+.xiaohongshu-card-toolbar { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 14px; color: var(--muted); font-size: 11px; }
+.xiaohongshu-card-stage { position: relative; min-width: 0; }
+.xiaohongshu-card-scroller { display: flex; gap: 18px; min-width: 0; overflow-x: auto; padding: 6px 56px 16px; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
+.xiaohongshu-card-scroller::-webkit-scrollbar { display: none; }
+.xiaohongshu-card-nav { position: absolute; z-index: 2; top: 50%; display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink); box-shadow: 0 8px 18px rgb(28 36 32 / 15%); cursor: pointer; transform: translateY(-50%); }
+.xiaohongshu-card-nav.previous { left: 8px; }
+.xiaohongshu-card-nav.next { right: 8px; }
+.xiaohongshu-card-nav:disabled { opacity: .4; cursor: not-allowed; }
 .xiaohongshu-card-page { flex: 0 0 min(375px, calc(100vw - 92px)); aspect-ratio: 375 / 667; min-height: 0; display: flex; flex-direction: column; scroll-snap-align: center; overflow: hidden; padding: 28px 22px 22px; border: 1px solid #d6ddd8; border-radius: 14px; background: #fff; box-shadow: 0 14px 30px rgb(28 36 32 / 12%); color: var(--ink); }
 .xiaohongshu-card-page.template-mobile-paper { background: #fffaf1; border-color: #b9aa95; }
 .xiaohongshu-card-page-label { flex: 0 0 auto; margin-bottom: 14px; color: var(--muted); font-size: 10px; text-align: right; }
 .xiaohongshu-card-title { flex: 0 0 auto; margin: 0 0 14px; font-size: 24px; line-height: 1.3; }
-.xiaohongshu-card-content { min-width: 0; flex: 1 1 auto; overflow: auto; outline: none; font-size: 15px; line-height: 1.75; overflow-wrap: anywhere; }
+.xiaohongshu-card-content-frame { min-width: 0; min-height: 0; flex: 1 1 auto; overflow: hidden; display: flex; align-items: flex-start; justify-content: center; }
+.xiaohongshu-card-content { min-width: 0; width: 100%; flex: 0 0 auto; overflow: visible; outline: none; font-size: 15px; line-height: 1.75; overflow-wrap: anywhere; transform-origin: top center; }
 .xiaohongshu-card-content:focus { box-shadow: inset 0 0 0 2px rgb(23 128 116 / 14%); }
 .xiaohongshu-card-content p { margin: 0 0 12px; }
 .xiaohongshu-card-content h2, .xiaohongshu-card-content h3, .xiaohongshu-card-content h4 { margin: 16px 0 8px; line-height: 1.35; }
