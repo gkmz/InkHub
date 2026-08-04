@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { adaptXiaohongshuHTML } from "./xiaohongshuAdapter";
+import { adaptXiaohongshuHTML, stripXiaohongshuTitle } from "./xiaohongshuAdapter";
+
+describe("stripXiaohongshuTitle", () => {
+  it("移除正文中的首个一级标题", () => {
+    const html = stripXiaohongshuTitle("<h1>文章标题</h1><p>正文</p><h1>正文中的其他标题</h1>");
+    expect(html).not.toContain("文章标题");
+    expect(html).toContain("正文");
+    expect(html).toContain("正文中的其他标题");
+  });
+});
 
 describe("adaptXiaohongshuHTML", () => {
   it("保留目标视口内的表格", () => {

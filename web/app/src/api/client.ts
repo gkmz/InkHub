@@ -104,9 +104,9 @@ export function confirmWeChatPlan(articleID: string, planToken: string, signal?:
   return request<{ state: "queued" }>(`/articles/${encodeURIComponent(articleID)}/wechat-plans/confirm`, { method: "POST", body: JSON.stringify({ plan_token: planToken }), signal });
 }
 
-/** createHugoPreview 为指定内容版本生成可确认的 staging Artifact。 */
-export function createHugoPreview(articleID: string, contentHash: string, section: string) {
-  return request<{ id: string; job_id: string; state: string }>(`/articles/${encodeURIComponent(articleID)}/hugo-previews`, { method: "POST", body: JSON.stringify({ content_hash: contentHash, section }) });
+/** createHugoPreview 为指定内容版本和 Page Bundle 目录生成可确认的 staging Artifact。 */
+export function createHugoPreview(articleID: string, contentHash: string, section: string, directory = "") {
+  return request<{ id: string; job_id: string; state: string }>(`/articles/${encodeURIComponent(articleID)}/hugo-previews`, { method: "POST", body: JSON.stringify({ content_hash: contentHash, section, directory }) });
 }
 
 /** getHugoPreview 读取脱敏后的 Artifact 摘要。 */
@@ -172,14 +172,14 @@ export function getXiaohongshu(articleID: string, signal?: AbortSignal) {
   return request<XiaohongshuView>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu`, { signal });
 }
 
-/** generateXiaohongshuDraft 生成一个新的完整小红书草稿版本，不覆盖历史。 */
+/** generateXiaohongshuDraft 调用 AI 提炼并生成新的小红书草稿版本，不覆盖历史。 */
 export function generateXiaohongshuDraft(articleID: string) {
   return request<XiaohongshuDraft>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/drafts/generate`, { method: "POST", body: "{}" });
 }
 
 /** saveXiaohongshuDraft 保存用户整体编辑后的小红书草稿。 */
-export function saveXiaohongshuDraft(articleID: string, draft: Pick<XiaohongshuDraft, "id" | "title" | "body_html" | "topics" | "source_note" | "comment_copy">) {
-  return request<XiaohongshuDraft>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/drafts`, { method: "POST", body: JSON.stringify({ draft_id: draft.id, title: draft.title, body_html: draft.body_html, topics: draft.topics, source_note: draft.source_note, comment_copy: draft.comment_copy }) });
+export function saveXiaohongshuDraft(articleID: string, draft: Pick<XiaohongshuDraft, "id" | "title" | "body_html" | "pages" | "topics" | "source_note" | "comment_copy">) {
+	return request<XiaohongshuDraft>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/drafts`, { method: "POST", body: JSON.stringify({ draft_id: draft.id, title: draft.title, body_html: draft.body_html, pages: draft.pages, topics: draft.topics, source_note: draft.source_note, comment_copy: draft.comment_copy }) });
 }
 
 /** saveXiaohongshuRender 记录浏览器完成的手机模板渲染版本。 */

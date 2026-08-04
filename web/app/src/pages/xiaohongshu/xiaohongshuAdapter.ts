@@ -6,9 +6,19 @@ export interface XiaohongshuHTMLAdaptation {
   convertedTables: number;
 }
 
+/** stripXiaohongshuTitle 移除正文中的首个一级标题，避免与手机模板标题重复。 */
+export function stripXiaohongshuTitle(html: string): string {
+  const safe = sanitizePreviewHTML(html);
+  const document = new DOMParser().parseFromString(`<div>${safe}</div>`, "text/html");
+  const root = document.body.firstElementChild;
+  if (!root) return safe;
+  root.querySelector("h1")?.remove();
+  return root.innerHTML;
+}
+
 /** adaptXiaohongshuHTML 在目标手机宽度中测量表格，超出时转换为结构化文本。 */
 export function adaptXiaohongshuHTML(html: string, viewportWidth: number): XiaohongshuHTMLAdaptation {
-  const safe = sanitizePreviewHTML(html);
+  const safe = stripXiaohongshuTitle(html);
   const document = new DOMParser().parseFromString(`<div>${safe}</div>`, "text/html");
   const root = document.body.firstElementChild;
   if (!root) return { html: safe, convertedTables: 0 };

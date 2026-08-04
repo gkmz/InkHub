@@ -4,6 +4,33 @@ package xiaohongshu
 // DraftState 是小红书草稿的生命周期状态。
 type DraftState string
 
+// BlockKind 表示小红书卡片中的内容块类型。
+type BlockKind string
+
+const (
+	BlockKindParagraph BlockKind = "paragraph"
+	BlockKindHeading   BlockKind = "heading"
+	BlockKindImage     BlockKind = "image"
+	BlockKindCode      BlockKind = "code"
+	BlockKindTable     BlockKind = "table"
+	BlockKindText      BlockKind = "text"
+)
+
+// Block 是页面中的可编辑内容块。
+type Block struct {
+	ID         string    `json:"id"`
+	Kind       BlockKind `json:"kind"`
+	HTML       string    `json:"html"`
+	Splittable bool      `json:"splittable"`
+}
+
+// Page 是一张独立的小红书发布卡片。
+type Page struct {
+	ID             string  `json:"id"`
+	Blocks         []Block `json:"blocks"`
+	MeasuredHeight int     `json:"measured_height"`
+}
+
 const (
 	// DraftStateDraft 表示草稿可编辑，尚未人工确认发布。
 	DraftStateDraft DraftState = "draft"
@@ -21,6 +48,7 @@ type Draft struct {
 	SourceContentHash string
 	Title             string
 	BodyHTML          string
+	Pages             []Page
 	Topics            []string
 	SourceNote        string
 	CommentCopy       string

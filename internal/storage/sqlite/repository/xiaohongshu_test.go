@@ -42,3 +42,24 @@ func TestXiaohongshuRepositoryRejectsIncompleteDraft(t *testing.T) {
 		t.Fatal("缺少身份字段必须失败")
 	}
 }
+
+func TestXiaohongshuRepositoryRoundTripsPagesAndBlocks(t *testing.T) {
+	t.Parallel()
+	db := openRepositoryTestDB(t)
+	seedWorkspace(t, db)
+	if _, err := db.Exec(`INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,content_hash,indexed_at,created_at,updated_at) VALUES('a-pages','w1','s1','pages','pages.md','hash-pages','2026-01-01','2026-01-01','2026-01-01')`); err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.Page{{ID: "page-1", Blocks: []domain.Block{{ID: "code-1", Kind: "code", HTML: "<pre><code>go test</code></pre>", Splittable: false}}, MeasuredHeight: 220}, {ID: "page-2", Blocks: []domain.Block{{ID: "text-1", Kind: "paragraph", HTML: "<p>正文</p>", Splittable: true}}, MeasuredHeight: 180}}
+	r := NewXiaohongshuRepository(db)
+	if err := r.SaveDraft(context.Background(), domain.Draft{ID: "draft-pages", ArticleID: "a-pages", WorkspaceID: "w1", SourceContentHash: "hash-pages", Title: "页面草稿", BodyHTML: "<p>正文</p>", Pages: want, State: domain.DraftStateDraft}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.FindDraft(context.Background(), "w1", "a-pages", "draft-pages")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Pages) != 2 || got.Pages[0].Blocks[0].Kind != "code" || got.Pages[1].MeasuredHeight != 180 {
+		t.Fatalf("页面模型往返错误: %+v", got.Pages)
+	}
+}

@@ -19,20 +19,21 @@ import (
 
 // XiaohongshuDraftView 是返回给前端的完整小红书草稿版本。
 type XiaohongshuDraftView struct {
-	ID                string   `json:"id"`
-	ArticleID         string   `json:"article_id"`
-	SourceContentHash string   `json:"source_content_hash"`
-	Title             string   `json:"title"`
-	BodyHTML          string   `json:"body_html"`
-	Topics            []string `json:"topics"`
-	SourceNote        string   `json:"source_note"`
-	CommentCopy       string   `json:"comment_copy"`
-	AIModel           string   `json:"ai_model"`
-	PromptVersion     string   `json:"prompt_version"`
-	State             string   `json:"state"`
-	Stale             bool     `json:"stale"`
-	CreatedAt         string   `json:"created_at"`
-	UpdatedAt         string   `json:"updated_at"`
+	ID                string             `json:"id"`
+	ArticleID         string             `json:"article_id"`
+	SourceContentHash string             `json:"source_content_hash"`
+	Title             string             `json:"title"`
+	BodyHTML          string             `json:"body_html"`
+	Pages             []xiaohongshu.Page `json:"pages"`
+	Topics            string             `json:"topics"`
+	SourceNote        string             `json:"source_note"`
+	CommentCopy       string             `json:"comment_copy"`
+	AIModel           string             `json:"ai_model"`
+	PromptVersion     string             `json:"prompt_version"`
+	State             string             `json:"state"`
+	Stale             bool               `json:"stale"`
+	CreatedAt         string             `json:"created_at"`
+	UpdatedAt         string             `json:"updated_at"`
 }
 
 // XiaohongshuView 汇总当前文章的小红书草稿和发布状态。
@@ -45,12 +46,13 @@ type XiaohongshuView struct {
 }
 
 type xiaohongshuDraftInput struct {
-	DraftID     string   `json:"draft_id"`
-	Title       string   `json:"title"`
-	BodyHTML    string   `json:"body_html"`
-	Topics      []string `json:"topics"`
-	SourceNote  string   `json:"source_note"`
-	CommentCopy string   `json:"comment_copy"`
+	DraftID     string             `json:"draft_id"`
+	Title       string             `json:"title"`
+	BodyHTML    string             `json:"body_html"`
+	Pages       []xiaohongshu.Page `json:"pages,omitempty"`
+	Topics      string             `json:"topics"`
+	SourceNote  string             `json:"source_note"`
+	CommentCopy string             `json:"comment_copy"`
 }
 
 type xiaohongshuRenderInput struct {
@@ -62,6 +64,19 @@ type xiaohongshuRenderInput struct {
 	HTMLHash        string `json:"html_hash"`
 	PageCount       int    `json:"page_count"`
 }
+
+const xiaohongshuOutputSchema = `{
+  "type":"object",
+  "additionalProperties":false,
+  "required":["title","body_html","topics","source_note","comment_copy"],
+  "properties":{
+    "title":{"type":"string","description":"适合小红书的短标题，20字以内"},
+    "body_html":{"type":"string","description":"提炼后的短正文 HTML，只允许 p、strong、em、ul、ol、li、a，不要 h1"},
+	"topics":{"type":"string","description":"直接输出可复制到小红书的格式，例如 #AI编程 #效率工具，话题内部不能有空格"},
+    "source_note":{"type":"string"},
+    "comment_copy":{"type":"string"}
+  }
+}`
 
 // xiaohongshu handles article-scoped draft, render and manual publication commands.
 func (h *runtimeHandler) xiaohongshu(response http.ResponseWriter, request *http.Request) {
@@ -134,33 +149,87 @@ func (h *runtimeHandler) xiaohongshuGenerate(response http.ResponseWriter, reque
 		mapError(response, err)
 		return
 	}
-	var tagsJSON string
-	if err := h.db.QueryRowContext(request.Context(), `SELECT tags_json FROM articles WHERE id=?`, articleID).Scan(&tagsJSON); err != nil {
-		mapError(response, ErrNotFound)
+	if h.providerRuntime == nil {
+		writeError(response, http.StatusConflict, "ai.not_configured", "尚未配置 AI Provider，无法提取小红书文案")
 		return
 	}
-	var topics []string
-	_ = json.Unmarshal([]byte(tagsJSON), &topics)
-	if topics == nil {
-		topics = []string{}
+	var providerID, rawConfig string
+	if err := h.db.QueryRowContext(request.Context(), `SELECT id,config_json FROM provider_instances WHERE workspace_id=? AND provider_type='openai-compatible' AND enabled=1`, workspaceID).Scan(&providerID, &rawConfig); err != nil {
+		writeError(response, http.StatusConflict, "ai.not_configured", "尚未配置 AI Provider，无法提取小红书文案")
+		return
 	}
-	if len(topics) > 8 {
-		topics = topics[:8]
+	var stored storedAIConfig
+	if json.Unmarshal([]byte(rawConfig), &stored) != nil {
+		writeError(response, http.StatusInternalServerError, "ai.config_invalid", "AI Provider 配置损坏")
+		return
 	}
-	if len(topics) == 0 {
-		topics = []string{"AI应用", "效率工具"}
+	providerConfig, _ := json.Marshal(map[string]any{"base_url": stored.BaseURL, "model": stored.Model, "timeout": stored.Timeout})
+	provider, err := h.providerRuntime.BuildAI(request.Context(), contracts.ProviderRef{ID: providerID, Type: contracts.ProviderOpenAI}, contracts.ConfigView{Data: providerConfig, SecretRefs: map[string]string{"api_key": stored.SecretRef}})
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	aiResponse, err := provider.Generate(request.Context(), contracts.AIRequest{
+		Task:         contracts.AITaskXiaohongshu,
+		Article:      contracts.ArticleInput{Title: title, Body: rendered},
+		OutputSchema: xiaohongshuOutputSchema, InputContentHash: contentHash, AllowBody: true,
+	})
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	if aiResponse.InputContentHash != contentHash {
+		writeError(response, http.StatusConflict, "content.stale", "文章内容已变化，请重新提取小红书文案")
+		return
+	}
+	generated, err := parseXiaohongshuAIOutput(aiResponse.Suggestions)
+	if err != nil {
+		mapError(response, err)
+		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	draft := xiaohongshu.Draft{ID: stableXiaohongshuID("draft", articleID, contentHash, now), ArticleID: articleID, WorkspaceID: workspaceID, SourceContentHash: contentHash, Title: title, BodyHTML: rendered, Topics: topics, SourceNote: "内容由 InkHub 根据原文适配，可在发布前修改", CommentCopy: "你怎么看？欢迎在评论区交流。", AIModel: "inkhub-adapter-v1", PromptVersion: "xiaohongshu-v1", State: xiaohongshu.DraftStateDraft}
+	draft := xiaohongshu.Draft{ID: stableXiaohongshuID("draft", articleID, contentHash, now), ArticleID: articleID, WorkspaceID: workspaceID, SourceContentHash: contentHash, Title: generated.Title, BodyHTML: generated.BodyHTML, Topics: generated.Topics, SourceNote: generated.SourceNote, CommentCopy: generated.CommentCopy, AIModel: aiResponse.Model, PromptVersion: "xiaohongshu-v2", State: xiaohongshu.DraftStateDraft}
 	draft.CreatedAt, draft.UpdatedAt = now, now
 	repo := repository.NewXiaohongshuRepository(h.db)
 	if err := repo.SaveDraft(request.Context(), draft); err != nil {
 		mapError(response, err)
 		return
 	}
-	payload, _ := json.Marshal(map[string]string{"source": "generate"})
+	payload, _ := json.Marshal(map[string]string{"source": "ai", "model": aiResponse.Model})
 	_ = repo.SaveEvent(request.Context(), xiaohongshu.Event{ID: stableXiaohongshuID("event", draft.ID, "generated"), DraftID: draft.ID, EventType: "generated", Payload: string(payload)})
 	writeJSON(response, http.StatusCreated, xiaohongshuDraftView(draft, contentHash))
+}
+
+type xiaohongshuAIGenerated struct {
+	Title       string
+	BodyHTML    string
+	Topics      []string
+	SourceNote  string
+	CommentCopy string
+}
+
+// parseXiaohongshuAIOutput 将 Provider 的结构化字段转换为可持久化的小红书草稿。
+func parseXiaohongshuAIOutput(items []contracts.Suggestion) (xiaohongshuAIGenerated, error) {
+	values := make(map[string]json.RawMessage, len(items))
+	for _, item := range items {
+		values[item.Field] = item.Value
+	}
+	var result xiaohongshuAIGenerated
+	if err := json.Unmarshal(values["title"], &result.Title); err != nil || strings.TrimSpace(result.Title) == "" {
+		return xiaohongshuAIGenerated{}, errors.New("AI 小红书标题无效")
+	}
+	if err := json.Unmarshal(values["body_html"], &result.BodyHTML); err != nil || strings.TrimSpace(result.BodyHTML) == "" {
+		return xiaohongshuAIGenerated{}, errors.New("AI 小红书正文无效")
+	}
+	var topicsText string
+	if err := json.Unmarshal(values["topics"], &topicsText); err != nil {
+		return xiaohongshuAIGenerated{}, errors.New("AI 小红书话题无效")
+	}
+	result.Topics = parseXiaohongshuTopics(topicsText)
+	_ = json.Unmarshal(values["source_note"], &result.SourceNote)
+	_ = json.Unmarshal(values["comment_copy"], &result.CommentCopy)
+	result.Title, result.SourceNote, result.CommentCopy = strings.TrimSpace(result.Title), strings.TrimSpace(result.SourceNote), strings.TrimSpace(result.CommentCopy)
+	return result, nil
 }
 
 func (h *runtimeHandler) xiaohongshuSave(response http.ResponseWriter, request *http.Request, articleID string) {
@@ -188,9 +257,9 @@ func (h *runtimeHandler) xiaohongshuSave(response http.ResponseWriter, request *
 		writeError(response, http.StatusConflict, "content.stale", "文章内容已变化，请基于最新版本重新生成")
 		return
 	}
-	draft.Title, draft.BodyHTML, draft.Topics, draft.SourceNote, draft.CommentCopy = strings.TrimSpace(input.Title), input.BodyHTML, input.Topics, input.SourceNote, input.CommentCopy
-	if draft.Topics == nil {
-		draft.Topics = []string{}
+	draft.Title, draft.BodyHTML, draft.Topics, draft.SourceNote, draft.CommentCopy = strings.TrimSpace(input.Title), input.BodyHTML, parseXiaohongshuTopics(input.Topics), input.SourceNote, input.CommentCopy
+	if input.Pages != nil {
+		draft.Pages = input.Pages
 	}
 	if err := repo.SaveDraft(request.Context(), draft); err != nil {
 		mapError(response, err)
@@ -292,7 +361,40 @@ func (h *runtimeHandler) xiaohongshuArticle(ctx context.Context, articleID strin
 }
 
 func xiaohongshuDraftView(draft xiaohongshu.Draft, currentHash string) XiaohongshuDraftView {
-	return XiaohongshuDraftView{ID: draft.ID, ArticleID: draft.ArticleID, SourceContentHash: draft.SourceContentHash, Title: draft.Title, BodyHTML: draft.BodyHTML, Topics: draft.Topics, SourceNote: draft.SourceNote, CommentCopy: draft.CommentCopy, AIModel: draft.AIModel, PromptVersion: draft.PromptVersion, State: string(draft.State), Stale: draft.SourceContentHash != currentHash, CreatedAt: draft.CreatedAt, UpdatedAt: draft.UpdatedAt}
+	return XiaohongshuDraftView{ID: draft.ID, ArticleID: draft.ArticleID, SourceContentHash: draft.SourceContentHash, Title: draft.Title, BodyHTML: draft.BodyHTML, Pages: draft.Pages, Topics: formatXiaohongshuTopics(draft.Topics), SourceNote: draft.SourceNote, CommentCopy: draft.CommentCopy, AIModel: draft.AIModel, PromptVersion: draft.PromptVersion, State: string(draft.State), Stale: draft.SourceContentHash != currentHash, CreatedAt: draft.CreatedAt, UpdatedAt: draft.UpdatedAt}
+}
+
+// parseXiaohongshuTopics 将用户或 AI 输出的单行话题文本转换为内部话题数组。
+func parseXiaohongshuTopics(value string) []string {
+	result := make([]string, 0, 8)
+	seen := make(map[string]struct{}, 8)
+	for _, item := range strings.Fields(value) {
+		item = strings.TrimLeft(strings.TrimSpace(item), "#")
+		if item == "" {
+			continue
+		}
+		if _, exists := seen[item]; exists {
+			continue
+		}
+		seen[item] = struct{}{}
+		result = append(result, item)
+		if len(result) == 8 {
+			break
+		}
+	}
+	return result
+}
+
+// formatXiaohongshuTopics 将内部话题数组格式化为可以直接复制发布的文本。
+func formatXiaohongshuTopics(values []string) string {
+	formatted := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimLeft(strings.TrimSpace(value), "#")
+		if value != "" {
+			formatted = append(formatted, "#"+value)
+		}
+	}
+	return strings.Join(formatted, " ")
 }
 
 func xiaohongshuState(draft XiaohongshuDraftView) string {

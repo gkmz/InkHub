@@ -91,8 +91,9 @@ export interface JobStatus {
 }
 
 export interface HugoSectionView {
-  sections: Array<{ name: string; article_count: number }>;
+  sections: Array<{ name: string; article_count: number; directories?: Array<{ path: string; article_count: number }> }>;
   existing_section: string;
+  existing_directory?: string;
   selection_locked: boolean;
 }
 
@@ -261,7 +262,8 @@ export interface XiaohongshuDraft {
   source_content_hash: string;
   title: string;
   body_html: string;
-  topics: string[];
+  pages: XiaohongshuPage[];
+	topics: string;
   source_note: string;
   comment_copy: string;
   ai_model: string;
@@ -270,6 +272,21 @@ export interface XiaohongshuDraft {
   stale: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export type XiaohongshuBlockKind = "paragraph" | "heading" | "image" | "code" | "table" | "text";
+
+export interface XiaohongshuBlock {
+  id: string;
+  kind: XiaohongshuBlockKind;
+  html: string;
+  splittable: boolean;
+}
+
+export interface XiaohongshuPage {
+  id: string;
+  blocks: XiaohongshuBlock[];
+  measured_height: number;
 }
 
 export interface XiaohongshuView {
