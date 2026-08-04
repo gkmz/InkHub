@@ -46,6 +46,28 @@ func TestHugoPreviewQueuesDeterministicallyAndReturnsSafeView(t *testing.T) {
 	}
 }
 
+func TestHugoPreviewDirectoryParticipatesInDeterministicIdentity(t *testing.T) {
+	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{}}
+	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", StableID: "article_VALID", ContentHash: "hash", ContentStage: article.ContentStageReady, ReviewApproved: true}}
+	service := NewHugoPreviewService(store, resolver, time.Now)
+
+	ai, err := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts", Directory: "ai"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools, err := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts", Directory: "tools"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ai.ID == tools.ID || !strings.Contains(ai.PayloadJSON, `"directory":"ai"`) {
+		t.Fatalf("分类目录未进入预览身份或任务参数: ai=%+v tools=%+v", ai, tools)
+	}
+	refreshed, err := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts", Directory: "ai", RefreshKey: "filesystem-refresh"})
+	if err != nil || refreshed.ID == ai.ID || !strings.Contains(refreshed.PayloadJSON, `"refresh_key":"filesystem-refresh"`) {
+		t.Fatalf("外部目录变化未使预览任务刷新: refreshed=%+v err=%v", refreshed, err)
+	}
+}
+
 func TestHugoPreviewFailedJobReturnsActionableFailure(t *testing.T) {
 	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{
 		"preview_failed": {ID: "preview_failed", Kind: "hugo_preview", State: domainjob.StateFailed, ErrorCode: "source.image_unresolved", ErrorMessage: "图片引用无法解析: missing.png"},

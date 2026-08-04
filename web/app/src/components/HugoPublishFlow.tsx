@@ -24,6 +24,7 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [workflow, setWorkflow] = useState<PublicationWorkflowView["hugo"]>(null);
+  const [filesystemStale, setFilesystemStale] = useState(false);
   onPublishedRef.current = onPublished;
 
   const showError = useCallback((reason: unknown) => {
@@ -56,8 +57,19 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
       if (!mounted.current) return;
       setWorkflow(value.hugo);
       if (value.hugo?.preview) setPreview(recoveredPreview(value.hugo.preview));
-      // 恢复旧预览时也要重新扫描目录，否则删除 Hugo 文件夹后“重新生成”没有可用目标。
-      if (!value.hugo || value.hugo.state === "failed" || value.hugo.state === "expired") await loadSections(controller.current?.signal);
+      // 已同步状态也要重新扫描真实目录；外部删除 Bundle 后不能继续相信数据库状态。
+      let currentDiscovery: HugoSectionView | null = null;
+      if (!value.hugo || value.hugo.state === "failed" || value.hugo.state === "expired" || value.hugo.state === "published") {
+        currentDiscovery = await loadSections(controller.current?.signal);
+      }
+      if (value.hugo?.state === "published" && currentDiscovery && !currentDiscovery.selection_locked) {
+        // 数据库仍有发布记录，但真实 Bundle 已不存在，切换到可重新生成预览的状态。
+        setWorkflow(null);
+        setPreview(null);
+        setFilesystemStale(true);
+        setLoading(false);
+        return;
+      }
       if (value.hugo?.state === "preparing" || value.hugo?.state === "delivering") timer.current = window.setTimeout(() => void pollWorkflow().catch(showError), 800);
       if (value.hugo?.state === "published") await onPublishedRef.current();
       setLoading(false);
@@ -96,7 +108,9 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
       if (availableDirectories.length > 0 && !availableDirectory) throw new Error("请选择 Hugo 分类目录后重试");
       setSection(availableSection);
       setDirectory(availableDirectory);
-      const queued = await createHugoPreview(articleID, contentHash, availableSection, availableDirectory);
+      const refreshKey = filesystemStale ? `${Date.now()}` : "";
+      const queued = await createHugoPreview(articleID, contentHash, availableSection, availableDirectory, refreshKey);
+      setFilesystemStale(false);
       await pollPreview(queued.id);
     } catch (reason) {
       showError(reason);
@@ -133,6 +147,7 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
   const directories = discovery?.sections.find((item) => item.name === section)?.directories ?? [];
   const targetReady = Boolean(section) && (directories.length === 0 || Boolean(directory));
   return <section className="hugo-publish-flow" aria-label="Hugo 发布">
+    {filesystemStale && <p className="hugo-flow-error">检测到 Hugo 原发布目录已不存在，将按当前文章重新生成。</p>}
     {discovery && <label>发布目录<select aria-label="发布目录" value={section} disabled={discovery.selection_locked || busy} onChange={(event) => { const next = event.target.value; setSection(next); const nextDirectories = discovery.sections.find((item) => item.name === next)?.directories ?? []; setDirectory(nextDirectories.length === 1 ? nextDirectories[0].path : ""); }}><option value="">请选择</option>{discovery.sections.map((item) => <option key={item.name} value={item.name}>{item.name}（{item.article_count} 篇）</option>)}</select></label>}
     {directories.length > 0 && <label>分类目录<select aria-label="分类目录" value={directory} disabled={discovery?.selection_locked || busy} onChange={(event) => setDirectory(event.target.value)}><option value="">请选择</option>{directories.map((item) => <option key={item.path} value={item.path}>{item.path}（{item.article_count} 篇）</option>)}</select></label>}
     {discovery?.selection_locked && <p className="hugo-section-lock">已有文章将继续更新 {discovery.existing_section}{discovery.existing_directory ? `/${discovery.existing_directory}` : ""}</p>}

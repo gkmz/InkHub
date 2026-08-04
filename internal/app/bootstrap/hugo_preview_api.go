@@ -56,13 +56,46 @@ func (api *hugoPreviewAPI) Queue(ctx context.Context, request publication.Previe
 		return domainjob.Job{}, err
 	}
 	if discovery.SelectionLocked {
-		if request.Section != discovery.ExistingSection {
+		if request.Section != discovery.ExistingSection || request.Directory != discovery.ExistingDirectory {
 			return domainjob.Job{}, fmt.Errorf("文章必须继续发布到原 Hugo Section")
 		}
 	} else if !discoveryContainsSection(discovery, request.Section) {
 		return domainjob.Job{}, fmt.Errorf("请选择扫描到的 Hugo Section")
+	} else if request.Directory != "" && !discoveryContainsDirectory(discovery, request.Section, request.Directory) {
+		return domainjob.Job{}, fmt.Errorf("请选择扫描到的 Hugo 分类目录")
+	}
+	// 数据库中的“已同步”只能作为历史投影；若真实 Hugo Bundle 已被删除，强制生成新的预览任务。
+	if !discovery.SelectionLocked && api.publishedRecordMissingBundle(ctx, request.ArticleID, request.ContentHash) {
+		request.RefreshKey = time.Now().UTC().Format(time.RFC3339Nano)
 	}
 	return api.service.Queue(ctx, request)
+}
+
+// publishedRecordMissingBundle 判断已记录的 Hugo 发布是否只剩数据库记录而没有真实 Bundle。
+func (api *hugoPreviewAPI) publishedRecordMissingBundle(ctx context.Context, articleID, contentHash string) bool {
+	article, err := api.ResolvePreviewArticle(ctx, articleID)
+	if err != nil || article.ContentHash != contentHash {
+		return false
+	}
+	var state, storedHash string
+	err = api.db.QueryRowContext(ctx, `SELECT publications.state,publications.content_hash
+FROM publications
+WHERE publications.article_id=? AND publications.provider_instance_id=?`, articleID, article.ProviderID).Scan(&state, &storedHash)
+	return err == nil && state == "published" && storedHash == contentHash
+}
+
+func discoveryContainsDirectory(discovery contracts.SectionDiscovery, sectionName, directoryPath string) bool {
+	for _, section := range discovery.Sections {
+		if section.Name != sectionName {
+			continue
+		}
+		for _, directory := range section.Directories {
+			if directory.Path == directoryPath {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Find 返回不包含 Provider 私有路径的预览视图。

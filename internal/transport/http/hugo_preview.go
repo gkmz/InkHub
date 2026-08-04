@@ -32,9 +32,13 @@ func (h *runtimeHandler) hugoSections(response http.ResponseWriter, request *htt
 	}
 	sections := make([]map[string]any, 0, len(discovery.Sections))
 	for _, section := range discovery.Sections {
-		sections = append(sections, map[string]any{"name": section.Name, "article_count": section.ArticleCount})
+		directories := make([]map[string]any, 0, len(section.Directories))
+		for _, directory := range section.Directories {
+			directories = append(directories, map[string]any{"path": directory.Path, "article_count": directory.ArticleCount})
+		}
+		sections = append(sections, map[string]any{"name": section.Name, "article_count": section.ArticleCount, "directories": directories})
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"sections": sections, "existing_section": discovery.ExistingSection, "selection_locked": discovery.SelectionLocked})
+	writeJSON(response, http.StatusOK, map[string]any{"sections": sections, "existing_section": discovery.ExistingSection, "existing_directory": discovery.ExistingDirectory, "selection_locked": discovery.SelectionLocked})
 }
 
 func (h *runtimeHandler) createHugoPreview(response http.ResponseWriter, request *http.Request) {
@@ -46,12 +50,14 @@ func (h *runtimeHandler) createHugoPreview(response http.ResponseWriter, request
 	var input struct {
 		ContentHash string `json:"content_hash"`
 		Section     string `json:"section"`
+		Directory   string `json:"directory"`
+		RefreshKey  string `json:"refresh_key"`
 	}
 	if decodeJSON(request, &input) != nil || articleID == "" || input.ContentHash == "" || input.Section == "" {
 		writeError(response, http.StatusBadRequest, "request.invalid", "Hugo 预览请求不完整")
 		return
 	}
-	job, err := h.hugoPreviews.Queue(request.Context(), publication.PreviewRequest{ArticleID: articleID, ContentHash: input.ContentHash, Section: input.Section})
+	job, err := h.hugoPreviews.Queue(request.Context(), publication.PreviewRequest{ArticleID: articleID, ContentHash: input.ContentHash, Section: input.Section, Directory: input.Directory, RefreshKey: input.RefreshKey})
 	if err != nil {
 		writeHugoPreviewError(response, err)
 		return

@@ -44,6 +44,9 @@ type PreviewRequest struct {
 	ArticleID   string
 	ContentHash string
 	Section     string
+	Directory   string
+	// RefreshKey 用于真实 Hugo 目录发生外部变化后绕过旧的确定性预览任务。
+	RefreshKey string
 }
 
 // ConfirmPreviewRequest 只引用服务端已经准备的 Preview。
@@ -141,8 +144,8 @@ func (s *HugoPreviewService) Queue(ctx context.Context, request PreviewRequest) 
 	if current.ContentHash != request.ContentHash {
 		return domainjob.Job{}, ErrPreviewStale
 	}
-	id := previewID(current.ArticleID, current.ProviderID, request.ContentHash, request.Section)
-	payload, _ := json.Marshal(map[string]string{"preview_id": id, "article_id": current.ArticleID, "provider_instance_id": current.ProviderID, "content_hash": request.ContentHash, "section": request.Section})
+	id := previewID(current.ArticleID, current.ProviderID, request.ContentHash, request.Section, request.Directory, request.RefreshKey)
+	payload, _ := json.Marshal(map[string]string{"preview_id": id, "article_id": current.ArticleID, "provider_instance_id": current.ProviderID, "content_hash": request.ContentHash, "section": request.Section, "directory": request.Directory, "refresh_key": request.RefreshKey})
 	if existing, found, err := s.findDeterministicJob(ctx, id, current.WorkspaceID, "hugo_preview", string(payload)); found || err != nil {
 		if err == nil && existing.State == domainjob.StateFailed {
 			return s.jobs.RequeueFailed(ctx, id, current.WorkspaceID, "hugo_preview", s.now().UTC())
@@ -311,8 +314,8 @@ func previewState(job domainjob.Job) string {
 	return string(job.State)
 }
 
-func previewID(articleID, providerID, hash, section string) string {
-	return stablePreviewID("preview", articleID, providerID, hash, section)
+func previewID(articleID, providerID, hash, section, directory, refreshKey string) string {
+	return stablePreviewID("preview", articleID, providerID, hash, section, directory, refreshKey)
 }
 func deliveryID(preview string) string { return stablePreviewID("delivery", preview) }
 func stablePreviewID(prefix string, values ...string) string {

@@ -105,8 +105,8 @@ export function confirmWeChatPlan(articleID: string, planToken: string, signal?:
 }
 
 /** createHugoPreview 为指定内容版本和 Page Bundle 目录生成可确认的 staging Artifact。 */
-export function createHugoPreview(articleID: string, contentHash: string, section: string, directory = "") {
-  return request<{ id: string; job_id: string; state: string }>(`/articles/${encodeURIComponent(articleID)}/hugo-previews`, { method: "POST", body: JSON.stringify({ content_hash: contentHash, section, directory }) });
+export function createHugoPreview(articleID: string, contentHash: string, section: string, directory = "", refreshKey = "") {
+  return request<{ id: string; job_id: string; state: string }>(`/articles/${encodeURIComponent(articleID)}/hugo-previews`, { method: "POST", body: JSON.stringify({ content_hash: contentHash, section, directory, refresh_key: refreshKey }) });
 }
 
 /** getHugoPreview 读取脱敏后的 Artifact 摘要。 */

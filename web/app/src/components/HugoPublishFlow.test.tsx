@@ -57,6 +57,32 @@ test("刷新后直接恢复 Ready Hugo 预览", async () => {
   expect(requests.some((url) => url.endsWith("/hugo-sections"))).toBe(false);
 });
 
+test("已同步记录但 Hugo Bundle 被删除时重新扫描并生成新预览", async () => {
+  const published = vi.fn();
+  let previewID = "";
+  let refreshKey = "";
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = String(input);
+    if (url.endsWith("/articles/a1/publication-workflow")) return Response.json({ article_id: "a1", hugo: { state: "published", progress: 100, stage: "已同步", error: "", preview: { preview_id: "preview_old", section: "posts", target_path: "content/posts/20260731-superpower", change: "updated", files: [], diagnostics: [], state: "ready" } } });
+    if (url.endsWith("/articles/a1/hugo-sections")) return Response.json({ sections: [{ name: "posts", article_count: 1 }], existing_section: "", existing_directory: "", selection_locked: false });
+    if (url.endsWith("/articles/a1/hugo-previews")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { refresh_key?: string };
+      refreshKey = body.refresh_key ?? "";
+      previewID = "preview_new";
+      return Response.json({ id: previewID, job_id: previewID, state: "queued" }, { status: 202 });
+    }
+    if (url.endsWith(`/hugo-previews/${previewID}`)) return Response.json({ id: previewID, content_hash: "hash", section: "posts", target_path: "content/posts/20260804-superpower", change: "added", files: [], diagnostics: [], state: "ready", job_id: previewID });
+    throw new Error(`未处理请求: ${url}`);
+  });
+
+  render(<ToastProvider><HugoPublishFlow articleID="a1" contentHash="hash" onPublished={published} /></ToastProvider>);
+  expect(await screen.findByText("检测到 Hugo 原发布目录已不存在，将按当前文章重新生成。")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "生成发布预览" }));
+  expect(await screen.findByText("content/posts/20260804-superpower")).toBeInTheDocument();
+  expect(refreshKey).not.toBe("");
+  expect(published).not.toHaveBeenCalled();
+});
+
 test("过期预览重新生成前会重新读取 Hugo 目录", async () => {
   const requests: string[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
