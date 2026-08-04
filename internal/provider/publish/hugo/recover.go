@@ -36,13 +36,24 @@ func (p *Provider) Recover(ctx context.Context) error {
 			return providerError("hugo.artifact_conflict", "Hugo 恢复记录与 operation 目录不一致", contracts.ErrorConflict, false, nil)
 		}
 		target := manifest.Artifact.TargetPath
-		contentRoot := filepath.Join(p.config.Root, "content", p.config.Section)
+		contentRoot := filepath.Join(p.config.Root, "content")
 		if !withinOrEqual(target, contentRoot) {
 			return providerError("hugo.artifact_unauthorized", "Hugo 恢复目标路径越界", contracts.ErrorUnauthorizedResource, false, nil)
 		}
 		backup := filepath.Join(filepath.Dir(target), "."+filepath.Base(target)+".inkhub-"+entry.Name()+".bak")
 		if err := recoverBundle(target, backup); err != nil {
 			return fmt.Errorf("恢复 Hugo operation %s: %w", entry.Name(), err)
+		}
+		previousTarget := manifest.Artifact.PreviousTargetPath
+		if previousTarget == "" {
+			continue
+		}
+		if previousTarget == target || !withinOrEqual(previousTarget, contentRoot) {
+			return providerError("hugo.artifact_unauthorized", "Hugo 旧路径恢复目标越界或与新目标相同", contracts.ErrorUnauthorizedResource, false, nil)
+		}
+		previousBackup := filepath.Join(filepath.Dir(previousTarget), "."+filepath.Base(previousTarget)+".inkhub-"+entry.Name()+".bak")
+		if err := recoverBundle(previousTarget, previousBackup); err != nil {
+			return fmt.Errorf("恢复 Hugo operation %s 的旧路径: %w", entry.Name(), err)
 		}
 	}
 	return nil

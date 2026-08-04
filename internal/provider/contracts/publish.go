@@ -53,6 +53,7 @@ type PublishInput struct {
 	ExpectedRevision string
 	PreviewOnly      bool
 	TargetSection    string
+	TargetDirectory  string
 }
 
 // TemplateRef 标识已通过模板校验的不可变模板版本。
@@ -71,11 +72,13 @@ type PreflightResult struct {
 
 // PreparedArtifact 是有明确内容版本和有效期的渠道产物。
 type PreparedArtifact struct {
-	OperationID        string
-	ProviderRevision   string
-	ContentHash        string
-	Location           string
-	TargetPath         string
+	OperationID      string
+	ProviderRevision string
+	ContentHash      string
+	Location         string
+	TargetPath       string
+	// PreviousTargetPath 是命名规则升级时需要在新目标交付成功后清理的旧 Bundle 路径。
+	PreviousTargetPath string `json:"previous_target_path,omitempty"`
 	PreviewURL         string
 	ExpiresAt          *time.Time
 	TargetRelativePath string
@@ -95,14 +98,22 @@ type ArtifactFile struct {
 type PublishSection struct {
 	Name         string
 	ArticleCount int
+	Directories  []PublishDirectory
+}
+
+// PublishDirectory 描述 Section 下用于承载 Page Bundle 的分类目录。
+type PublishDirectory struct {
+	Path         string
+	ArticleCount int
 }
 
 // SectionDiscovery 返回可选 Section 和已有文章的锁定目标。
 type SectionDiscovery struct {
-	Sections        []PublishSection
-	ExistingSection string
-	ExistingTarget  string
-	SelectionLocked bool
+	Sections          []PublishSection
+	ExistingSection   string
+	ExistingDirectory string
+	ExistingTarget    string
+	SelectionLocked   bool
 }
 
 // SectionAwarePublishProvider 为需要受控目标目录的发布渠道提供发现能力。

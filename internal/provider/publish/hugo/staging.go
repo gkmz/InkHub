@@ -60,18 +60,40 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 	if err != nil {
 		return contracts.PreparedArtifact{}, providerError("hugo.bundle_invalid", "定位 Hugo bundle 失败", contracts.ErrorValidation, false, err)
 	}
-	target, section, change := discovery.ExistingTarget, discovery.ExistingSection, "updated"
+	target, section, directory, change := discovery.ExistingTarget, discovery.ExistingSection, discovery.ExistingDirectory, "updated"
+	previousTarget := ""
 	if discovery.SelectionLocked {
 		if input.TargetSection != "" && input.TargetSection != section {
 			return contracts.PreparedArtifact{}, providerError("hugo.section_locked", "文章必须继续更新原 Hugo Section", contracts.ErrorConflict, false, nil)
+		}
+		if input.TargetDirectory != "" && input.TargetDirectory != directory {
+			return contracts.PreparedArtifact{}, providerError("hugo.directory_locked", "文章必须继续更新原 Hugo 分类目录", contracts.ErrorConflict, false, nil)
+		}
+		// 只有文章明确提供 URL 或发布日期时才启用新命名规则；历史文章缺少这些字段时继续复用旧路径，避免无意改名。
+		desiredTarget := filepath.Join(p.config.Root, "content", section, filepath.FromSlash(directory), bundleSegment(input))
+		if (strings.TrimSpace(input.Article.URL) != "" || strings.TrimSpace(input.Article.PublishDate) != "") && filepath.Clean(desiredTarget) != filepath.Clean(discovery.ExistingTarget) {
+			if _, statErr := os.Stat(desiredTarget); statErr == nil {
+				return contracts.PreparedArtifact{}, providerError("hugo.bundle_conflict", "新的 Hugo bundle 路径已被其他文章占用", contracts.ErrorConflict, false, nil)
+			} else if !os.IsNotExist(statErr) {
+				return contracts.PreparedArtifact{}, providerError("hugo.bundle_invalid", "检查新的 Hugo bundle 目标失败", contracts.ErrorInternal, false, statErr)
+			}
+			previousTarget = discovery.ExistingTarget
+			target = desiredTarget
 		}
 	} else {
 		section = input.TargetSection
 		if !containsSection(discovery.Sections, section) {
 			return contracts.PreparedArtifact{}, providerError("hugo.section_invalid", "请选择已有的 Hugo Section", contracts.ErrorValidation, false, nil)
 		}
+		directory = filepath.ToSlash(filepath.Clean(strings.TrimSpace(input.TargetDirectory)))
+		if directory == "." {
+			directory = ""
+		}
+		if directory != "" && !containsDirectory(discovery.Sections, section, directory) {
+			return contracts.PreparedArtifact{}, providerError("hugo.directory_invalid", "请选择扫描到的 Hugo 分类目录", contracts.ErrorValidation, false, nil)
+		}
 		segment := bundleSegment(input)
-		target = filepath.Join(p.config.Root, "content", section, segment)
+		target = filepath.Join(p.config.Root, "content", section, filepath.FromSlash(directory), segment)
 		change = "added"
 		if _, statErr := os.Stat(target); statErr == nil {
 			return contracts.PreparedArtifact{}, providerError("hugo.bundle_conflict", "Hugo bundle 路径已被其他文章占用", contracts.ErrorConflict, false, nil)
@@ -84,6 +106,15 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 		return contracts.PreparedArtifact{}, providerError("hugo.target_invalid", "Hugo bundle 目标越界", contracts.ErrorUnauthorizedResource, false, err)
 	}
 	stagedBundle := filepath.Join(stagedSite, relativeTarget)
+	if previousTarget != "" {
+		previousRelative, relativeErr := filepath.Rel(p.config.Root, previousTarget)
+		if relativeErr != nil || strings.HasPrefix(previousRelative, "..") {
+			return contracts.PreparedArtifact{}, providerError("hugo.target_invalid", "Hugo 旧 Bundle 目标越界", contracts.ErrorUnauthorizedResource, false, relativeErr)
+		}
+		if err := os.RemoveAll(filepath.Join(stagedSite, previousRelative)); err != nil {
+			return contracts.PreparedArtifact{}, fmt.Errorf("清理 staging 旧 Hugo bundle: %w", err)
+		}
+	}
 	if err := os.RemoveAll(stagedBundle); err != nil {
 		return contracts.PreparedArtifact{}, fmt.Errorf("清理 staging bundle: %w", err)
 	}
@@ -119,7 +150,7 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 	expiresAt := time.Now().UTC().Add(p.config.ArtifactTTL)
 	artifact := contracts.PreparedArtifact{
 		OperationID: input.OperationID, ProviderRevision: revision, ContentHash: input.ContentHash,
-		Location: stagedBundle, TargetPath: target, PreviewURL: p.previewURL(section, filepath.Base(target)), ExpiresAt: &expiresAt,
+		Location: stagedBundle, TargetPath: target, PreviousTargetPath: previousTarget, PreviewURL: p.previewURL(section, directory, filepath.Base(target)), ExpiresAt: &expiresAt,
 		TargetRelativePath: filepath.ToSlash(relativeTarget), Change: change, Files: files,
 	}
 	manifest, _ := json.Marshal(artifactManifest{Artifact: artifact})
@@ -129,17 +160,36 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 	return artifact, nil
 }
 
-func (p *Provider) previewURL(section, bundle string) string {
+func (p *Provider) previewURL(section, directory, bundle string) string {
 	if p.config.BaseURL == "" {
 		return ""
 	}
-	return strings.TrimRight(p.config.BaseURL, "/") + "/" + section + "/" + bundle + "/"
+	parts := []string{strings.TrimRight(p.config.BaseURL, "/"), section}
+	if directory != "" {
+		parts = append(parts, directory)
+	}
+	parts = append(parts, bundle)
+	return strings.Join(parts, "/") + "/"
 }
 
 func containsSection(sections []contracts.PublishSection, name string) bool {
 	for _, section := range sections {
 		if section.Name == name {
 			return true
+		}
+	}
+	return false
+}
+
+func containsDirectory(sections []contracts.PublishSection, sectionName, directoryPath string) bool {
+	for _, section := range sections {
+		if section.Name != sectionName {
+			continue
+		}
+		for _, directory := range section.Directories {
+			if directory.Path == directoryPath {
+				return true
+			}
 		}
 	}
 	return false
@@ -175,17 +225,38 @@ func artifactFiles(root string) ([]contracts.ArtifactFile, error) {
 }
 
 var unsafeBundleChars = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+var bundleDatePattern = regexp.MustCompile(`^(\d{4})[-/.]?(\d{2})[-/.]?(\d{2})(?:[-T ]|$)`)
 
 func bundleSegment(input contracts.PublishInput) string {
-	value := strings.TrimSpace(input.Article.Slug)
+	value := strings.TrimSpace(input.Article.URL)
+	if value == "" {
+		value = strings.TrimSpace(input.Article.Slug)
+	}
 	if value == "" {
 		value = string(input.Article.StableID)
 	}
+	value = strings.Trim(value, "/.")
+	value = strings.ReplaceAll(value, "/", "-")
+	value = strings.ReplaceAll(value, `\`, "-")
 	value = strings.Trim(unsafeBundleChars.ReplaceAllString(value, "-"), "-.")
 	if !safeSegment(value) {
 		return "article"
 	}
+	if !bundleDatePattern.MatchString(value) {
+		if prefix := publishDatePrefix(input.Article.PublishDate); prefix != "" {
+			value = prefix + "-" + value
+		}
+	}
 	return value
+}
+
+// publishDatePrefix 将 frontmatter date 规范为 Hugo 目录排序使用的 YYYYMMDD 前缀。
+func publishDatePrefix(value string) string {
+	matches := bundleDatePattern.FindStringSubmatch(strings.TrimSpace(value))
+	if len(matches) != 4 {
+		return ""
+	}
+	return matches[1] + matches[2] + matches[3]
 }
 
 func rewriteResourceReferences(input contracts.PublishInput, resources []resourcePlan) contracts.PublishInput {
@@ -219,7 +290,8 @@ func copyTree(source, target string) error {
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("Hugo 站点包含符号链接: %s", relative)
+			// Staging 不复制也不跟随符号链接，避免越过 Hugo 根目录读取外部文件。
+			return nil
 		}
 		destination := filepath.Join(target, relative)
 		if entry.IsDir() {

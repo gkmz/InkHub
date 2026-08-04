@@ -94,12 +94,77 @@ func TestDeliverRestoresBackupWhenReplacementFails(t *testing.T) {
 	}
 }
 
+func TestDeliverMigratesExistingBundleToDateURLPath(t *testing.T) {
+	t.Parallel()
+
+	root := copyHugoFixture(t)
+	provider, err := New(Config{Root: root, StagingRoot: filepath.Join(t.TempDir(), "staging"), Section: "posts"}, &fakeBuilder{revision: "revision"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := migratingArticleInput("operation_migrate_success", "hash-migrate-success")
+	artifact, err := provider.Prepare(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if _, err := provider.Deliver(context.Background(), artifact); err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	oldBundle := filepath.Join(root, "content", "posts", "existing")
+	newBundle := filepath.Join(root, "content", "posts", "20260731-superpowers")
+	if _, err := os.Stat(filepath.Join(newBundle, "index.md")); err != nil {
+		t.Fatalf("新 Bundle 不存在: %v", err)
+	}
+	if _, err := os.Stat(oldBundle); !os.IsNotExist(err) {
+		t.Fatalf("旧 Bundle 发布成功后仍存在: %v", err)
+	}
+}
+
+func TestDeliverRestoresOldPathWhenMigratedBuildFails(t *testing.T) {
+	t.Parallel()
+
+	root := copyHugoFixture(t)
+	oldBundle := filepath.Join(root, "content", "posts", "existing")
+	before, err := os.ReadFile(filepath.Join(oldBundle, "index.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := New(Config{Root: root, StagingRoot: filepath.Join(t.TempDir(), "staging"), Section: "posts"}, &fakeBuilder{revision: "revision", failAt: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := provider.Prepare(context.Background(), migratingArticleInput("operation_migrate_failure", "hash-migrate-failure"))
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if _, err := provider.Deliver(context.Background(), artifact); err == nil {
+		t.Fatal("构建失败应返回错误")
+	}
+	after, err := os.ReadFile(filepath.Join(oldBundle, "index.md"))
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("迁移失败后旧 Bundle 未恢复: err=%v content=%s", err, after)
+	}
+	if _, err := os.Stat(filepath.Join(root, "content", "posts", "20260731-superpowers")); !os.IsNotExist(err) {
+		t.Fatalf("迁移失败后新 Bundle 不应残留: %v", err)
+	}
+}
+
 func existingArticleInput() contracts.PublishInput {
 	return contracts.PublishInput{
 		OperationID: "operation_deliver", ContentHash: "hash-v2", Body: "新正文。",
 		Article: article.Article{
 			StableID: "article_EXISTING", RelativePath: "文章.md", Title: "新标题",
 			Category: "AI应用开发", Tags: []string{"go"}, Slug: "new-slug",
+		},
+	}
+}
+
+func migratingArticleInput(operationID, contentHash string) contracts.PublishInput {
+	return contracts.PublishInput{
+		OperationID: operationID, ContentHash: contentHash, Body: "迁移后的正文。",
+		Article: article.Article{
+			StableID: "article_EXISTING", RelativePath: "文章.md", Title: "迁移文章",
+			URL: "superpowers", PublishDate: "2026-07-31",
 		},
 	}
 }

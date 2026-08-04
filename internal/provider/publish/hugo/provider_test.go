@@ -60,6 +60,31 @@ func TestPrepareBuildsStagingWithoutChangingRealBundleAndIsIdempotent(t *testing
 	}
 }
 
+func TestPrepareMigratesExistingBundleToDateURLPath(t *testing.T) {
+	t.Parallel()
+
+	root := copyHugoFixture(t)
+	provider, err := New(Config{Root: root, StagingRoot: filepath.Join(t.TempDir(), "staging")}, &fakeBuilder{revision: "revision"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := provider.Prepare(context.Background(), contracts.PublishInput{
+		OperationID: "operation_rename", ContentHash: "hash", Body: "正文",
+		Article: article.Article{StableID: "article_EXISTING", Title: "旧文章", URL: "superpowers", PublishDate: "2026-07-31"},
+	})
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	want := filepath.Join(root, "content", "posts", "20260731-superpowers")
+	old := filepath.Join(root, "content", "posts", "existing")
+	if artifact.TargetPath != want || artifact.PreviousTargetPath != old {
+		t.Fatalf("旧 Bundle 未迁移到日期 URL 路径: %+v", artifact)
+	}
+	if _, err := os.Stat(filepath.Join(artifact.Location, "index.md")); err != nil {
+		t.Fatalf("新 Bundle staging 不存在: %v", err)
+	}
+}
+
 func TestPrepareUsesSelectedSectionAndBuildsFileManifest(t *testing.T) {
 	root := copyHugoFixture(t)
 	if err := os.MkdirAll(filepath.Join(root, "content", "notes"), 0o700); err != nil {
@@ -84,6 +109,66 @@ func TestPrepareUsesSelectedSectionAndBuildsFileManifest(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "content", "notes", "new-article")); !os.IsNotExist(err) {
 		t.Fatal("Prepare 不应修改正式 content")
+	}
+}
+
+func TestPrepareCreatesPageBundleInSelectedCategoryDirectory(t *testing.T) {
+	root := copyHugoFixture(t)
+	writeSectionFixture(t, filepath.Join(root, "content", "posts", "ai", "existing", "index.md"), "---\ntitle: Existing\n---\n")
+	provider, err := New(Config{Root: root, StagingRoot: filepath.Join(t.TempDir(), "staging")}, &fakeBuilder{revision: "revision"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	artifact, err := provider.Prepare(context.Background(), contracts.PublishInput{
+		OperationID: "operation_category", ContentHash: "hash", TargetSection: "posts", TargetDirectory: "ai", Body: "正文",
+		Article: article.Article{StableID: "article_NEW", Title: "新文章", Slug: "new-article"},
+	})
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	want := filepath.Join(root, "content", "posts", "ai", "new-article")
+	if artifact.TargetPath != want || artifact.TargetRelativePath != "content/posts/ai/new-article" {
+		t.Fatalf("Page Bundle 分类目标错误: %+v", artifact)
+	}
+}
+
+func TestBundleSegmentPrefersURLAndPrefixesPublishDate(t *testing.T) {
+	got := bundleSegment(contracts.PublishInput{Article: article.Article{
+		StableID: "article_NEW", Slug: "same-slug", URL: "superpowers-workflow", PublishDate: "2026-07-30",
+	}})
+	if got != "20260730-superpowers-workflow" {
+		t.Fatalf("URL 和日期未组成排序目录: %q", got)
+	}
+	if got := bundleSegment(contracts.PublishInput{Article: article.Article{
+		StableID: "article_NEW", URL: "20260730-superpowers-workflow", PublishDate: "2026-07-30",
+	}}); got != "20260730-superpowers-workflow" {
+		t.Fatalf("已有日期前缀不应重复添加: %q", got)
+	}
+}
+
+func TestCopyTreeSkipsUnrelatedSymbolicLinks(t *testing.T) {
+	source := t.TempDir()
+	target := filepath.Join(t.TempDir(), "target")
+	writeSectionFixture(t, filepath.Join(source, "hugo.toml"), "baseURL='https://example.com'\n")
+	writeSectionFixture(t, filepath.Join(source, "content", "posts", "demo", "index.md"), "---\ntitle: Demo\n---\n")
+	external := t.TempDir()
+	writeSectionFixture(t, filepath.Join(external, "tool.txt"), "external")
+	if err := os.MkdirAll(filepath.Join(source, "tools"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(external, filepath.Join(source, "tools", "markdown-preview")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copyTree(source, target); err != nil {
+		t.Fatalf("无关符号链接不应阻断 staging: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "content", "posts", "demo", "index.md")); err != nil {
+		t.Fatalf("站点内容未复制: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(target, "tools", "markdown-preview")); !os.IsNotExist(err) {
+		t.Fatalf("staging 不应复制或跟随符号链接: %v", err)
 	}
 }
 

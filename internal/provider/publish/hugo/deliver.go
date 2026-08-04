@@ -40,8 +40,18 @@ func (p *Provider) Deliver(ctx context.Context, artifact contracts.PreparedArtif
 	base := filepath.Base(prepared.TargetPath)
 	candidate := filepath.Join(parent, "."+base+".inkhub-"+artifact.OperationID+".tmp")
 	backup := filepath.Join(parent, "."+base+".inkhub-"+artifact.OperationID+".bak")
+	previousBackup := ""
+	if prepared.PreviousTargetPath != "" {
+		previousBackup = filepath.Join(filepath.Dir(prepared.PreviousTargetPath), "."+filepath.Base(prepared.PreviousTargetPath)+".inkhub-"+artifact.OperationID+".bak")
+	}
+	// 启动交付前清理上次中断留下的备份，保证新旧目标都回到最后确认状态。
 	if err := recoverBundle(prepared.TargetPath, backup); err != nil {
 		return contracts.DeliveryResult{}, providerError("hugo.recovery_failed", "恢复 Hugo 旧 bundle 失败", contracts.ErrorInternal, false, err)
+	}
+	if previousBackup != "" {
+		if err := recoverBundle(prepared.PreviousTargetPath, previousBackup); err != nil {
+			return contracts.DeliveryResult{}, providerError("hugo.recovery_failed", "恢复 Hugo 旧路径 bundle 失败", contracts.ErrorInternal, false, err)
+		}
 	}
 	if err := os.RemoveAll(candidate); err != nil {
 		return contracts.DeliveryResult{}, fmt.Errorf("清理 Hugo 候选 bundle: %w", err)
@@ -49,10 +59,22 @@ func (p *Provider) Deliver(ctx context.Context, artifact contracts.PreparedArtif
 	if err := copyTree(prepared.Location, candidate); err != nil {
 		return contracts.DeliveryResult{}, providerError("hugo.delivery_failed", "创建 Hugo 候选 bundle 失败", contracts.ErrorInternal, false, err)
 	}
+	// 迁移时先备份旧路径；任何后续失败都可以同时恢复新旧两个位置。
+	if previousBackup != "" {
+		if err := moveBundleToBackup(prepared.PreviousTargetPath, previousBackup); err != nil {
+			_ = os.RemoveAll(candidate)
+			return contracts.DeliveryResult{}, providerError("hugo.replace_failed", "备份 Hugo 旧路径 bundle 失败", contracts.ErrorInternal, false, err)
+		}
+	}
 	if err := p.replace(candidate, prepared.TargetPath, backup); err != nil {
 		_ = os.RemoveAll(candidate)
 		if restoreErr := recoverBundle(prepared.TargetPath, backup); restoreErr != nil {
 			return contracts.DeliveryResult{}, providerError("hugo.recovery_failed", "Hugo 替换失败且旧 bundle 恢复失败", contracts.ErrorInternal, false, restoreErr)
+		}
+		if previousBackup != "" {
+			if restoreErr := recoverBundle(prepared.PreviousTargetPath, previousBackup); restoreErr != nil {
+				return contracts.DeliveryResult{}, providerError("hugo.recovery_failed", "Hugo 替换失败且旧路径 bundle 恢复失败", contracts.ErrorInternal, false, restoreErr)
+			}
 		}
 		return contracts.DeliveryResult{}, providerError("hugo.replace_failed", "替换 Hugo bundle 失败", contracts.ErrorInternal, false, err)
 	}
@@ -63,10 +85,20 @@ func (p *Provider) Deliver(ctx context.Context, artifact contracts.PreparedArtif
 		if restoreErr := recoverBundle(prepared.TargetPath, backup); restoreErr != nil {
 			return contracts.DeliveryResult{}, providerError("hugo.recovery_failed", "Hugo 构建失败且旧 bundle 恢复失败", contracts.ErrorInternal, false, restoreErr)
 		}
+		if previousBackup != "" {
+			if restoreErr := recoverBundle(prepared.PreviousTargetPath, previousBackup); restoreErr != nil {
+				return contracts.DeliveryResult{}, providerError("hugo.recovery_failed", "Hugo 构建失败且旧路径 bundle 恢复失败", contracts.ErrorInternal, false, restoreErr)
+			}
+		}
 		return contracts.DeliveryResult{}, providerError("hugo.build_failed", "Hugo 真实站点构建失败，已恢复旧内容", contracts.ErrorPermanent, false, buildErr)
 	}
 	if err := os.RemoveAll(backup); err != nil {
 		return contracts.DeliveryResult{}, providerError("hugo.cleanup_failed", "Hugo 发布成功但备份清理失败", contracts.ErrorInternal, false, err)
+	}
+	if previousBackup != "" {
+		if err := os.RemoveAll(previousBackup); err != nil {
+			return contracts.DeliveryResult{}, providerError("hugo.cleanup_failed", "Hugo 发布成功但旧路径备份清理失败", contracts.ErrorInternal, false, err)
+		}
 	}
 	result := contracts.DeliveryResult{State: "published", ProviderRevision: revision, Location: prepared.TargetPath}
 	manifest, _ := json.Marshal(deliveryManifest{ContentHash: artifact.ContentHash, Result: result})
@@ -91,13 +123,18 @@ func (p *Provider) validateArtifact(artifact contracts.PreparedArtifact) (contra
 	}
 	prepared := manifest.Artifact
 	if prepared.OperationID != artifact.OperationID || prepared.ContentHash != artifact.ContentHash ||
-		prepared.Location != artifact.Location || prepared.TargetPath != artifact.TargetPath {
+		prepared.Location != artifact.Location || prepared.TargetPath != artifact.TargetPath ||
+		prepared.PreviousTargetPath != artifact.PreviousTargetPath {
 		return contracts.PreparedArtifact{}, "", providerError("hugo.artifact_conflict", "Hugo artifact 与已准备记录不一致", contracts.ErrorConflict, false, nil)
 	}
 	stagedSite := filepath.Join(operationRoot, "site")
 	contentRoot := filepath.Join(p.config.Root, "content")
-	if !withinOrEqual(prepared.Location, stagedSite) || !withinOrEqual(prepared.TargetPath, contentRoot) {
+	if !withinOrEqual(prepared.Location, stagedSite) || !withinOrEqual(prepared.TargetPath, contentRoot) ||
+		(prepared.PreviousTargetPath != "" && !withinOrEqual(prepared.PreviousTargetPath, contentRoot)) {
 		return contracts.PreparedArtifact{}, "", providerError("hugo.artifact_unauthorized", "Hugo artifact 路径越界", contracts.ErrorUnauthorizedResource, false, nil)
+	}
+	if prepared.PreviousTargetPath == prepared.TargetPath {
+		return contracts.PreparedArtifact{}, "", providerError("hugo.artifact_conflict", "Hugo artifact 新旧目标不能相同", contracts.ErrorConflict, false, nil)
 	}
 	resolvedTarget := filepath.Join(p.config.Root, filepath.FromSlash(prepared.TargetRelativePath))
 	if prepared.TargetRelativePath == "" || resolvedTarget != prepared.TargetPath {
@@ -138,6 +175,19 @@ func replaceBundle(candidate, target, backup string) error {
 		return err
 	}
 	return nil
+}
+
+// moveBundleToBackup 将已存在的 Bundle 移到 operation 专属备份；目标不存在时视为幂等成功。
+func moveBundleToBackup(target, backup string) error {
+	if _, err := os.Stat(target); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(backup); err != nil {
+		return err
+	}
+	return os.Rename(target, backup)
 }
 
 func recoverBundle(target, backup string) error {
