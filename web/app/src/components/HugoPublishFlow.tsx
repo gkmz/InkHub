@@ -129,6 +129,10 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
         job = await getJob(delivery.job_id);
       }
       if (job.state !== "succeeded") throw new Error("Hugo 同步失败，请检查诊断后重试");
+      // 交付成功后清除可确认的旧 Artifact，避免用户重复确认同一份内容。
+      setPreview(null);
+      setWorkflow(null);
+      setFilesystemStale(false);
       toast.show({ kind: "success", message: "文章已同步到 Hugo" });
       await onPublished();
     } catch (reason) {

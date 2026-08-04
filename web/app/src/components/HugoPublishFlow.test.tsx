@@ -37,6 +37,8 @@ test("选择 Hugo Section 后预览同一 Artifact 并确认交付", async () =>
   expect(screen.getByText("index.md")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "确认同步到 Hugo" }));
   await waitFor(() => expect(published).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("button", { name: "确认同步到 Hugo" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "生成发布预览" })).toBeInTheDocument();
   expect(requests.some((request) => request.url.endsWith("/publications"))).toBe(false);
   expect(requests.find((request) => request.url.endsWith("/articles/a1/hugo-previews"))?.body).toContain('"directory":"ai"');
   expect(requests.filter((request) => request.url.endsWith("/hugo-previews/preview_1/confirm"))).toHaveLength(1);
