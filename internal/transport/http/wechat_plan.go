@@ -11,7 +11,7 @@ import (
 
 // WeChatPlanAPI 提供文章级只读图片计划和安全确认。
 type WeChatPlanAPI interface {
-	Plan(ctx context.Context, articleID, templateID string) (publication.WeChatPlanView, error)
+	Plan(ctx context.Context, articleID, templateID, mermaidTheme string) (publication.WeChatPlanView, error)
 	Confirm(ctx context.Context, articleID, token string) (string, error)
 }
 
@@ -22,13 +22,22 @@ func (h *runtimeHandler) createWeChatPlan(response http.ResponseWriter, request 
 	}
 	articleID := strings.TrimSuffix(strings.TrimPrefix(request.URL.Path, "/api/v1/articles/"), "/wechat-plans")
 	var input struct {
-		TemplateID string `json:"template_id"`
+		TemplateID   string `json:"template_id"`
+		MermaidTheme string `json:"mermaid_theme"`
 	}
 	if articleID == "" || decodeJSON(request, &input) != nil {
 		writeError(response, http.StatusBadRequest, "request.invalid", "微信准备请求无效")
 		return
 	}
-	plan, err := h.wechatPlans.Plan(request.Context(), articleID, input.TemplateID)
+	input.MermaidTheme = strings.ToLower(strings.TrimSpace(input.MermaidTheme))
+	if input.MermaidTheme == "" {
+		input.MermaidTheme = "handdrawn"
+	}
+	if input.MermaidTheme != "handdrawn" && input.MermaidTheme != "modern" {
+		writeError(response, http.StatusBadRequest, "wechat.mermaid_theme_invalid", "Mermaid 样式无效")
+		return
+	}
+	plan, err := h.wechatPlans.Plan(request.Context(), articleID, input.TemplateID, input.MermaidTheme)
 	if err != nil {
 		if errors.Is(err, publication.ErrArticleNotReady) {
 			mapError(response, ErrArticleNotReady)
@@ -46,7 +55,7 @@ func (h *runtimeHandler) createWeChatPlan(response http.ResponseWriter, request 
 		diagnostics = append(diagnostics, map[string]any{"code": item.Code, "message": item.Message, "blocking": item.Blocking})
 	}
 	writeJSON(response, http.StatusOK, map[string]any{
-		"plan_token": plan.Token, "template_id": plan.TemplateID, "images": images,
+		"plan_token": plan.Token, "template_id": plan.TemplateID, "mermaid_theme": plan.MermaidTheme, "images": images,
 		"diagnostics": diagnostics, "ready": plan.Ready, "expires_at": plan.ExpiresAt,
 	})
 }

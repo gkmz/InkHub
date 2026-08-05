@@ -129,8 +129,13 @@ func (api databaseAPI) MarkWeChatCopied(ctx context.Context, command httptranspo
 type jobQueueAdapter struct{ repository *repository.JobRepository }
 
 func (a jobQueueAdapter) Enqueue(ctx context.Context, intent publication.JobIntent) (string, error) {
-	payload, _ := json.Marshal(map[string]string{"article_id": intent.ArticleID, "provider_instance_id": intent.ProviderInstanceID, "content_hash": intent.ContentHash})
-	value, _, err := a.repository.Enqueue(ctx, domainjob.Job{ID: intent.ID, WorkspaceID: intent.WorkspaceID, Kind: intent.Kind, DedupeKey: appjob.BuildDedupeKey(intent.Kind, intent.ArticleID, intent.ProviderInstanceID, intent.ContentHash), PayloadJSON: string(payload), AvailableAt: time.Now().UTC()})
+	payload, _ := json.Marshal(map[string]string{"article_id": intent.ArticleID, "provider_instance_id": intent.ProviderInstanceID, "content_hash": intent.ContentHash, "mermaid_theme": intent.MermaidTheme})
+	dedupeContent := intent.ContentHash
+	// Mermaid 样式属于微信准备结果的一部分，但不能改变其他渠道的既有去重键。
+	if intent.MermaidTheme != "" {
+		dedupeContent += "\x00" + intent.MermaidTheme
+	}
+	value, _, err := a.repository.Enqueue(ctx, domainjob.Job{ID: intent.ID, WorkspaceID: intent.WorkspaceID, Kind: intent.Kind, DedupeKey: appjob.BuildDedupeKey(intent.Kind, intent.ArticleID, intent.ProviderInstanceID, dedupeContent), PayloadJSON: string(payload), AvailableAt: time.Now().UTC()})
 	return value.ID, err
 }
 

@@ -35,9 +35,10 @@ type publicationJobHandler struct {
 	runtime      contracts.ProviderRuntime
 }
 type publicationPayload struct {
-	ArticleID   string `json:"article_id"`
-	ProviderID  string `json:"provider_instance_id"`
-	ContentHash string `json:"content_hash"`
+	ArticleID    string `json:"article_id"`
+	ProviderID   string `json:"provider_instance_id"`
+	ContentHash  string `json:"content_hash"`
+	MermaidTheme string `json:"mermaid_theme,omitempty"`
 }
 
 func (h publicationJobHandler) recordTerminalFailure(ctx context.Context, job domainjob.Job, failure appjob.Failure) error {
@@ -91,6 +92,7 @@ func (h publicationJobHandler) handle(ctx context.Context, execution *appjob.Exe
 	if err != nil {
 		return "", err
 	}
+	input.MermaidTheme = payload.MermaidTheme
 	// 升级前已持久化的 Hugo publication 任务没有目标字段，只在兼容 Handler 中沿用旧配置默认 Section。
 	if providerType == string(contracts.ProviderHugo) && input.TargetSection == "" {
 		input.TargetSection, err = configuredHugoSection(config)

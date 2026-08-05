@@ -38,14 +38,12 @@ func (h *runtimeHandler) saveWeChatSettings(response http.ResponseWriter, reques
 		writeError(response, http.StatusBadRequest, "wechat.config_invalid", "微信发布配置无效")
 		return
 	}
-	input.Template = strings.TrimSpace(input.Template)
+	// 微信当前只有墨绿色模板，忽略旧客户端提交的历史模板值。
+	input.Template = "default"
 	input.GitHubOwner = strings.TrimSpace(input.GitHubOwner)
 	input.GitHubRepository = strings.TrimSpace(input.GitHubRepository)
 	input.GitHubBranch = strings.TrimSpace(input.GitHubBranch)
 	input.GitHubPrefix = strings.Trim(strings.TrimSpace(input.GitHubPrefix), "/")
-	if input.Template == "" {
-		input.Template = "default"
-	}
 	if input.GitHubBranch == "" {
 		input.GitHubBranch = "main"
 	}

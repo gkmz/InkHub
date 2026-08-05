@@ -140,7 +140,7 @@ func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Re
 	}
 	if wechatConfig, enabled, found := loadStoredWeChatConfig(request.Context(), h.db, workspaceID); found {
 		settings["wechat_enabled"] = enabled
-		settings["default_template"] = wechatConfig.Template
+		settings["default_template"] = "default"
 		settings["github_owner"] = wechatConfig.GitHubOwner
 		settings["github_repository"] = wechatConfig.GitHubRepository
 		settings["github_branch"] = wechatConfig.GitHubBranch

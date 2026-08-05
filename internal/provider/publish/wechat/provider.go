@@ -31,7 +31,7 @@ type Config struct {
 
 // MermaidRenderer 将 Mermaid 源码转换为可公开访问的 HTTPS 图片。
 type MermaidRenderer interface {
-	Render(ctx context.Context, source, digest string) (string, error)
+	Render(ctx context.Context, source, digest, theme string) (string, error)
 }
 
 // TemplateLoader 读取一个已经安装且不可变的模板版本。
@@ -237,7 +237,7 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 	if err != nil {
 		return contracts.PreparedArtifact{}, err
 	}
-	body, err = p.renderMermaid(ctx, body)
+	body, err = p.renderMermaid(ctx, body, input.MermaidTheme)
 	if err != nil {
 		return contracts.PreparedArtifact{}, err
 	}
@@ -266,9 +266,10 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 	return artifact, nil
 }
 
-var mermaidFencePattern = regexp.MustCompile("(?s)```mermaid[ \\t]*\\n(.*?)\\n```")
+var mermaidFencePattern = regexp.MustCompile("(?is)```[ \\t]*mermaid[ \\t]*\\r?\\n(.*?)(?:\\r?\\n)?```[ \\t]*")
 
-func (p *Provider) renderMermaid(ctx context.Context, body string) (string, error) {
+// renderMermaid 将微信不支持的 Mermaid 代码块替换为公开图片。
+func (p *Provider) renderMermaid(ctx context.Context, body, theme string) (string, error) {
 	matches := mermaidFencePattern.FindAllStringSubmatchIndex(body, -1)
 	if len(matches) == 0 {
 		return body, nil
@@ -279,10 +280,17 @@ func (p *Provider) renderMermaid(ctx context.Context, body string) (string, erro
 	var result strings.Builder
 	position := 0
 	for _, match := range matches {
-		source := body[match[2]:match[3]]
-		sum := sha256.Sum256([]byte(source))
+		source := strings.TrimSpace(body[match[2]:match[3]])
+		if source == "" {
+			return "", providerError("wechat.mermaid_empty", "Mermaid 图表内容为空", contracts.ErrorValidation, nil)
+		}
+		normalizedTheme, err := NormalizeMermaidTheme(theme)
+		if err != nil {
+			return "", providerError("wechat.mermaid_theme_invalid", err.Error(), contracts.ErrorValidation, err)
+		}
+		sum := sha256.Sum256([]byte(normalizedTheme + "\x00" + source))
 		digest := hex.EncodeToString(sum[:])
-		remote, err := p.config.Mermaid.Render(ctx, source, digest)
+		remote, err := p.config.Mermaid.Render(ctx, source, digest, normalizedTheme)
 		if err != nil {
 			return "", providerError("wechat.mermaid_failed", "Mermaid 转换失败", contracts.ErrorDependency, err)
 		}

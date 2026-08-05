@@ -65,7 +65,7 @@ publish:
 
 Hugo 使用 staging、真实构建和原子替换，同一文章会稳定更新同一 page bundle。新文章的 bundle 目录优先使用 `url`，有 `date` 时自动加上 `YYYYMMDD-` 前缀；`url` 已带八位日期前缀时不会重复添加，没有 `url` 才回退到 `publish.slug`。已有文章按 `source_id` 继续更新原目录。Taxonomy 以 Hugo 配置、文章 frontmatter 和 term 页面为权威来源，InkHub 在 SQLite 中保存最近成功快照。
 
-微信公众号提供 `InkHub Default` 和 `InkHub Minimal` 两个同规格模板。流程严格区分准备内容、复制格式化 HTML 和人工确认草稿；含本地图片的文章需要先配置图片托管。
+微信公众号默认使用 `InkHub 墨绿` 模板，并可按文章选择手绘或现代 Mermaid 样式。流程严格区分准备内容、复制格式化 HTML 和人工确认草稿；普通外链会整理为文末引用，含本地图片的文章需要先配置图片托管。
 
 ## 开发与验证
 

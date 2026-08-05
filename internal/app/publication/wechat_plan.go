@@ -33,23 +33,25 @@ type WeChatPlanArticle struct {
 	ContentStage     article.ContentStage
 	TemplateID       string
 	TemplateRevision string
+	MermaidTheme     string
 	Input            contracts.PublishInput
 	Provider         contracts.PublishProvider
 }
 
 // WeChatPlanResolver 只解析当前工作区可访问的微信发布快照。
 type WeChatPlanResolver interface {
-	ResolveWeChatPlan(ctx context.Context, articleID, templateID string) (WeChatPlanArticle, error)
+	ResolveWeChatPlan(ctx context.Context, articleID, templateID, mermaidTheme string) (WeChatPlanArticle, error)
 }
 
 // WeChatPlanView 是确认前可安全展示的只读计划。
 type WeChatPlanView struct {
-	Token       string
-	TemplateID  string
-	Images      []contracts.AssetPlanItem
-	Diagnostics []contracts.Diagnostic
-	Ready       bool
-	ExpiresAt   time.Time
+	Token        string
+	TemplateID   string
+	MermaidTheme string
+	Images       []contracts.AssetPlanItem
+	Diagnostics  []contracts.Diagnostic
+	Ready        bool
+	ExpiresAt    time.Time
 }
 
 // WeChatPlanService 生成短期签名计划，并在确认后创建确定性任务。
@@ -67,6 +69,7 @@ type wechatPlanToken struct {
 	ContentHash      string                    `json:"content_hash"`
 	TemplateID       string                    `json:"template_id"`
 	TemplateRevision string                    `json:"template_revision"`
+	MermaidTheme     string                    `json:"mermaid_theme"`
 	Images           []contracts.AssetPlanItem `json:"images"`
 	ExpiresAt        time.Time                 `json:"expires_at"`
 }
@@ -83,8 +86,8 @@ func NewWeChatPlanService(resolver WeChatPlanResolver, queue JobQueue, key []byt
 }
 
 // Plan 只读检查模板和图片，不调用 Prepare 或 Upload。
-func (s *WeChatPlanService) Plan(ctx context.Context, articleID, templateID string) (WeChatPlanView, error) {
-	value, err := s.resolver.ResolveWeChatPlan(ctx, articleID, templateID)
+func (s *WeChatPlanService) Plan(ctx context.Context, articleID, templateID, mermaidTheme string) (WeChatPlanView, error) {
+	value, err := s.resolver.ResolveWeChatPlan(ctx, articleID, templateID, mermaidTheme)
 	if err != nil {
 		return WeChatPlanView{}, err
 	}
@@ -109,13 +112,13 @@ func (s *WeChatPlanService) Plan(ctx context.Context, articleID, templateID stri
 	payload := wechatPlanToken{
 		WorkspaceID: value.WorkspaceID, ArticleID: value.ArticleID, ProviderID: value.ProviderID,
 		ContentHash: value.ContentHash, TemplateID: value.TemplateID, TemplateRevision: value.TemplateRevision,
-		Images: images, ExpiresAt: expiresAt,
+		MermaidTheme: value.MermaidTheme, Images: images, ExpiresAt: expiresAt,
 	}
 	token, err := s.sign(payload)
 	if err != nil {
 		return WeChatPlanView{}, err
 	}
-	return WeChatPlanView{Token: token, TemplateID: value.TemplateID, Images: images, Diagnostics: diagnostics, Ready: ready, ExpiresAt: expiresAt}, nil
+	return WeChatPlanView{Token: token, TemplateID: value.TemplateID, MermaidTheme: value.MermaidTheme, Images: images, Diagnostics: diagnostics, Ready: ready, ExpiresAt: expiresAt}, nil
 }
 
 // Confirm 重新解析当前快照，校验计划未变化后创建微信准备任务。
@@ -124,7 +127,7 @@ func (s *WeChatPlanService) Confirm(ctx context.Context, articleID, token string
 	if err != nil || payload.ArticleID != articleID || !s.now().UTC().Before(payload.ExpiresAt) {
 		return "", ErrWeChatPlanInvalid
 	}
-	current, err := s.resolver.ResolveWeChatPlan(ctx, articleID, payload.TemplateID)
+	current, err := s.resolver.ResolveWeChatPlan(ctx, articleID, payload.TemplateID, payload.MermaidTheme)
 	if err != nil {
 		return "", err
 	}
@@ -144,12 +147,12 @@ func (s *WeChatPlanService) Confirm(ctx context.Context, articleID, token string
 			return "", ErrWeChatPlanInvalid
 		}
 	}
-	if current.WorkspaceID != payload.WorkspaceID || current.ProviderID != payload.ProviderID || current.ContentHash != payload.ContentHash || current.TemplateRevision != payload.TemplateRevision || !equalPlanImages(images, payload.Images) {
+	if current.WorkspaceID != payload.WorkspaceID || current.ProviderID != payload.ProviderID || current.ContentHash != payload.ContentHash || current.TemplateRevision != payload.TemplateRevision || current.MermaidTheme != payload.MermaidTheme || !equalPlanImages(images, payload.Images) {
 		return "", ErrWeChatPlanInvalid
 	}
-	sum := sha256.Sum256([]byte("wechat_prepare\x00" + current.WorkspaceID + "\x00" + current.ArticleID + "\x00" + current.ProviderID + "\x00" + current.ContentHash + "\x00" + current.TemplateRevision))
+	sum := sha256.Sum256([]byte("wechat_prepare\x00" + current.WorkspaceID + "\x00" + current.ArticleID + "\x00" + current.ProviderID + "\x00" + current.ContentHash + "\x00" + current.TemplateRevision + "\x00" + current.MermaidTheme))
 	jobID := "wechat_" + hex.EncodeToString(sum[:12])
-	return s.queue.Enqueue(ctx, JobIntent{ID: jobID, WorkspaceID: current.WorkspaceID, Kind: "wechat_prepare", ArticleID: current.ArticleID, ProviderInstanceID: current.ProviderID, ContentHash: current.ContentHash})
+	return s.queue.Enqueue(ctx, JobIntent{ID: jobID, WorkspaceID: current.WorkspaceID, Kind: "wechat_prepare", ArticleID: current.ArticleID, ProviderInstanceID: current.ProviderID, ContentHash: current.ContentHash, MermaidTheme: current.MermaidTheme})
 }
 
 func (s *WeChatPlanService) sign(payload wechatPlanToken) (string, error) {

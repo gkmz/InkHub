@@ -2,10 +2,11 @@ import { Check, Image, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { confirmWeChatPlan, getWeChatPlan } from "../../api/client";
 import type { WeChatPlanView } from "../../api/types";
+import type { MermaidTheme } from "../../api/types";
 import { useToast } from "../../components/toast";
 
 /** WeChatPlan 在任何外部写入前展示模板和本地图片清单。 */
-export function WeChatPlan({ articleID, templateID, onConfirmed }: { articleID: string; templateID: string; onConfirmed: () => void }) {
+export function WeChatPlan({ articleID, templateID, mermaidTheme, onConfirmed }: { articleID: string; templateID: string; mermaidTheme: MermaidTheme; onConfirmed: () => void }) {
   const toast = useToast();
   const [plan, setPlan] = useState<WeChatPlanView | null>(null);
   const [loading, setLoading] = useState(true);
@@ -17,11 +18,11 @@ export function WeChatPlan({ articleID, templateID, onConfirmed }: { articleID: 
     setLoading(true);
     setPlan(null);
     setError("");
-    void getWeChatPlan(articleID, templateID, controller.signal).then(setPlan).catch((reason: unknown) => {
+    void getWeChatPlan(articleID, templateID, mermaidTheme, controller.signal).then(setPlan).catch((reason: unknown) => {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(reason instanceof Error ? reason.message : "微信准备计划读取失败");
     }).finally(() => setLoading(false));
     return () => controller.abort();
-  }, [articleID, templateID]);
+  }, [articleID, mermaidTheme, templateID]);
 
   const confirm = async () => {
     if (!plan?.ready || confirming) return;

@@ -43,13 +43,15 @@ type PublishProviderFactory interface {
 
 // PublishInput 是发布渠道接收的标准文章快照。
 type PublishInput struct {
-	OperationID      string
-	Article          article.Article
-	Body             string
-	ResourceRefs     []ResourceRef
-	Diagnostics      []Diagnostic
-	ContentHash      string
-	TemplateRef      *TemplateRef
+	OperationID  string
+	Article      article.Article
+	Body         string
+	ResourceRefs []ResourceRef
+	Diagnostics  []Diagnostic
+	ContentHash  string
+	TemplateRef  *TemplateRef
+	// MermaidTheme 固定当前发布任务使用的图表样式，避免异步执行时读取到变化后的配置。
+	MermaidTheme     string
 	ExpectedRevision string
 	PreviewOnly      bool
 	TargetSection    string

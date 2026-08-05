@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, SuggestionHistoryResponse, SuggestionVersionView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft, XiaohongshuDraft, XiaohongshuView } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, MermaidTheme, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, SuggestionHistoryResponse, SuggestionVersionView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft, XiaohongshuDraft, XiaohongshuView } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -95,8 +95,8 @@ export function getPublicationHistory(articleID: string, cursor = "", signal?: A
 }
 
 /** getWeChatPlan 只读生成当前模板和本地图片准备清单。 */
-export function getWeChatPlan(articleID: string, templateID: string, signal?: AbortSignal) {
-  return request<WeChatPlanView>(`/articles/${encodeURIComponent(articleID)}/wechat-plans`, { method: "POST", body: JSON.stringify({ template_id: templateID }), signal });
+export function getWeChatPlan(articleID: string, templateID: string, mermaidTheme: MermaidTheme, signal?: AbortSignal) {
+  return request<WeChatPlanView>(`/articles/${encodeURIComponent(articleID)}/wechat-plans`, { method: "POST", body: JSON.stringify({ template_id: templateID, mermaid_theme: mermaidTheme }), signal });
 }
 
 /** confirmWeChatPlan 使用服务端签名计划创建准备任务。 */

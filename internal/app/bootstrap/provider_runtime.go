@@ -135,12 +135,7 @@ func configuredTemplate(data []byte) (*contracts.TemplateRef, error) {
 }
 
 func templateID(value string) string {
-	if value == "minimal" {
-		return domaintemplate.BuiltinMinimalID
-	}
-	if value == "classic" {
-		return domaintemplate.BuiltinClassicID
-	}
+	// 旧模板配置统一迁移到当前唯一的墨绿色模板。
 	return domaintemplate.BuiltinDefaultID
 }
 

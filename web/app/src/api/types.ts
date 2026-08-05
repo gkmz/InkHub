@@ -165,11 +165,14 @@ export interface PublicationHistoryPage {
 export interface WeChatPlanView {
   plan_token: string;
   template_id: string;
+  mermaid_theme: MermaidTheme;
   images: Array<{ reference: string; media_type: string; size: number; state: "upload" | "reuse" }>;
   diagnostics: Array<{ code: string; message: string; blocking: boolean }>;
   ready: boolean;
   expires_at: string;
 }
+
+export type MermaidTheme = "handdrawn" | "modern";
 
 export interface ArticleMetadata {
   title: string;

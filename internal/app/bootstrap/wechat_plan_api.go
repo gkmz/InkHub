@@ -9,6 +9,7 @@ import (
 	"github.com/gkmz/InkHub/internal/domain/article"
 	domaintemplate "github.com/gkmz/InkHub/internal/domain/template"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
+	publishwechat "github.com/gkmz/InkHub/internal/provider/publish/wechat"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
 )
 
@@ -30,8 +31,8 @@ func newWeChatPlanAPI(db *sql.DB, runtime contracts.ProviderRuntime, key []byte)
 }
 
 // Plan 返回当前文章的只读微信准备计划。
-func (api *wechatPlanAPI) Plan(ctx context.Context, articleID, templateID string) (publication.WeChatPlanView, error) {
-	return api.service.Plan(ctx, articleID, templateID)
+func (api *wechatPlanAPI) Plan(ctx context.Context, articleID, templateID, mermaidTheme string) (publication.WeChatPlanView, error) {
+	return api.service.Plan(ctx, articleID, templateID, mermaidTheme)
 }
 
 // Confirm 校验计划后创建微信准备任务。
@@ -40,7 +41,7 @@ func (api *wechatPlanAPI) Confirm(ctx context.Context, articleID, token string) 
 }
 
 // ResolveWeChatPlan 解析最近工作区中已审核的当前文章和微信 Provider。
-func (api *wechatPlanAPI) ResolveWeChatPlan(ctx context.Context, articleID, templateID string) (publication.WeChatPlanArticle, error) {
+func (api *wechatPlanAPI) ResolveWeChatPlan(ctx context.Context, articleID, templateID, mermaidTheme string) (publication.WeChatPlanArticle, error) {
 	var workspaceID, providerID, contentHash, approvedHash, stage string
 	err := api.db.QueryRowContext(ctx, `SELECT articles.workspace_id,provider_instances.id,articles.content_hash,COALESCE(editorial_reviews.approved_content_hash,''),articles.content_stage
 FROM articles
@@ -59,12 +60,17 @@ WHERE articles.id=? AND articles.deleted_at IS NULL
 	if err != nil {
 		return publication.WeChatPlanArticle{}, fmt.Errorf("微信模板无效")
 	}
+	mermaidTheme, err = publishwechat.NormalizeMermaidTheme(mermaidTheme)
+	if err != nil {
+		return publication.WeChatPlanArticle{}, err
+	}
 	handler := publicationJobHandler{db: api.db, runtime: api.runtime}
 	input, providerType, config, err := handler.loadInput(ctx, stableAPIID("wechat_plan", articleID, contentHash, validated.Digest), publicationPayload{ArticleID: articleID, ProviderID: providerID, ContentHash: contentHash})
 	if err != nil || providerType != string(contracts.ProviderWeChat) {
 		return publication.WeChatPlanArticle{}, fmt.Errorf("读取微信文章失败")
 	}
 	input.TemplateRef = &contracts.TemplateRef{ID: validated.Manifest.ID, Version: validated.Manifest.Version, Digest: validated.Digest, Target: validated.Manifest.Target}
+	input.MermaidTheme = mermaidTheme
 	view, err := providerConfigView(config)
 	if err != nil {
 		return publication.WeChatPlanArticle{}, err
@@ -76,19 +82,11 @@ WHERE articles.id=? AND articles.deleted_at IS NULL
 	return publication.WeChatPlanArticle{
 		WorkspaceID: workspaceID, ArticleID: articleID, ProviderID: providerID, ContentHash: contentHash,
 		ContentStage: article.ContentStage(stage),
-		TemplateID:   validated.Manifest.ID, TemplateRevision: validated.Digest, Input: input, Provider: provider,
+		TemplateID:   validated.Manifest.ID, TemplateRevision: validated.Digest, MermaidTheme: mermaidTheme, Input: input, Provider: provider,
 	}, nil
 }
 
 func templateIDValue(value string) string {
-	if value == "" || value == "default" || value == string(domaintemplate.BuiltinDefaultID) {
-		return domaintemplate.BuiltinDefaultID
-	}
-	if value == "minimal" || value == string(domaintemplate.BuiltinMinimalID) {
-		return domaintemplate.BuiltinMinimalID
-	}
-	if value == "classic" || value == string(domaintemplate.BuiltinClassicID) {
-		return domaintemplate.BuiltinClassicID
-	}
-	return value
+	// 产品当前只提供墨绿色模板，历史模板值也安全回退到该模板。
+	return domaintemplate.BuiltinDefaultID
 }

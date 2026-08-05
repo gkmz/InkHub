@@ -37,6 +37,8 @@ func Render(validated domaintemplate.Validated, markdown string, variables map[s
 	if err := inlineCSS(contextNode, css); err != nil {
 		return "", err
 	}
+	// 微信正文不支持可靠的外链跳转，因此把外链同步整理为文末引用。
+	appendLinkReferences(contextNode)
 	if err := sanitizeTree(contextNode); err != nil {
 		return "", err
 	}
@@ -45,6 +47,133 @@ func Render(validated domaintemplate.Validated, markdown string, variables map[s
 		return "", fmt.Errorf("序列化微信 HTML: %w", err)
 	}
 	return output.String(), nil
+}
+
+type linkReference struct {
+	index int
+	text  string
+	href  string
+}
+
+// appendLinkReferences 为正文外链追加编号，并在文章末尾生成引用章节。
+func appendLinkReferences(root *html.Node) {
+	links := collectReferenceLinks(root)
+	if len(links) == 0 {
+		return
+	}
+	references := make([]linkReference, 0, len(links))
+	for index, link := range links {
+		reference := linkReference{index: index + 1, text: strings.TrimSpace(nodeText(link)), href: attributeValue(link, "href")}
+		if reference.text == "" {
+			reference.text = reference.href
+		}
+		references = append(references, reference)
+		// 微信正文不保留不可用的跳转，只保留链接文字和引用编号。
+		removeAttribute(link, "href")
+		sup := elementNode("sup", "margin-left:3px;color:#42b883;font-size:0.72em;font-weight:700;line-height:0;vertical-align:super")
+		sup.AppendChild(&html.Node{Type: html.TextNode, Data: fmt.Sprintf("[%d]", reference.index)})
+		link.Parent.InsertBefore(sup, link.NextSibling)
+	}
+	root.AppendChild(referenceSection(references))
+}
+
+func collectReferenceLinks(root *html.Node) []*html.Node {
+	var links []*html.Node
+	var walk func(*html.Node)
+	walk = func(node *html.Node) {
+		if node.Type == html.ElementNode && node.Data == "a" && isReferenceLink(node) {
+			links = append(links, node)
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(root)
+	return links
+}
+
+func isReferenceLink(node *html.Node) bool {
+	href := strings.TrimSpace(attributeValue(node, "href"))
+	lower := strings.ToLower(href)
+	if href == "" || strings.HasPrefix(href, "#") || strings.HasPrefix(lower, "javascript:") || hasAncestor(node, "pre", "code") {
+		return false
+	}
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type == html.ElementNode && child.Data == "img" {
+			return false
+		}
+	}
+	return true
+}
+
+func referenceSection(references []linkReference) *html.Node {
+	section := elementNode("section", "margin-top:38px;padding:12px 16px;background-color:#f7fcf9;border-left:4px solid #42b883;border-radius:0 8px 8px 0")
+	title := elementNode("h3", "margin:0 0 10px;padding:0;border:0;color:#1a2733;font-size:16px;font-weight:600")
+	title.AppendChild(&html.Node{Type: html.TextNode, Data: "引用链接"})
+	section.AppendChild(title)
+	list := elementNode("ul", "margin:0;padding-left:0;list-style-type:none")
+	for _, reference := range references {
+		item := elementNode("li", "display:block;margin:7px 0;color:#5c6975;font-size:14px;line-height:1.55;word-break:break-word")
+		label := elementNode("span", "color:#42b883;font-weight:700;margin-right:6px")
+		label.AppendChild(&html.Node{Type: html.TextNode, Data: fmt.Sprintf("[%d]", reference.index)})
+		item.AppendChild(label)
+		item.AppendChild(&html.Node{Type: html.TextNode, Data: reference.text + ": "})
+		value := elementNode("span", "color:#34495e;word-break:break-all")
+		value.AppendChild(&html.Node{Type: html.TextNode, Data: reference.href})
+		item.AppendChild(value)
+		list.AppendChild(item)
+	}
+	section.AppendChild(list)
+	return section
+}
+
+func elementNode(tag, style string) *html.Node {
+	return &html.Node{Type: html.ElementNode, Data: tag, Attr: []html.Attribute{{Key: "style", Val: style}}}
+}
+
+func attributeValue(node *html.Node, key string) string {
+	for _, attribute := range node.Attr {
+		if attribute.Key == key {
+			return attribute.Val
+		}
+	}
+	return ""
+}
+
+func removeAttribute(node *html.Node, key string) {
+	attributes := node.Attr[:0]
+	for _, attribute := range node.Attr {
+		if attribute.Key != key {
+			attributes = append(attributes, attribute)
+		}
+	}
+	node.Attr = attributes
+}
+
+func hasAncestor(node *html.Node, tags ...string) bool {
+	for parent := node.Parent; parent != nil; parent = parent.Parent {
+		for _, tag := range tags {
+			if parent.Type == html.ElementNode && parent.Data == tag {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func nodeText(node *html.Node) string {
+	var result strings.Builder
+	var walk func(*html.Node)
+	walk = func(current *html.Node) {
+		if current.Type == html.TextNode {
+			result.WriteString(current.Data)
+		}
+		for child := current.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(node)
+	return result.String()
 }
 
 type cssRule struct {

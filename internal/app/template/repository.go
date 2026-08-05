@@ -19,7 +19,7 @@ func (l Loader) Load(ctx context.Context, ref contracts.TemplateRef) (domaintemp
 	if err := ctx.Err(); err != nil {
 		return domaintemplate.Validated{}, err
 	}
-	if ref.ID == domaintemplate.BuiltinDefaultID || ref.ID == domaintemplate.BuiltinMinimalID {
+	if ref.ID == domaintemplate.BuiltinDefaultID {
 		value, err := domaintemplate.Builtin(ref.ID)
 		if err != nil {
 			return domaintemplate.Validated{}, err

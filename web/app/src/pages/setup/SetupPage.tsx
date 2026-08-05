@@ -16,7 +16,7 @@ export function SetupPage({ onComplete }: { onComplete: (draft: WorkspaceDraft) 
       name: restored.name ?? "",
       vault_path: restored.vault_path ?? "",
       hugo_path: restored.hugo_path,
-      wechat_template: restored.wechat_template ?? "default",
+      wechat_template: "default",
       ai_enabled: restored.ai_enabled ?? false,
       content_roots: restored.content_roots ?? [],
       ignored_folders: restored.ignored_folders ?? [],
@@ -82,9 +82,9 @@ export function SetupPage({ onComplete }: { onComplete: (draft: WorkspaceDraft) 
             <div className="button-row"><button className="secondary" type="button" onClick={next}>暂不配置博客</button><button className="primary" type="button" onClick={next}>继续</button></div>
           </>}
           {step === 2 && <>
-            <p className="lead">选择微信公众号排版模板。图片托管可以稍后在设置中配置。</p>
+            <p className="lead">微信公众号使用 InkHub 原版墨绿色排版。图片托管可以稍后在设置中配置。</p>
             <div className="template-options">
-              {[{ value: "default", name: "InkHub Default", description: "清晰层级，适合技术文章" }, { value: "minimal", name: "InkHub Minimal", description: "轻量留白，适合短文" }, { value: "classic", name: "InkHub Classic（原版）", description: "绿色强调，保留原版排版" }].map((template) => <button key={template.value} type="button" className={draft.wechat_template === template.value ? "selected" : ""} onClick={() => update({ wechat_template: template.value })}><span className={`template-preview ${template.value}`}><i /><i /><i /></span><b>{template.name}</b><small>{template.description}</small></button>)}
+              <button type="button" className="selected" disabled><span className="template-preview default"><i /><i /><i /></span><b>InkHub 墨绿</b><small>绿色标题强调、深色代码块与宽松正文排版</small></button>
             </div>
             <button className="primary" type="button" onClick={next}>继续</button>
           </>}

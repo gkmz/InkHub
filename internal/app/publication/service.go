@@ -27,6 +27,7 @@ type JobIntent struct {
 	ArticleID          string
 	ProviderInstanceID string
 	ContentHash        string
+	MermaidTheme       string
 }
 
 // JobQueue 持久化长任务并返回稳定 Job ID。
