@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const hashSchemaVersion = 1
+const hashSchemaVersion = 2
 
 // HashInput 包含所有影响 MVP 渠道输出的文章内容。
 type HashInput struct {
@@ -18,6 +18,8 @@ type HashInput struct {
 	Description string
 	Tags        []string
 	Keywords    []string
+	URL         string
+	PublishDate string
 	Category    string
 	Series      string
 	Slug        string
@@ -31,6 +33,8 @@ type hashEnvelope struct {
 	Description string   `json:"description"`
 	Tags        []string `json:"tags"`
 	Keywords    []string `json:"keywords"`
+	URL         string   `json:"url"`
+	PublishDate string   `json:"publish_date"`
 	Category    string   `json:"category"`
 	Series      string   `json:"series"`
 	Slug        string   `json:"slug"`
@@ -46,6 +50,8 @@ func NormalizeAndHash(input HashInput) (string, error) {
 		Description: input.Description,
 		Tags:        normalizedStrings(input.Tags),
 		Keywords:    normalizedStrings(input.Keywords),
+		URL:         input.URL,
+		PublishDate: input.PublishDate,
 		Category:    input.Category,
 		Series:      input.Series,
 		Slug:        input.Slug,

@@ -119,7 +119,7 @@ func (p *Provider) Generate(ctx context.Context, request contracts.AIRequest) (c
 	if err != nil {
 		return contracts.AIResponse{}, err
 	}
-	structured, err := decodeResponse(response)
+	structured, err := decodeResponse(response, request.Task)
 	if err != nil {
 		return contracts.AIResponse{}, err
 	}
@@ -232,12 +232,16 @@ func (p *Provider) buildRequest(request contracts.AIRequest) ([]byte, error) {
 	if p.config.MaxInputBytes > 0 && int64(len(content)) > p.config.MaxInputBytes {
 		return nil, &contracts.ProviderError{Code: "openai.input_too_large", Category: contracts.ErrorValidation, Message: "AI 输入超过配置限制"}
 	}
+	instruction := "请只返回合法的 json 对象，不要输出 Markdown 代码围栏或额外解释。"
+	if request.Task == contracts.AITaskXiaohongshu {
+		instruction += " 你是小红书内容编辑，请从原文提炼适合手机阅读的短文案，保留核心观点，删除完整文章的展开论证，不要复述全文。"
+	}
 	payload, err := json.Marshal(chatRequest{
 		Model: p.config.Model,
 		Messages: []chatMessage{{
 			Role: "user",
 			// OpenAI-compatible接口要求 json_object 模式的消息明确提及 JSON。
-			Content: "请只返回合法的 json 对象，不要输出 Markdown 代码围栏或额外解释。\n输入：" + string(content),
+			Content: instruction + "\n输入：" + string(content),
 		}},
 		ResponseFormat: &responseFormat{Type: "json_object"},
 	})

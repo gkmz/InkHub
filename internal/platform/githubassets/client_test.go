@@ -88,6 +88,55 @@ func TestInspectReusesMatchingPublicAsset(t *testing.T) {
 	}
 }
 
+func TestInspectIncludesUpstreamStatusForAccessFailure(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("image")
+	sum := sha256.Sum256(content)
+	digest := hex.EncodeToString(sum[:])
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusForbidden, `{"message":"Resource not accessible by personal access token"}`), nil
+	})}
+	uploader, err := New(Config{Owner: "gkmz", Repository: "images", Branch: "main", Prefix: "inkhub", Token: "secret-token"}, client, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = uploader.Inspect(context.Background(), contracts.AssetUploadRequest{Digest: digest, Extension: ".png", MediaType: "image/png"})
+	providerErr, ok := err.(*contracts.ProviderError)
+	if !ok || providerErr.UpstreamStatus != http.StatusForbidden || providerErr.Category != contracts.ErrorUnauthorizedResource {
+		t.Fatalf("未保留 GitHub 状态: %#v", err)
+	}
+}
+
+func TestInspectReadsLargeAssetThroughGitBlobAPI(t *testing.T) {
+	t.Parallel()
+
+	content := []byte("large-image-content")
+	sum := sha256.Sum256(content)
+	digest := hex.EncodeToString(sum[:])
+	blobSHA := strings.Repeat("a", 40)
+	requests := []string{}
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests = append(requests, request.URL.Path)
+		if strings.Contains(request.URL.Path, "/contents/") {
+			return jsonResponse(http.StatusOK, `{"type":"file","encoding":"none","sha":"`+blobSHA+`"}`), nil
+		}
+		if strings.HasSuffix(request.URL.Path, "/git/blobs/"+blobSHA) {
+			return jsonResponse(http.StatusOK, `{"encoding":"base64","content":"`+base64.StdEncoding.EncodeToString(content)+`"}`), nil
+		}
+		t.Fatalf("意外请求: %s", request.URL)
+		return nil, nil
+	})}
+	uploader, err := New(Config{Owner: "gkmz", Repository: "images", Branch: "main", Prefix: "inkhub", Token: "secret-token"}, client, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, found, err := uploader.Inspect(context.Background(), contracts.AssetUploadRequest{Digest: digest, Extension: ".png", MediaType: "image/png"})
+	if err != nil || !found || !result.Reused || len(requests) != 2 {
+		t.Fatalf("大图片未通过 Git Blob 检查: result=%+v found=%v err=%v requests=%v", result, found, err, requests)
+	}
+}
+
 func TestUploadCreatesAssetAndChecksAnonymousRawURL(t *testing.T) {
 	t.Parallel()
 

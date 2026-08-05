@@ -9,6 +9,8 @@ import (
 const (
 	BuiltinDefaultID = "inkhub-default"
 	BuiltinMinimalID = "inkhub-minimal"
+	// BuiltinClassicID 保留早期微信正文的绿色强调和宽松留白风格。
+	BuiltinClassicID = "inkhub-classic"
 )
 
 // Builtin 返回经过同一 CSS 安全校验的内置模板。
@@ -53,6 +55,21 @@ func Builtin(id string) (Validated, error) {
 .inkhub-root table { width: 100%; border-collapse: collapse; }
 .inkhub-root th { border: 1px solid #cccccc; padding: 6px; }
 .inkhub-root td { border: 1px solid #cccccc; padding: 6px; }`
+	case BuiltinClassicID:
+		manifest.Name = "InkHub Classic"
+		manifest.Description = "InkHub 原版微信公众号模板"
+		css = `.inkhub-root { color: #27312d; font-family: {{ font-family.bodyFont }}; font-size: 15px; line-height: 1.9; }
+.inkhub-root h1 { color: #27312d; font-size: 26px; line-height: 1.4; margin-bottom: 18px; }
+.inkhub-root h2 { color: #0c625b; font-size: 19px; margin-top: 34px; }
+.inkhub-root h3 { color: #27312d; font-size: 17px; margin-top: 26px; }
+.inkhub-root p { margin-bottom: 16px; }
+.inkhub-root blockquote { background-color: #f3f7f4; border-left: 3px solid #0c625b; color: #46504b; margin: 24px 0; padding: 10px 18px; }
+.inkhub-root img { max-width: 100%; height: auto; }
+.inkhub-root code { background-color: #f1f3f1; padding: 2px 4px; }
+.inkhub-root pre { background-color: #f1f3f1; line-height: 1.5; overflow-wrap: break-word; padding: 13px; }
+.inkhub-root table { width: 100%; border-collapse: collapse; }
+.inkhub-root th { background-color: #f1f5f2; border: 1px solid #d8e0db; padding: 7px 9px; }
+.inkhub-root td { border: 1px solid #d8e0db; padding: 7px 9px; }`
 	default:
 		return Validated{}, fmt.Errorf("未知内置模板: %s", id)
 	}

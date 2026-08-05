@@ -45,6 +45,47 @@ func TestFindBundleAcrossSectionsReturnsOriginalSection(t *testing.T) {
 	}
 }
 
+func TestDiscoverSectionsReturnsPageBundleCategoryDirectories(t *testing.T) {
+	root := t.TempDir()
+	writeSectionFixture(t, filepath.Join(root, "hugo.toml"), "baseURL='https://example.com'\n")
+	writeSectionFixture(t, filepath.Join(root, "content", "posts", "ai", "article-one", "index.md"), "---\ntitle: One\n---\n")
+	writeSectionFixture(t, filepath.Join(root, "content", "posts", "tools", "article-two", "index.md"), "---\ntitle: Two\n---\n")
+	writeSectionFixture(t, filepath.Join(root, "content", "posts", "flat-article", "index.md"), "---\ntitle: Flat\n---\n")
+	provider, err := New(Config{Root: root, StagingRoot: filepath.Join(t.TempDir(), "staging")}, &fakeBuilder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	discovery, err := provider.DiscoverSections(context.Background(), "")
+	if err != nil {
+		t.Fatalf("DiscoverSections() error = %v", err)
+	}
+	if len(discovery.Sections) != 1 || len(discovery.Sections[0].Directories) != 2 {
+		t.Fatalf("未发现 Page Bundle 分类目录: %+v", discovery)
+	}
+	if discovery.Sections[0].Directories[0].Path != "ai" || discovery.Sections[0].Directories[0].ArticleCount != 1 || discovery.Sections[0].Directories[1].Path != "tools" {
+		t.Fatalf("分类目录信息错误: %+v", discovery.Sections[0].Directories)
+	}
+}
+
+func TestDiscoverSectionsLocksExistingBundleCategoryDirectory(t *testing.T) {
+	root := t.TempDir()
+	writeSectionFixture(t, filepath.Join(root, "hugo.toml"), "baseURL='https://example.com'\n")
+	writeSectionFixture(t, filepath.Join(root, "content", "posts", "ai", "existing", "index.md"), "---\nsource_id: article_ONE\n---\n")
+	provider, err := New(Config{Root: root, StagingRoot: filepath.Join(t.TempDir(), "staging")}, &fakeBuilder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	discovery, err := provider.DiscoverSections(context.Background(), "article_ONE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discovery.SelectionLocked || discovery.ExistingSection != "posts" || discovery.ExistingDirectory != "ai" {
+		t.Fatalf("已有 Page Bundle 未锁定原分类目录: %+v", discovery)
+	}
+}
+
 func writeSectionFixture(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {

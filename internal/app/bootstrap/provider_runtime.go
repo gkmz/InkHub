@@ -138,6 +138,9 @@ func templateID(value string) string {
 	if value == "minimal" {
 		return domaintemplate.BuiltinMinimalID
 	}
+	if value == "classic" {
+		return domaintemplate.BuiltinClassicID
+	}
 	return domaintemplate.BuiltinDefaultID
 }
 

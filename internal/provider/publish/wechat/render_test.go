@@ -25,6 +25,10 @@ func TestRenderUsesSameSafePipelineForDifferentTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	classicTemplate, err := domaintemplate.Builtin(domaintemplate.BuiltinClassicID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	defaultHTML, err := Render(defaultTemplate, body, nil)
 	if err != nil {
@@ -34,10 +38,17 @@ func TestRenderUsesSameSafePipelineForDifferentTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("渲染 Minimal: %v", err)
 	}
+	classicHTML, err := Render(classicTemplate, body, nil)
+	if err != nil {
+		t.Fatalf("渲染 Classic: %v", err)
+	}
 	if defaultHTML == minimalHTML {
 		t.Fatal("不同模板不应产生相同 HTML")
 	}
-	for _, output := range []string{defaultHTML, minimalHTML} {
+	if defaultHTML == classicHTML || minimalHTML == classicHTML {
+		t.Fatal("不同模板不应产生相同 HTML")
+	}
+	for _, output := range []string{defaultHTML, minimalHTML, classicHTML} {
 		lower := strings.ToLower(output)
 		for _, forbidden := range []string{"<style", "<script", "class=", "data-inkhub", "javascript:", "{{"} {
 			if strings.Contains(lower, forbidden) {

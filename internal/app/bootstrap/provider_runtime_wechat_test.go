@@ -27,6 +27,16 @@ func TestProviderRuntimeBuildsWeChatGitHubUploader(t *testing.T) {
 	}
 }
 
+func TestConfiguredTemplateSupportsClassicBuiltin(t *testing.T) {
+	t.Parallel()
+
+	config, _ := json.Marshal(map[string]string{"template": "classic"})
+	ref, err := configuredTemplate(config)
+	if err != nil || ref == nil || ref.ID != "inkhub-classic" {
+		t.Fatalf("原版模板未解析: ref=%+v err=%v", ref, err)
+	}
+}
+
 type staticRuntimeSecret struct{ value []byte }
 
 func (resolver staticRuntimeSecret) Resolve(context.Context, string) (contracts.SecretValue, error) {

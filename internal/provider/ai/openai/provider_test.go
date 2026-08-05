@@ -60,6 +60,25 @@ func TestProviderGeneratesStructuredSuggestionsWithoutSendingBodyInPrivacyMode(t
 	}
 }
 
+func TestProviderGeneratesXiaohongshuStructuredContent(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(response, `{"model":"xhs-model","choices":[{"message":{"content":"{\"title\":\"给 Agent 装上研发流程\",\"body_html\":\"<p>提炼后的短文案</p>\",\"topics\":\"#AI编程 #效率工具\",\"source_note\":\"根据原文整理\",\"comment_copy\":\"你会怎么做？\"}"}}]}`)
+	}))
+	defer server.Close()
+	provider := buildTestProvider(t, server.URL, 1024*1024, 2*time.Second)
+	result, err := provider.Generate(context.Background(), contracts.AIRequest{Task: contracts.AITaskXiaohongshu, Article: contracts.ArticleInput{Title: "原文标题", Body: "完整原文"}, AllowBody: true, InputContentHash: "hash-xhs", OutputSchema: `{"type":"object"}`})
+	if err != nil {
+		t.Fatalf("生成小红书文案: %v", err)
+	}
+	if result.Model != "xhs-model" || len(result.Suggestions) != 5 {
+		t.Fatalf("小红书结构化响应错误: %+v", result)
+	}
+	if !hasSuggestion(result.Suggestions, "body_html", false) || !hasSuggestion(result.Suggestions, "topics", false) {
+		t.Fatalf("小红书字段缺失: %+v", result.Suggestions)
+	}
+}
+
 func TestProviderMapsRateLimitToRetryableError(t *testing.T) {
 	t.Parallel()
 

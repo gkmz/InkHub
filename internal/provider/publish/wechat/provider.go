@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -151,7 +152,11 @@ func (p *Provider) InspectAssets(ctx context.Context, input contracts.PublishInp
 		}
 		result, found, err := p.uploader.Inspect(ctx, contracts.AssetUploadRequest{LocalPath: resource.Resolved, Digest: info.Digest, MediaType: info.MediaType, Extension: info.Extension})
 		if err != nil {
-			diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.image_inspect_failed", Message: "暂时无法检查图片仓库", Blocking: true})
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				// 请求已被客户端取消，不能把半截计划返回为图片仓库故障。
+				return items, diagnostics, err
+			}
+			diagnostics = append(diagnostics, contracts.Diagnostic{Code: "wechat.image_inspect_failed", Message: imageInspectDiagnostic(err), Blocking: true})
 			items = append(items, item)
 			continue
 		}
@@ -161,6 +166,36 @@ func (p *Provider) InspectAssets(ctx context.Context, input contracts.PublishInp
 		items = append(items, item)
 	}
 	return items, diagnostics, nil
+}
+
+// imageInspectDiagnostic 将图片仓库错误转成可操作且不泄露凭据的界面提示。
+func imageInspectDiagnostic(err error) string {
+	var providerErr *contracts.ProviderError
+	if !errors.As(err, &providerErr) || providerErr == nil {
+		return "暂时无法检查图片仓库，请检查网络和 GitHub 图片仓库配置"
+	}
+	switch providerErr.Code {
+	case "github.asset_conflict":
+		return "图片仓库中已存在同一目标但内容不同的文件，请检查仓库后再重试"
+	case "github.config_invalid":
+		return "暂时无法检查图片仓库：GitHub 图片仓库配置无效，请检查仓库、分支和路径前缀"
+	case "github.response_invalid":
+		return "暂时无法检查图片仓库：GitHub 图片内容无法读取，请稍后重试"
+	}
+	if providerErr.UpstreamStatus == 0 {
+		return "暂时无法检查图片仓库，请检查网络和 GitHub 图片仓库配置"
+	}
+	switch providerErr.UpstreamStatus {
+	case 401, 403:
+		return "暂时无法检查图片仓库：GitHub 拒绝访问，请检查 Token、仓库权限和仓库是否公开"
+	case 429:
+		return "暂时无法检查图片仓库：GitHub 请求过于频繁，请稍后重试"
+	default:
+		if providerErr.UpstreamStatus >= 500 {
+			return "暂时无法检查图片仓库：GitHub 服务暂时不可用，请稍后重试"
+		}
+		return fmt.Sprintf("暂时无法检查图片仓库：GitHub 返回 HTTP %d，请检查仓库配置", providerErr.UpstreamStatus)
+	}
 }
 
 type wechatManifest struct {

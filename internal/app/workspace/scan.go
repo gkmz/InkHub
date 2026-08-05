@@ -64,7 +64,8 @@ func ScanWorkspace(ctx context.Context, source Source, store ArticleStore, optio
 		document.Article.ContentHash, err = article.NormalizeAndHash(article.HashInput{
 			Body: document.Body, Title: document.Article.Title, Description: document.Article.Description,
 			Tags: document.Article.Tags, Keywords: document.Article.Keywords, Category: document.Article.Category,
-			Series: document.Article.Series, Slug: document.Article.Slug, Cover: document.Article.Cover,
+			Series: document.Article.Series, URL: document.Article.URL, PublishDate: document.Article.PublishDate,
+			Slug: document.Article.Slug, Cover: document.Article.Cover,
 		})
 		if err != nil {
 			report.Failed++
@@ -73,7 +74,7 @@ func ScanWorkspace(ctx context.Context, source Source, store ArticleStore, optio
 		document.Article.FrontmatterHash, err = article.NormalizeAndHash(article.HashInput{
 			Title: document.Article.Title, Description: document.Article.Description, Tags: document.Article.Tags,
 			Keywords: document.Article.Keywords, Category: document.Article.Category, Series: document.Article.Series,
-			Slug: document.Article.Slug, Cover: document.Article.Cover,
+			URL: document.Article.URL, PublishDate: document.Article.PublishDate, Slug: document.Article.Slug, Cover: document.Article.Cover,
 		})
 		if err != nil {
 			report.Failed++

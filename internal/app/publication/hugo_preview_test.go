@@ -131,6 +131,43 @@ func TestHugoPreviewConfirmRejectsStaleAndReusesDelivery(t *testing.T) {
 	}
 }
 
+func TestHugoPreviewConfirmReusesCompletedDeliveryWithoutRevalidatingArtifact(t *testing.T) {
+	now := time.Date(2026, 7, 17, 8, 0, 0, 0, time.UTC)
+	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{}}
+	resolver := &artifactValidationResolver{article: PreviewArticle{ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", StableID: "article_VALID", ContentHash: "hash", ContentStage: article.ContentStageReady, ReviewApproved: true}}
+	service := NewHugoPreviewService(store, resolver, func() time.Time { return now })
+	preview, err := service.Queue(context.Background(), PreviewRequest{ArticleID: "a1", ContentHash: "hash", Section: "posts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expires := now.Add(time.Hour)
+	result := HugoPreviewResult{PreviewID: preview.ID, ArticleID: "a1", WorkspaceID: "w1", ProviderID: "h1", Section: "posts", Artifact: contracts.PreparedArtifact{OperationID: preview.ID, ContentHash: "hash", Location: "/staging", TargetPath: "/hugo/content/posts/demo", TargetRelativePath: "content/posts/demo", ExpiresAt: &expires}}
+	encoded, _ := json.Marshal(result)
+	previewJob := store.jobs[preview.ID]
+	previewJob.State, previewJob.ResultJSON = domainjob.StateSucceeded, string(encoded)
+	store.jobs[preview.ID] = previewJob
+
+	delivery, err := service.Confirm(context.Background(), ConfirmPreviewRequest{PreviewID: preview.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := store.jobs[delivery.ID]
+	completed.State = domainjob.StateSucceeded
+	store.jobs[delivery.ID] = completed
+	expired := now.Add(-time.Hour)
+	result.Artifact.ExpiresAt = &expired
+	encoded, _ = json.Marshal(result)
+	previewJob = store.jobs[preview.ID]
+	previewJob.ResultJSON = string(encoded)
+	store.jobs[preview.ID] = previewJob
+	resolver.validateErr = errors.New("staging artifact 已清理")
+
+	reused, err := service.Confirm(context.Background(), ConfirmPreviewRequest{PreviewID: preview.ID})
+	if err != nil || reused.ID != delivery.ID {
+		t.Fatalf("已完成交付未直接复用: reused=%+v err=%v", reused, err)
+	}
+}
+
 func TestHugoPreviewRejectsMismatchedResolvedArticle(t *testing.T) {
 	store := &memoryPreviewJobStore{jobs: map[string]domainjob.Job{}}
 	resolver := staticPreviewResolver{article: PreviewArticle{ArticleID: "other", WorkspaceID: "w1", ProviderID: "h1", StableID: "article_VALID", ContentHash: "hash", ContentStage: article.ContentStageReady, ReviewApproved: true}}
@@ -287,4 +324,17 @@ func (r *mutablePreviewResolver) ResolvePreviewArticle(context.Context, string) 
 }
 func (r *mutablePreviewResolver) ValidatePreviewArtifact(context.Context, HugoPreviewResult) error {
 	return nil
+}
+
+type artifactValidationResolver struct {
+	article     PreviewArticle
+	validateErr error
+}
+
+func (r *artifactValidationResolver) ResolvePreviewArticle(context.Context, string) (PreviewArticle, error) {
+	return r.article, nil
+}
+
+func (r *artifactValidationResolver) ValidatePreviewArtifact(context.Context, HugoPreviewResult) error {
+	return r.validateErr
 }

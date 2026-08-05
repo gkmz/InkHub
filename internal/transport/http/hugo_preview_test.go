@@ -20,16 +20,16 @@ func TestHugoPreviewRoutesReturnSafeViewsAndProtectConfirmation(t *testing.T) {
 
 	sections := httptest.NewRecorder()
 	handler.ServeHTTP(sections, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/articles/a1/hugo-sections", nil))
-	if sections.Code != http.StatusOK || !strings.Contains(sections.Body.String(), `"article_count":2`) || strings.Contains(sections.Body.String(), "/secret/") {
+	if sections.Code != http.StatusOK || !strings.Contains(sections.Body.String(), `"article_count":2`) || !strings.Contains(sections.Body.String(), `"path":"ai"`) || !strings.Contains(sections.Body.String(), `"existing_directory":"ai"`) || strings.Contains(sections.Body.String(), "/secret/") {
 		t.Fatalf("Section 响应错误: %d %s", sections.Code, sections.Body.String())
 	}
 
-	createRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/hugo-previews", strings.NewReader(`{"content_hash":"hash","section":"posts"}`))
+	createRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/hugo-previews", strings.NewReader(`{"content_hash":"hash","section":"posts","directory":"ai"}`))
 	createRequest.Header.Set("Origin", "http://localhost")
 	createRequest.Header.Set("Content-Type", "application/json")
 	created := httptest.NewRecorder()
 	handler.ServeHTTP(created, createRequest)
-	if created.Code != http.StatusAccepted || !strings.Contains(created.Body.String(), `"id":"preview_1"`) {
+	if created.Code != http.StatusAccepted || !strings.Contains(created.Body.String(), `"id":"preview_1"`) || api.queued.Directory != "ai" {
 		t.Fatalf("创建预览响应错误: %d %s", created.Code, created.Body.String())
 	}
 
@@ -69,13 +69,15 @@ func TestSafeHugoPreviewViewIncludesActionableFailure(t *testing.T) {
 type fakeHugoPreviewAPI struct {
 	view         publication.PreviewView
 	confirmCalls int
+	queued       publication.PreviewRequest
 }
 
 func (f *fakeHugoPreviewAPI) DiscoverSections(context.Context, string) (contracts.SectionDiscovery, error) {
-	return contracts.SectionDiscovery{Sections: []contracts.PublishSection{{Name: "posts", ArticleCount: 2}}, ExistingTarget: "/secret/hugo/content/posts/demo"}, nil
+	return contracts.SectionDiscovery{Sections: []contracts.PublishSection{{Name: "posts", ArticleCount: 2, Directories: []contracts.PublishDirectory{{Path: "ai", ArticleCount: 2}}}}, ExistingDirectory: "ai", ExistingTarget: "/secret/hugo/content/posts/ai/demo"}, nil
 }
 
-func (f *fakeHugoPreviewAPI) Queue(context.Context, publication.PreviewRequest) (domainjob.Job, error) {
+func (f *fakeHugoPreviewAPI) Queue(_ context.Context, request publication.PreviewRequest) (domainjob.Job, error) {
+	f.queued = request
 	return domainjob.Job{ID: "preview_1", State: domainjob.StateQueued}, nil
 }
 

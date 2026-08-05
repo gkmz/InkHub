@@ -216,7 +216,40 @@ func TestInspectAssetsKeepsSourceImageDiagnostics(t *testing.T) {
 	}
 }
 
+func TestInspectAssetsExplainsGitHubAccessFailure(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "cover.png")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(file, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	_ = file.Close()
+	uploader := failingInspectUploader{err: &contracts.ProviderError{Code: "github.upload_failed", Category: contracts.ErrorUnauthorizedResource, Message: "读取 GitHub 图片目标失败", UpstreamStatus: 403}}
+	provider, err := New(Config{StagingRoot: t.TempDir()}, staticLoader{}, uploader, &memoryClipboard{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, diagnostics, err := provider.InspectAssets(context.Background(), contracts.PublishInput{ResourceRefs: []contracts.ResourceRef{{Original: "images/cover.png", Resolved: path, Kind: "image"}}})
+	if err != nil || len(diagnostics) != 1 || !strings.Contains(diagnostics[0].Message, "Token") {
+		t.Fatalf("图片仓库诊断不完整: diagnostics=%+v err=%v", diagnostics, err)
+	}
+}
+
 type staticLoader struct{ template domaintemplate.Validated }
+
+type failingInspectUploader struct{ err error }
+
+func (uploader failingInspectUploader) Inspect(context.Context, AssetUploadRequest) (AssetUploadResult, bool, error) {
+	return AssetUploadResult{}, false, uploader.err
+}
+
+func (failingInspectUploader) Upload(context.Context, AssetUploadRequest) (AssetUploadResult, error) {
+	return AssetUploadResult{}, nil
+}
 
 func (l staticLoader) Load(context.Context, contracts.TemplateRef) (domaintemplate.Validated, error) {
 	return l.template, nil

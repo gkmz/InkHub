@@ -59,11 +59,14 @@ type decodedResponse struct {
 	Suggestions []contracts.Suggestion
 }
 
-func decodeResponse(content []byte) (decodedResponse, error) {
+func decodeResponse(content []byte, task contracts.AITask) (decodedResponse, error) {
 	var response chatResponse
 	decoder := json.NewDecoder(strings.NewReader(string(content)))
 	if err := decoder.Decode(&response); err != nil || len(response.Choices) == 0 {
 		return decodedResponse{}, invalidResponseError(err)
+	}
+	if task == contracts.AITaskXiaohongshu {
+		return decodeXiaohongshuResponse(response.Choices[0].Message.Content, response.Model)
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(response.Choices[0].Message.Content), &fields); err != nil {
@@ -110,6 +113,41 @@ func decodeResponse(content []byte) (decodedResponse, error) {
 		suggestions = append(suggestions, contracts.Suggestion{Field: "keywords", Value: mustJSON(keywords), Rationale: metadata.Reasons["keywords"]})
 	}
 	return decodedResponse{Model: response.Model, Suggestions: suggestions}, nil
+}
+
+// decodeXiaohongshuResponse 校验小红书适配结果并转换为统一的结构化建议项。
+func decodeXiaohongshuResponse(content, model string) (decodedResponse, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(content), &fields); err != nil {
+		return decodedResponse{}, invalidResponseError(err)
+	}
+	for _, required := range []string{"title", "body_html", "topics", "source_note", "comment_copy"} {
+		if _, exists := fields[required]; !exists {
+			return decodedResponse{}, invalidResponseError(errors.New("小红书结构化响应缺少字段: " + required))
+		}
+	}
+	var output struct {
+		Title       string `json:"title"`
+		BodyHTML    string `json:"body_html"`
+		Topics      string `json:"topics"`
+		SourceNote  string `json:"source_note"`
+		CommentCopy string `json:"comment_copy"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&output); err != nil {
+		return decodedResponse{}, invalidResponseError(err)
+	}
+	if strings.TrimSpace(output.Title) == "" || strings.TrimSpace(output.BodyHTML) == "" {
+		return decodedResponse{}, invalidResponseError(errors.New("小红书标题或正文不能为空"))
+	}
+	return decodedResponse{Model: model, Suggestions: []contracts.Suggestion{
+		{Field: "title", Value: mustJSON(strings.TrimSpace(output.Title))},
+		{Field: "body_html", Value: mustJSON(output.BodyHTML)},
+		{Field: "topics", Value: mustJSON(output.Topics)},
+		{Field: "source_note", Value: mustJSON(strings.TrimSpace(output.SourceNote))},
+		{Field: "comment_copy", Value: mustJSON(strings.TrimSpace(output.CommentCopy))},
+	}}, nil
 }
 
 func invalidResponseError(cause error) *contracts.ProviderError {

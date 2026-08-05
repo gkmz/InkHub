@@ -45,6 +45,8 @@ func parseDocument(content []byte) (contracts.SourceDocument, error) {
 		StableID:          article.StableID(scalarValue(mapping, "id")),
 		Title:             scalarValue(mapping, "title"),
 		Description:       scalarValue(mapping, "description"),
+		URL:               scalarValue(mapping, "url"),
+		PublishDate:       scalarValue(mapping, "date"),
 		Tags:              stringSequence(mapping, "tags"),
 		Keywords:          stringSequence(mapping, "keywords"),
 		Category:          scalarValue(publish, "category"),
@@ -53,6 +55,10 @@ func parseDocument(content []byte) (contracts.SourceDocument, error) {
 		Cover:             scalarValue(publish, "cover"),
 		ContentStage:      contentStage,
 		ContentStageIssue: contentStageIssue,
+	}
+	if value.URL == "" {
+		// 兼容将 URL 放在 publish 对象中的旧写法。
+		value.URL = scalarValue(publish, "url")
 	}
 	sum := sha256.Sum256(content)
 	return contracts.SourceDocument{
@@ -64,10 +70,13 @@ func parseDocument(content []byte) (contracts.SourceDocument, error) {
 }
 
 func validateFrontmatter(mapping *yaml.Node) error {
-	for _, key := range []string{"id", "title", "description"} {
+	for _, key := range []string{"id", "title", "description", "url"} {
 		if err := validateStringField(mapping, key); err != nil {
 			return err
 		}
+	}
+	if err := validateDateField(mapping, "date"); err != nil {
+		return err
 	}
 	for _, key := range []string{"tags", "keywords"} {
 		value := mappingValue(mapping, key)
@@ -91,7 +100,7 @@ func validateFrontmatter(mapping *yaml.Node) error {
 		if publish.Kind != yaml.MappingNode {
 			return fmt.Errorf("字段 publish 必须是对象")
 		}
-		for _, key := range []string{"category", "series", "slug", "cover"} {
+		for _, key := range []string{"category", "series", "slug", "cover", "url"} {
 			if err := validateStringField(publish, key); err != nil {
 				return fmt.Errorf("publish.%w", err)
 			}
@@ -104,6 +113,15 @@ func validateStringField(mapping *yaml.Node, key string) error {
 	value := mappingValue(mapping, key)
 	if value != nil && (value.Kind != yaml.ScalarNode || (value.Tag != "!!str" && value.Tag != "!!null")) {
 		return fmt.Errorf("字段 %s 必须是字符串", key)
+	}
+	return nil
+}
+
+// validateDateField 接受 YAML 字符串和原生 timestamp，兼容常见的 Obsidian 日期写法。
+func validateDateField(mapping *yaml.Node, key string) error {
+	value := mappingValue(mapping, key)
+	if value != nil && (value.Kind != yaml.ScalarNode || (value.Tag != "!!str" && value.Tag != "!!timestamp" && value.Tag != "!!null")) {
+		return fmt.Errorf("字段 %s 必须是日期字符串", key)
 	}
 	return nil
 }

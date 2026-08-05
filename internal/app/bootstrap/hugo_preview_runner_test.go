@@ -37,10 +37,13 @@ func TestHugoPreviewJobPreparesThenDeliverJobPublishesSameArtifact(t *testing.T)
 	defer db.Close()
 	staging := filepath.Join(t.TempDir(), "staging")
 	insertHugoPreviewFixture(t, db, site, vault, staging)
+	if err := os.MkdirAll(filepath.Join(site, "content", "posts", "ai"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	jobs := repository.NewJobRepository(db)
 	previewID := "preview_0123456789abcdef01234567"
-	payload, _ := json.Marshal(map[string]string{"preview_id": previewID, "article_id": "a1", "provider_instance_id": "h1", "content_hash": "hash-current", "section": "posts"})
+	payload, _ := json.Marshal(map[string]string{"preview_id": previewID, "article_id": "a1", "provider_instance_id": "h1", "content_hash": "hash-current", "section": "posts", "directory": "ai"})
 	if _, _, err := jobs.Enqueue(ctx, domainjob.Job{ID: previewID, WorkspaceID: "w1", Kind: "hugo_preview", DedupeKey: "preview", PayloadJSON: string(payload), AvailableAt: time.Now().UTC()}); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +59,7 @@ func TestHugoPreviewJobPreparesThenDeliverJobPublishesSameArtifact(t *testing.T)
 	if err != nil || preview.State != domainjob.StateSucceeded {
 		t.Fatalf("Hugo 预览未成功: state=%s err=%v message=%s", preview.State, err, preview.ErrorMessage)
 	}
-	if _, err := os.Stat(filepath.Join(site, "content", "posts", "hugo-preview", "index.md")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(site, "content", "posts", "ai", "hugo-preview", "index.md")); !os.IsNotExist(err) {
 		t.Fatalf("确认前修改了正式 Hugo content: %v", err)
 	}
 	var result publication.HugoPreviewResult
@@ -76,7 +79,7 @@ func TestHugoPreviewJobPreparesThenDeliverJobPublishesSameArtifact(t *testing.T)
 	if err != nil || delivery.State != domainjob.StateSucceeded {
 		t.Fatalf("Hugo 交付未成功: state=%s err=%v message=%s", delivery.State, err, delivery.ErrorMessage)
 	}
-	if _, err := os.Stat(filepath.Join(site, "content", "posts", "hugo-preview", "index.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(site, "content", "posts", "ai", "hugo-preview", "index.md")); err != nil {
 		t.Fatalf("确认后未写入正式 Hugo bundle: %v", err)
 	}
 	var state string

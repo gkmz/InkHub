@@ -126,6 +126,8 @@ type frontmatter struct {
 	ID          string   `yaml:"id"`
 	Title       string   `yaml:"title"`
 	Description string   `yaml:"description"`
+	URL         string   `yaml:"url"`
+	PublishDate string   `yaml:"date"`
 	Category    string   `yaml:"category"`
 	Series      string   `yaml:"series"`
 	Tags        []string `yaml:"tags"`
@@ -147,7 +149,7 @@ func parseDocument(content []byte) (contracts.SourceDocument, error) {
 	}
 	sum := sha256.Sum256(content)
 	return contracts.SourceDocument{
-		Article: article.Article{StableID: article.StableID(metadata.ID), Title: metadata.Title, Description: metadata.Description, Category: metadata.Category, Series: metadata.Series, Tags: append([]string{}, metadata.Tags...), Keywords: append([]string{}, metadata.Keywords...), Slug: metadata.Slug, Cover: metadata.Cover},
+		Article: article.Article{StableID: article.StableID(metadata.ID), Title: metadata.Title, Description: metadata.Description, URL: metadata.URL, PublishDate: metadata.PublishDate, Category: metadata.Category, Series: metadata.Series, Tags: append([]string{}, metadata.Tags...), Keywords: append([]string{}, metadata.Keywords...), Slug: metadata.Slug, Cover: metadata.Cover},
 		Body:    body, RawFrontmatter: raw, Fingerprint: hex.EncodeToString(sum[:]),
 	}, nil
 }

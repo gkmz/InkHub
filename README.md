@@ -54,7 +54,7 @@ INKHUB_LOG_CONSOLE=true
 
 ## 内容与渠道
 
-标准 frontmatter 字段：`id`、`title`、`description`、`tags`、`keywords`、`publish.category`、`publish.series`、`publish.slug` 和 `publish.cover`。文章默认是草稿；只有明确写入以下字段才进入审核与发布工作流：
+标准 frontmatter 字段：`id`、`title`、`description`、`url`、`date`、`tags`、`keywords`、`publish.category`、`publish.series`、`publish.slug` 和 `publish.cover`。文章默认是草稿；只有明确写入以下字段才进入审核与发布工作流：
 
 ```yaml
 publish:
@@ -63,7 +63,7 @@ publish:
 
 内容库始终保留全部文章，并可按“已就绪/草稿”筛选。工作台只显示已就绪文章的下一步行动；内容版本由内容哈希判断，文件修改时间只用于排序。微信公众号已经人工确认的草稿是终态，后续正文变化不会自动重复发布。
 
-Hugo 使用 staging、真实构建和原子替换，同一文章会稳定更新同一 page bundle。Taxonomy 以 Hugo 配置、文章 frontmatter 和 term 页面为权威来源，InkHub 在 SQLite 中保存最近成功快照。
+Hugo 使用 staging、真实构建和原子替换，同一文章会稳定更新同一 page bundle。新文章的 bundle 目录优先使用 `url`，有 `date` 时自动加上 `YYYYMMDD-` 前缀；`url` 已带八位日期前缀时不会重复添加，没有 `url` 才回退到 `publish.slug`。已有文章按 `source_id` 继续更新原目录。Taxonomy 以 Hugo 配置、文章 frontmatter 和 term 页面为权威来源，InkHub 在 SQLite 中保存最近成功快照。
 
 微信公众号提供 `InkHub Default` 和 `InkHub Minimal` 两个同规格模板。流程严格区分准备内容、复制格式化 HTML 和人工确认草稿；含本地图片的文章需要先配置图片托管。
 

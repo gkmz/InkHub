@@ -24,8 +24,9 @@ type AIDescriptor struct {
 type AITask string
 
 const (
-	AITaskMetadata AITask = "metadata"
-	AITaskSEO      AITask = "seo"
+	AITaskMetadata    AITask = "metadata"
+	AITaskSEO         AITask = "seo"
+	AITaskXiaohongshu AITask = "xiaohongshu"
 )
 
 // AIRequest 是经过 Application 隐私裁剪后的结构化请求。

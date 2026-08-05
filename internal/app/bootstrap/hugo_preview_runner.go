@@ -20,6 +20,7 @@ type hugoPreviewPayload struct {
 	ProviderID  string `json:"provider_instance_id"`
 	ContentHash string `json:"content_hash"`
 	Section     string `json:"section"`
+	Directory   string `json:"directory"`
 }
 
 type hugoPreviewJobHandler struct {
@@ -40,6 +41,7 @@ func (h hugoPreviewJobHandler) handlePreview(ctx context.Context, execution *app
 		return "", fmt.Errorf("Hugo 预览任务只能使用 Hugo Provider")
 	}
 	input.TargetSection = payload.Section
+	input.TargetDirectory = payload.Directory
 	input.PreviewOnly = true
 	view, err := providerConfigView(config)
 	if err != nil {

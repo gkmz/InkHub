@@ -33,6 +33,8 @@ type Article struct {
 	Series            string
 	Tags              []string
 	Keywords          []string
+	URL               string
+	PublishDate       string
 	Slug              string
 	Cover             string
 	ContentStage      ContentStage

@@ -265,14 +265,24 @@ func (s *HugoPreviewService) Confirm(ctx context.Context, request ConfirmPreview
 	if current.ContentStage != article.ContentStageReady {
 		return domainjob.Job{}, ErrArticleNotReady
 	}
+	id := deliveryID(result.PreviewID)
+	payload, _ := json.Marshal(map[string]string{"preview_id": result.PreviewID, "article_id": result.ArticleID, "provider_instance_id": result.ProviderID, "content_hash": result.Artifact.ContentHash})
+	// 已完成或进行中的确定性交付直接复用，不再依赖可能已清理的临时 Artifact。
+	// 失败任务仍需经过下面的 Artifact 校验，确认 staging 内容可安全重试。
+	if existing, found, err := s.findDeterministicJob(ctx, id, result.WorkspaceID, "hugo_deliver", string(payload)); found || err != nil {
+		if err != nil {
+			return domainjob.Job{}, err
+		}
+		if existing.State != domainjob.StateFailed {
+			return existing, nil
+		}
+	}
 	if result.Artifact.ExpiresAt == nil || !result.Artifact.ExpiresAt.After(s.now()) {
 		return domainjob.Job{}, ErrPreviewExpired
 	}
 	if err := s.dependencies.ValidatePreviewArtifact(ctx, result); err != nil {
 		return domainjob.Job{}, err
 	}
-	id := deliveryID(result.PreviewID)
-	payload, _ := json.Marshal(map[string]string{"preview_id": result.PreviewID, "article_id": result.ArticleID, "provider_instance_id": result.ProviderID, "content_hash": result.Artifact.ContentHash})
 	if existing, found, err := s.findDeterministicJob(ctx, id, result.WorkspaceID, "hugo_deliver", string(payload)); found || err != nil {
 		if err == nil && existing.State == domainjob.StateFailed {
 			return s.jobs.RequeueFailed(ctx, id, result.WorkspaceID, "hugo_deliver", s.now().UTC())

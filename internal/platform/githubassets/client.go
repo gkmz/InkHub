@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,7 +19,8 @@ import (
 	"go.uber.org/zap"
 )
 
-const maxGitHubResponseSize = 2 << 20
+// Git Blob API 返回 Base64 内容，10 MiB 图片编码后约 13.4 MiB，需要留出 JSON 包装空间。
+const maxGitHubResponseSize = 16 << 20
 
 // Uploader 使用 GitHub Contents API 幂等保存公开图片。
 type Uploader struct {
@@ -94,6 +96,7 @@ func (u *Uploader) Inspect(ctx context.Context, request contracts.AssetUploadReq
 		Type     string `json:"type"`
 		Encoding string `json:"encoding"`
 		Content  string `json:"content"`
+		SHA      string `json:"sha"`
 	}
 	status, err := u.getJSON(ctx, contentsURL(u.config, assetPath), &value)
 	if err != nil {
@@ -102,12 +105,15 @@ func (u *Uploader) Inspect(ctx context.Context, request contracts.AssetUploadReq
 	if status == http.StatusNotFound {
 		return contracts.AssetUploadResult{}, false, nil
 	}
-	if status != http.StatusOK || value.Type != "file" || value.Encoding != "base64" {
-		return contracts.AssetUploadResult{}, false, githubError("github.upload_failed", "读取 GitHub 图片目标失败", contracts.ErrorDependency, true)
+	if status != http.StatusOK {
+		return contracts.AssetUploadResult{}, false, githubStatusError(status, "读取 GitHub 图片目标失败")
 	}
-	content, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(value.Content, "\n", ""))
+	if value.Type != "file" {
+		return contracts.AssetUploadResult{}, false, githubError("github.response_invalid", "GitHub 图片目标不是文件", contracts.ErrorDependency, true)
+	}
+	content, err := u.readAssetContent(ctx, value.Encoding, value.Content, value.SHA)
 	if err != nil {
-		return contracts.AssetUploadResult{}, false, githubError("github.upload_failed", "GitHub 图片响应无效", contracts.ErrorDependency, true)
+		return contracts.AssetUploadResult{}, false, err
 	}
 	sum := sha256.Sum256(content)
 	if hex.EncodeToString(sum[:]) != request.Digest {
@@ -118,6 +124,37 @@ func (u *Uploader) Inspect(ctx context.Context, request contracts.AssetUploadReq
 		return contracts.AssetUploadResult{}, false, githubError("github.config_invalid", "GitHub 图片公开地址无效", contracts.ErrorValidation, false)
 	}
 	return contracts.AssetUploadResult{URL: publicURL, Reused: true}, true, nil
+}
+
+// readAssetContent 兼容 GitHub Contents API 对超过 1 MiB 文件不返回 Base64 内容的行为。
+// 此时先读取 Contents 返回的 blob SHA，再通过 Git Blob API 获取完整内容。
+func (u *Uploader) readAssetContent(ctx context.Context, encoding, encoded, blobSHA string) ([]byte, error) {
+	if encoding == "base64" {
+		content, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(encoded, "\n", ""))
+		if err != nil {
+			return nil, githubError("github.response_invalid", "GitHub 图片响应无效", contracts.ErrorDependency, true)
+		}
+		return content, nil
+	}
+	if !validBlobSHA(blobSHA) {
+		return nil, githubError("github.response_invalid", "GitHub 图片响应不支持大文件读取", contracts.ErrorDependency, true)
+	}
+	var blob struct {
+		Encoding string `json:"encoding"`
+		Content  string `json:"content"`
+	}
+	status, err := u.getJSON(ctx, blobURL(u.config, blobSHA), &blob)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK || blob.Encoding != "base64" {
+		return nil, githubStatusError(status, "读取 GitHub 图片内容失败")
+	}
+	content, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(blob.Content, "\n", ""))
+	if err != nil {
+		return nil, githubError("github.response_invalid", "GitHub 图片响应无效", contracts.ErrorDependency, true)
+	}
+	return content, nil
 }
 
 // Upload 幂等创建摘要路径，并确认最终地址可以匿名访问。
@@ -229,7 +266,8 @@ func (u *Uploader) verifyPublicURL(ctx context.Context, endpoint string) error {
 
 // logError 记录 GitHub 边界失败的稳定上下文，不记录 Token、图片内容或完整响应。
 func (u *Uploader) logError(operation string, err error) {
-	if err == nil {
+	// 浏览器切换模板或关闭页面时会主动取消请求，这是正常生命周期，不应记录为 Provider 错误。
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return
 	}
 	fields := []zap.Field{
@@ -258,6 +296,32 @@ func contentsBaseURL(config Config, assetPath string) string {
 	return repositoryURL(config) + "/contents/" + strings.Join(parts, "/")
 }
 
+func blobURL(config Config, blobSHA string) string {
+	return repositoryURL(config) + "/git/blobs/" + url.PathEscape(blobSHA)
+}
+
+func validBlobSHA(value string) bool {
+	if len(value) != 40 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
 func githubError(code, message string, category contracts.ErrorCategory, retryable bool) *contracts.ProviderError {
 	return &contracts.ProviderError{Code: code, Message: message, Category: category, Retryable: retryable}
+}
+
+// githubStatusError 将 GitHub HTTP 状态转换为带上游状态的脱敏错误。
+// 状态码只用于诊断和重试判断，不把 GitHub 响应正文直接暴露给用户。
+func githubStatusError(status int, message string) *contracts.ProviderError {
+	category := contracts.ErrorDependency
+	retryable := status >= http.StatusInternalServerError || status == http.StatusTooManyRequests
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		category = contracts.ErrorUnauthorizedResource
+	case http.StatusTooManyRequests:
+		category = contracts.ErrorTemporary
+	}
+	return &contracts.ProviderError{Code: "github.upload_failed", Message: message, Category: category, Retryable: retryable, UpstreamStatus: status}
 }
