@@ -181,7 +181,7 @@ test("内容库下一页失败时保留现有文章并提示", async () => {
   expect(screen.getByText("发布失败")).toBeInTheDocument();
 });
 
-test("Hugo 渠道 URL 进入独立发布页面", async () => {
+test("Hugo 渠道 URL 保留统一应用框架", async () => {
   window.history.replaceState({}, "", "/articles/a1/hugo");
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
@@ -201,6 +201,7 @@ test("Hugo 渠道 URL 进入独立发布页面", async () => {
   render(<App />);
 
   expect(await screen.findByRole("heading", { name: "同步到 Hugo" })).toBeInTheDocument();
-  expect(screen.getByText("渠道路由测试")).toBeInTheDocument();
-  expect(screen.queryByRole("navigation", { name: "主导航" })).not.toBeInTheDocument();
+  expect(screen.getAllByRole("heading", { name: "渠道路由测试" })).not.toHaveLength(0);
+  expect(screen.getAllByRole("navigation", { name: "主导航" })).toHaveLength(2);
+  expect(screen.getByRole("navigation", { name: "文章工作流" })).toBeInTheDocument();
 });

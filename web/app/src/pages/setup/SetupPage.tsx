@@ -84,7 +84,7 @@ export function SetupPage({ onComplete }: { onComplete: (draft: WorkspaceDraft) 
           {step === 2 && <>
             <p className="lead">选择微信公众号排版模板。图片托管可以稍后在设置中配置。</p>
             <div className="template-options">
-              {["default", "minimal"].map((value) => <button key={value} type="button" className={draft.wechat_template === value ? "selected" : ""} onClick={() => update({ wechat_template: value })}><span className={`template-preview ${value}`}><i /><i /><i /></span><b>InkHub {value === "default" ? "Default" : "Minimal"}</b><small>{value === "default" ? "清晰层级，适合技术文章" : "轻量留白，适合短文"}</small></button>)}
+              {[{ value: "default", name: "InkHub Default", description: "清晰层级，适合技术文章" }, { value: "minimal", name: "InkHub Minimal", description: "轻量留白，适合短文" }, { value: "classic", name: "InkHub Classic（原版）", description: "绿色强调，保留原版排版" }].map((template) => <button key={template.value} type="button" className={draft.wechat_template === template.value ? "selected" : ""} onClick={() => update({ wechat_template: template.value })}><span className={`template-preview ${template.value}`}><i /><i /><i /></span><b>{template.name}</b><small>{template.description}</small></button>)}
             </div>
             <button className="primary" type="button" onClick={next}>继续</button>
           </>}

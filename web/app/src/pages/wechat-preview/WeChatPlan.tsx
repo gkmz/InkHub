@@ -15,6 +15,7 @@ export function WeChatPlan({ articleID, templateID, onConfirmed }: { articleID: 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
+    setPlan(null);
     setError("");
     void getWeChatPlan(articleID, templateID, controller.signal).then(setPlan).catch((reason: unknown) => {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(reason instanceof Error ? reason.message : "微信准备计划读取失败");

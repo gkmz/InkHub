@@ -25,6 +25,8 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
   const [loading, setLoading] = useState(true);
   const [workflow, setWorkflow] = useState<PublicationWorkflowView["hugo"]>(null);
   const [filesystemStale, setFilesystemStale] = useState(false);
+  const [published, setPublished] = useState(false);
+  const [publishedTarget, setPublishedTarget] = useState("");
   onPublishedRef.current = onPublished;
 
   const showError = useCallback((reason: unknown) => {
@@ -52,11 +54,13 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
   useEffect(() => {
     mounted.current = true;
     controller.current = new AbortController();
+    setPublished(false);
+    setPublishedTarget("");
     const pollWorkflow = async () => {
       const value = await getPublicationWorkflow(articleID, controller.current?.signal);
       if (!mounted.current) return;
       setWorkflow(value.hugo);
-      if (value.hugo?.preview) setPreview(recoveredPreview(value.hugo.preview));
+      if (value.hugo?.preview && value.hugo.state !== "published") setPreview(recoveredPreview(value.hugo.preview));
       // 已同步状态也要重新扫描真实目录；外部删除 Bundle 后不能继续相信数据库状态。
       let currentDiscovery: HugoSectionView | null = null;
       if (!value.hugo || value.hugo.state === "failed" || value.hugo.state === "expired" || value.hugo.state === "published") {
@@ -66,12 +70,20 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
         // 数据库仍有发布记录，但真实 Bundle 已不存在，切换到可重新生成预览的状态。
         setWorkflow(null);
         setPreview(null);
+        setPublished(false);
+        setPublishedTarget("");
         setFilesystemStale(true);
         setLoading(false);
         return;
       }
+      if (value.hugo?.state === "published") {
+        // 当前版本已交付且真实 Bundle 仍存在时进入终态，避免重复点击再次同步。
+        setPublished(true);
+        setPublishedTarget(value.hugo.preview?.target_path ?? "");
+        setPreview(null);
+        await onPublishedRef.current();
+      }
       if (value.hugo?.state === "preparing" || value.hugo?.state === "delivering") timer.current = window.setTimeout(() => void pollWorkflow().catch(showError), 800);
-      if (value.hugo?.state === "published") await onPublishedRef.current();
       setLoading(false);
     };
     void pollWorkflow().catch((reason: unknown) => { showError(reason); if (mounted.current) setLoading(false); });
@@ -80,7 +92,7 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
       controller.current?.abort();
       if (timer.current !== null) window.clearTimeout(timer.current);
     };
-  }, [articleID, loadSections, showError]);
+  }, [articleID, contentHash, loadSections, showError]);
 
   const pollPreview = async (previewID: string) => {
     const next = await getHugoPreview(previewID);
@@ -94,6 +106,8 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
     setBusy(true);
     setPreview(null);
     setWorkflow(null);
+    setPublished(false);
+    setPublishedTarget("");
     try {
       // 过期/失败预览可能没有完成目录发现，点击重试时主动刷新一次并使用刷新结果继续提交。
       const currentDiscovery = await loadSections();
@@ -132,6 +146,8 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
       // 交付成功后清除可确认的旧 Artifact，避免用户重复确认同一份内容。
       setPreview(null);
       setWorkflow(null);
+      setPublished(true);
+      setPublishedTarget(preview.target_path);
       setFilesystemStale(false);
       toast.show({ kind: "success", message: "文章已同步到 Hugo" });
       await onPublished();
@@ -143,7 +159,8 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
   };
 
   if (loading) return <section className="hugo-publish-flow" aria-live="polite"><LoaderCircle className="spin" size={16} />正在恢复 Hugo 发布状态…</section>;
-  if (workflow && !preview && workflow.state !== "failed") return <section className="hugo-publish-flow" aria-live="polite"><p className="hugo-preview-state"><LoaderCircle className="spin" size={16} />{workflow.stage} · {workflow.progress}%</p>{workflow.error && <p className="hugo-flow-error">{workflow.error}</p>}</section>;
+  if (workflow && !preview && workflow.state !== "failed" && workflow.state !== "published") return <section className="hugo-publish-flow" aria-live="polite"><p className="hugo-preview-state"><LoaderCircle className="spin" size={16} />{workflow.stage} · {workflow.progress}%</p>{workflow.error && <p className="hugo-flow-error">{workflow.error}</p>}</section>;
+  if (published) return <section className="hugo-publish-flow" aria-live="polite"><p className="hugo-published-state"><Check size={16} /><strong>当前版本已同步到 Hugo</strong></p>{publishedTarget && <code className="hugo-published-target">{publishedTarget}</code>}<p>内容版本未变化，无需重复同步。</p></section>;
   if (!discovery && !preview) return <section className="hugo-publish-flow" aria-live="polite"><LoaderCircle className="spin" size={16} />正在读取 Hugo 发布目录…</section>;
   if (discovery && discovery.sections.length === 0 && !preview) return <section className="hugo-publish-flow"><b>Hugo 中还没有可用发布目录</b><p>请先在 Hugo content 中创建一级目录，再重新读取目录。</p><button type="button" className="secondary compact-button" onClick={() => void loadSections().catch(showError)}>重新读取 Hugo 目录</button></section>;
   const failure = preview?.failure ?? workflow?.failure ?? fallbackFailure(preview?.error || workflow?.error);

@@ -46,7 +46,7 @@ test("类目管理展示 Hugo 标签及文章数量", async ({ page }) => {
 
 test("微信模板切换、复制和人工确认保持独立", async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async () => undefined } }));
-  await page.goto("/articles/a4/wechat");
+  await page.goto("/articles/a2/wechat");
   await page.getByLabel(/模板/).selectOption("minimal");
   await expect(page.locator(".wechat-document")).toHaveClass(/template-minimal/);
   await expect(page.getByRole("button", { name: "草稿已保存" })).toHaveCount(0);

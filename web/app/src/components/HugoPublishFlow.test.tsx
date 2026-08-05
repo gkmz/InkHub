@@ -38,7 +38,8 @@ test("选择 Hugo Section 后预览同一 Artifact 并确认交付", async () =>
   await userEvent.click(screen.getByRole("button", { name: "确认同步到 Hugo" }));
   await waitFor(() => expect(published).toHaveBeenCalledOnce());
   expect(screen.queryByRole("button", { name: "确认同步到 Hugo" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "生成发布预览" })).toBeInTheDocument();
+  expect(screen.getByText("当前版本已同步到 Hugo")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /生成发布预览/ })).not.toBeInTheDocument();
   expect(requests.some((request) => request.url.endsWith("/publications"))).toBe(false);
   expect(requests.find((request) => request.url.endsWith("/articles/a1/hugo-previews"))?.body).toContain('"directory":"ai"');
   expect(requests.filter((request) => request.url.endsWith("/hugo-previews/preview_1/confirm"))).toHaveLength(1);
@@ -57,6 +58,22 @@ test("刷新后直接恢复 Ready Hugo 预览", async () => {
   expect(await screen.findByText("content/posts/restored")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "确认同步到 Hugo" })).toBeInTheDocument();
   expect(requests.some((url) => url.endsWith("/hugo-sections"))).toBe(false);
+});
+
+test("当前版本已经同步且 Bundle 仍存在时进入终态，不再显示同步按钮", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/articles/a1/publication-workflow")) return Response.json({ article_id: "a1", hugo: { state: "published", progress: 100, stage: "已同步", error: "", preview: { preview_id: "preview_published", section: "posts", target_path: "content/posts/20260804-superpowers-workflow", change: "updated", files: [], diagnostics: [], state: "ready" } } });
+    if (url.endsWith("/articles/a1/hugo-sections")) return Response.json({ sections: [{ name: "posts", article_count: 8 }], existing_section: "posts", existing_directory: "", selection_locked: true });
+    throw new Error(`未处理请求: ${url}`);
+  });
+
+  render(<ToastProvider><HugoPublishFlow articleID="a1" contentHash="hash" onPublished={vi.fn()} /></ToastProvider>);
+
+  expect(await screen.findByText("当前版本已同步到 Hugo")).toBeInTheDocument();
+  expect(screen.getByText("content/posts/20260804-superpowers-workflow")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "确认同步到 Hugo" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /生成发布预览/ })).not.toBeInTheDocument();
 });
 
 test("已同步记录但 Hugo Bundle 被删除时重新扫描并生成新预览", async () => {

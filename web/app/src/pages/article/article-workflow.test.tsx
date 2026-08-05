@@ -428,10 +428,11 @@ test("微信必须先复制当前内容才能人工确认草稿", async () => {
   expect(copy).toHaveBeenCalledOnce();
 });
 
-test("剪贴板失败后恢复复制按钮并提供 HTML 兜底", async () => {
-  render(<WeChatActions copied={false} onCopy={vi.fn().mockRejectedValue(new Error("denied"))} onConfirm={vi.fn()} />);
+test("剪贴板失败后恢复复制按钮并提供手工复制兜底", async () => {
+  render(<WeChatActions html="<p>正文</p>" copied={false} onCopy={vi.fn().mockRejectedValue(new Error("denied"))} onConfirm={vi.fn()} />);
   await userEvent.click(screen.getByRole("button", { name: "复制格式化内容" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("无法写入剪贴板");
+  expect(await screen.findByRole("alert")).toHaveTextContent("无法自动写入剪贴板");
   expect(screen.getByRole("button", { name: "复制格式化内容" })).toBeEnabled();
-  expect(screen.getByRole("button", { name: "查看 HTML" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "手工复制" }));
+  expect(screen.getByRole("dialog", { name: "手工复制微信内容" })).toBeInTheDocument();
 });

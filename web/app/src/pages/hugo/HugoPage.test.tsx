@@ -26,7 +26,8 @@ test("Hugo 独立页面显示渠道导航和同步流程", async () => {
   render(<ToastProvider><HugoPage articleID="a1" onNavigate={navigate} /></ToastProvider>);
 
   expect(await screen.findByRole("heading", { name: "同步到 Hugo" })).toBeInTheDocument();
-  expect(screen.getByText("独立发布流程")).toBeInTheDocument();
+  expect(screen.getAllByText("独立发布流程")).toHaveLength(1);
+  expect(screen.getByRole("article", { name: "Hugo 发布内容" })).toHaveTextContent("正文");
   expect(screen.getByRole("button", { name: /同步到 Hugo/ })).toHaveAttribute("aria-current", "page");
   expect(await screen.findByRole("combobox", { name: "发布目录" })).toHaveValue("posts");
   expect(screen.queryByRole("heading", { name: "元数据" })).not.toBeInTheDocument();
