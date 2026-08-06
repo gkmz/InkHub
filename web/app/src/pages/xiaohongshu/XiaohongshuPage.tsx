@@ -93,8 +93,19 @@ export function XiaohongshuPage({ articleID, onNavigate }: { articleID: string; 
   const rewriting = rewriteStage !== "idle";
   const rewriteLabel = rewriteStage === "outline" ? "正在提取知识点" : rewriteStage === "rewrite" ? "正在改写笔记" : "AI 一键改写";
 
-  return <div className="xiaohongshu-page"><PublicationPageFrame article={article} active="xiaohongshu" onNavigate={onNavigate} toolbarContent={<div className="xiaohongshu-actions"><button className="secondary" onClick={() => setShowHistory((value) => !value)}><History size={15} />历史</button><button className="secondary" onClick={() => void generate()} disabled={rewriting}><RefreshCw size={15} />{rewriteLabel}</button></div>}>
+  return <div className="xiaohongshu-page"><PublicationPageFrame article={article} active="xiaohongshu" onNavigate={onNavigate}>
     {article.review_state !== "已通过" ? <section className="channel-locked" role="status"><h2>审核通过后才能准备小红书内容</h2><p>请先返回审核中心完善元数据并完成审核。</p><button className="secondary" type="button" onClick={() => onNavigate(`/articles/${articleID}`)}>返回审核中心</button></section> : <>
+      <section className="xiaohongshu-content-toolbar" aria-label="小红书内容工具">
+        <div className="xiaohongshu-content-summary">
+          <strong>内容版本</strong>
+          <span>{draft ? `${draft.state === "published" ? "已发布" : "草稿"}${draft.stale ? " · 原文已更新" : ""}` : "尚未生成草稿"}</span>
+        </div>
+        <div className="xiaohongshu-actions">
+          <button className="secondary" type="button" aria-controls="xiaohongshu-history" aria-expanded={showHistory} onClick={() => setShowHistory((value) => !value)}><History size={15} />历史版本</button>
+          <button className="secondary" type="button" onClick={() => void generate()} disabled={rewriting}><RefreshCw size={15} />{rewriteLabel}</button>
+        </div>
+        {showHistory && <aside id="xiaohongshu-history" className="xiaohongshu-history"><div className="tool-heading"><h2>版本历史</h2><button className="back" type="button" onClick={() => setShowHistory(false)}>关闭</button></div>{view.history.map((item) => <button key={item.id} type="button" className={`xiaohongshu-history-item${draft?.id === item.id ? " active" : ""}`} onClick={() => { setDraft(ensurePages(item, article.preview_html, template)); setShowHistory(false); }}><strong>{item.title || "未命名草稿"}</strong><span>{item.state}{item.stale ? " · 内容已更新" : ""}</span><time>{new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.created_at))}</time></button>)}</aside>}
+      </section>
       <section className="xiaohongshu-settings" aria-label="小红书发布设置">
         <div className="tool-heading"><h2>小红书文案草稿</h2><span className="template-current"><LayoutTemplate size={15} />{XIAOHONGSHU_DEFAULT_TEMPLATE.label}</span></div>
         {!draft ? <div className="empty-state compact wide"><Sparkles size={24} /><p>还没有小红书草稿</p><button className="primary" onClick={() => void generate()} disabled={rewriting}><Sparkles size={15} />{rewriteLabel}</button></div> : <>
@@ -109,7 +120,6 @@ export function XiaohongshuPage({ articleID, onNavigate }: { articleID: string; 
       </section>
       {draft && <main className="xiaohongshu-layout"><section className="xiaohongshu-editor-shell"><XiaohongshuCardEditor pages={draft.pages} template={template} title={draft.title} onPagesChange={(pages) => update({ pages, body_html: flattenXiaohongshuPages(pages) })} onSelectionChange={() => undefined} /><div className="xiaohongshu-export"><span>预计 {draft.pages.length} 页图片</span><button className="primary" onClick={() => void exportImages()} disabled={exporting}><Download size={15} />{exporting ? "导出中" : "导出图片集"}</button></div></section></main>}
     </>}
-    {showHistory && <aside className="xiaohongshu-history"><div className="tool-heading"><h2>版本历史</h2><button className="back" onClick={() => setShowHistory(false)}>关闭</button></div>{view.history.map((item) => <button key={item.id} className={`xiaohongshu-history-item${draft?.id === item.id ? " active" : ""}`} onClick={() => { setDraft(ensurePages(item, article.preview_html, template)); setShowHistory(false); }}><strong>{item.title || "未命名草稿"}</strong><span>{item.state}{item.stale ? " · 内容已更新" : ""}</span><time>{new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.created_at))}</time></button>)}</aside>}
   </PublicationPageFrame></div>;
 }
 
