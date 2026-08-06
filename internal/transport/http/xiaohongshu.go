@@ -90,6 +90,10 @@ func (h *runtimeHandler) xiaohongshu(response http.ResponseWriter, request *http
 		h.xiaohongshuView(response, request, articleID)
 	case request.Method == http.MethodGet && suffix == "history":
 		h.xiaohongshuView(response, request, articleID)
+	case request.Method == http.MethodPost && suffix == "drafts/outline":
+		h.xiaohongshuOutline(response, request, articleID)
+	case request.Method == http.MethodPost && suffix == "drafts/rewrite":
+		h.xiaohongshuRewrite(response, request, articleID)
 	case request.Method == http.MethodPost && suffix == "drafts/generate":
 		h.xiaohongshuGenerate(response, request, articleID)
 	case request.Method == http.MethodPost && suffix == "drafts":
@@ -151,54 +155,31 @@ func (h *runtimeHandler) xiaohongshuGenerate(response http.ResponseWriter, reque
 		mapError(response, err)
 		return
 	}
-	if h.providerRuntime == nil {
-		writeError(response, http.StatusConflict, "ai.not_configured", "尚未配置 AI Provider，无法提取小红书文案")
-		return
-	}
-	var providerID, rawConfig string
-	if err := h.db.QueryRowContext(request.Context(), `SELECT id,config_json FROM provider_instances WHERE workspace_id=? AND provider_type='openai-compatible' AND enabled=1`, workspaceID).Scan(&providerID, &rawConfig); err != nil {
-		writeError(response, http.StatusConflict, "ai.not_configured", "尚未配置 AI Provider，无法提取小红书文案")
-		return
-	}
-	var stored storedAIConfig
-	if json.Unmarshal([]byte(rawConfig), &stored) != nil {
-		writeError(response, http.StatusInternalServerError, "ai.config_invalid", "AI Provider 配置损坏")
-		return
-	}
-	providerConfig, _ := json.Marshal(map[string]any{"base_url": stored.BaseURL, "model": stored.Model, "timeout": stored.Timeout})
-	provider, err := h.providerRuntime.BuildAI(request.Context(), contracts.ProviderRef{ID: providerID, Type: contracts.ProviderOpenAI}, contracts.ConfigView{Data: providerConfig, SecretRefs: map[string]string{"api_key": stored.SecretRef}})
+	source, err := prepareXiaohongshuRewriteSource(rendered)
 	if err != nil {
 		mapError(response, err)
 		return
 	}
-	aiResponse, err := provider.Generate(request.Context(), contracts.AIRequest{
-		Task:         contracts.AITaskXiaohongshu,
-		Article:      contracts.ArticleInput{Title: title, Body: rendered},
-		OutputSchema: xiaohongshuOutputSchema, InputContentHash: contentHash, AllowBody: true,
-	})
+	provider, err := h.buildXiaohongshuAIProvider(request.Context(), workspaceID)
 	if err != nil {
 		mapError(response, err)
 		return
 	}
-	if aiResponse.InputContentHash != contentHash {
-		writeError(response, http.StatusConflict, "content.stale", "文章内容已变化，请重新提取小红书文案")
-		return
-	}
-	generated, err := parseXiaohongshuAIOutput(aiResponse.Suggestions)
+	points, _, err := generateXiaohongshuOutline(request.Context(), provider, title, contentHash, source)
 	if err != nil {
 		mapError(response, err)
 		return
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	draft := xiaohongshu.Draft{ID: stableXiaohongshuID("draft", articleID, contentHash, now), ArticleID: articleID, WorkspaceID: workspaceID, SourceContentHash: contentHash, Title: generated.Title, BodyHTML: generated.BodyHTML, Topics: generated.Topics, SourceNote: generated.SourceNote, CommentCopy: generated.CommentCopy, AIModel: aiResponse.Model, PromptVersion: "xiaohongshu-v2", State: xiaohongshu.DraftStateDraft}
-	draft.CreatedAt, draft.UpdatedAt = now, now
-	repo := repository.NewXiaohongshuRepository(h.db)
-	if err := repo.SaveDraft(request.Context(), draft); err != nil {
+	result, model, err := generateXiaohongshuRewrite(request.Context(), provider, title, contentHash, source, points)
+	if err != nil {
 		mapError(response, err)
 		return
 	}
-	payload, _ := json.Marshal(map[string]string{"source": "ai", "model": aiResponse.Model})
-	_ = repo.SaveEvent(request.Context(), xiaohongshu.Event{ID: stableXiaohongshuID("event", draft.ID, "generated"), DraftID: draft.ID, EventType: "generated", Payload: string(payload)})
+	draft, err := h.saveXiaohongshuAIDraft(request.Context(), articleID, workspaceID, contentHash, model, result, len(points), len(source.Media))
+	if err != nil {
+		mapError(response, err)
+		return
+	}
 	writeJSON(response, http.StatusCreated, xiaohongshuDraftView(draft, contentHash))
 }
 

@@ -2,12 +2,19 @@ package httptransport
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/gkmz/InkHub/internal/domain/xiaohongshu"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
+	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -80,6 +87,89 @@ type xiaohongshuLockedMedia struct {
 type xiaohongshuRewriteSource struct {
 	HTML  string
 	Media []xiaohongshuLockedMedia
+}
+
+type xiaohongshuAIRewriteResult struct {
+	Generated       xiaohongshuAIGenerated
+	CoveredPointIDs []string
+}
+
+type xiaohongshuRewriteModelInput struct {
+	SourceHTML      string                      `json:"source_html"`
+	KnowledgePoints []XiaohongshuKnowledgePoint `json:"knowledge_points"`
+}
+
+// xiaohongshuOutline 提取当前文章知识点，不创建或覆盖草稿。
+func (h *runtimeHandler) xiaohongshuOutline(response http.ResponseWriter, request *http.Request, articleID string) {
+	var input struct{}
+	if decodeJSON(request, &input) != nil {
+		writeError(response, http.StatusBadRequest, "request.invalid", "小红书知识提取请求无效")
+		return
+	}
+	workspaceID, contentHash, title, rendered, err := h.xiaohongshuArticle(request.Context(), articleID)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	source, err := prepareXiaohongshuRewriteSource(rendered)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	provider, err := h.buildXiaohongshuAIProvider(request.Context(), workspaceID)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	points, _, err := generateXiaohongshuOutline(request.Context(), provider, title, contentHash, source)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusOK, XiaohongshuOutlineView{ContentHash: contentHash, KnowledgePoints: points})
+}
+
+// xiaohongshuRewrite 使用已确认的知识清单改写并保存新的小红书草稿版本。
+func (h *runtimeHandler) xiaohongshuRewrite(response http.ResponseWriter, request *http.Request, articleID string) {
+	var input xiaohongshuRewriteInput
+	if decodeJSON(request, &input) != nil || strings.TrimSpace(input.ContentHash) == "" {
+		writeError(response, http.StatusBadRequest, "request.invalid", "小红书改写请求无效")
+		return
+	}
+	if err := validateXiaohongshuKnowledgePoints(input.KnowledgePoints); err != nil {
+		mapError(response, err)
+		return
+	}
+	workspaceID, contentHash, title, rendered, err := h.xiaohongshuArticle(request.Context(), articleID)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	if input.ContentHash != contentHash {
+		mapError(response, ErrStaleContent)
+		return
+	}
+	source, err := prepareXiaohongshuRewriteSource(rendered)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	provider, err := h.buildXiaohongshuAIProvider(request.Context(), workspaceID)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	result, model, err := generateXiaohongshuRewrite(request.Context(), provider, title, contentHash, source, input.KnowledgePoints)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	draft, err := h.saveXiaohongshuAIDraft(request.Context(), articleID, workspaceID, contentHash, model, result, len(input.KnowledgePoints), len(source.Media))
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	writeJSON(response, http.StatusCreated, xiaohongshuDraftView(draft, contentHash))
 }
 
 // prepareXiaohongshuRewriteSource 将不可由 AI 修改的素材块替换为稳定标记。
@@ -194,6 +284,13 @@ func validateXiaohongshuCoverage(points []XiaohongshuKnowledgePoint, coveredIDs 
 // restoreXiaohongshuMedia 校验素材标记后恢复模型不可修改的原始 HTML。
 func restoreXiaohongshuMedia(value string, media []xiaohongshuLockedMedia) (string, error) {
 	found := xiaohongshuMediaTokenPattern.FindAllString(value, -1)
+	topLevelTokens, err := collectTopLevelXiaohongshuMediaTokens(value)
+	if err != nil {
+		return "", err
+	}
+	if len(topLevelTokens) != len(found) {
+		return "", newXiaohongshuAIResponseError("AI 未将原文素材标记放在独立内容块中")
+	}
 	counts := make(map[string]int, len(found))
 	for _, token := range found {
 		counts[token]++
@@ -217,7 +314,163 @@ func restoreXiaohongshuMedia(value string, media []xiaohongshuLockedMedia) (stri
 	for _, item := range media {
 		result = strings.ReplaceAll(result, item.Token, item.HTML)
 	}
+	if strings.Contains(result, xiaohongshuMediaTokenPrefix) {
+		return "", newXiaohongshuAIResponseError("AI 改写残留了无效素材标记")
+	}
 	return result, nil
+}
+
+func collectTopLevelXiaohongshuMediaTokens(value string) ([]string, error) {
+	context := &html.Node{Type: html.ElementNode, DataAtom: atom.Div, Data: "div"}
+	nodes, err := html.ParseFragment(strings.NewReader(value), context)
+	if err != nil {
+		return nil, newXiaohongshuAIResponseError("AI 小红书正文 HTML 无效")
+	}
+	tokens := make([]string, 0)
+	for _, node := range nodes {
+		if node.Type != html.TextNode {
+			continue
+		}
+		value := strings.TrimSpace(node.Data)
+		if value != "" && xiaohongshuMediaTokenPattern.MatchString(value) && xiaohongshuMediaTokenPattern.FindString(value) == value {
+			tokens = append(tokens, value)
+		}
+	}
+	return tokens, nil
+}
+
+// buildXiaohongshuAIProvider 从当前工作区配置构建可执行的 AI Provider。
+func (h *runtimeHandler) buildXiaohongshuAIProvider(ctx context.Context, workspaceID string) (contracts.AIProvider, error) {
+	if h.providerRuntime == nil {
+		return nil, &contracts.ProviderError{Code: "ai.not_configured", Category: contracts.ErrorConflict, Message: "尚未配置 AI Provider，无法改写小红书笔记"}
+	}
+	var providerID, rawConfig string
+	err := h.db.QueryRowContext(ctx, `SELECT id,config_json FROM provider_instances WHERE workspace_id=? AND provider_type='openai-compatible' AND enabled=1`, workspaceID).Scan(&providerID, &rawConfig)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, &contracts.ProviderError{Code: "ai.not_configured", Category: contracts.ErrorConflict, Message: "尚未配置 AI Provider，无法改写小红书笔记"}
+	}
+	if err != nil {
+		return nil, err
+	}
+	var stored storedAIConfig
+	if json.Unmarshal([]byte(rawConfig), &stored) != nil {
+		return nil, &contracts.ProviderError{Code: "ai.config_invalid", Category: contracts.ErrorInternal, Message: "AI Provider 配置损坏"}
+	}
+	providerConfig, err := json.Marshal(map[string]any{"base_url": stored.BaseURL, "model": stored.Model, "timeout": stored.Timeout})
+	if err != nil {
+		return nil, fmt.Errorf("编码 AI Provider 配置: %w", err)
+	}
+	return h.providerRuntime.BuildAI(ctx,
+		contracts.ProviderRef{ID: providerID, Type: contracts.ProviderOpenAI},
+		contracts.ConfigView{Data: providerConfig, SecretRefs: map[string]string{"api_key": stored.SecretRef}},
+	)
+}
+
+// generateXiaohongshuOutline 调用 AI 提取经过校验的原文知识清单。
+func generateXiaohongshuOutline(ctx context.Context, provider contracts.AIProvider, title, contentHash string, source xiaohongshuRewriteSource) ([]XiaohongshuKnowledgePoint, string, error) {
+	response, err := provider.Generate(ctx, contracts.AIRequest{
+		Task:             contracts.AITaskXiaohongshuOutline,
+		Article:          contracts.ArticleInput{Title: title, Body: source.HTML},
+		OutputSchema:     xiaohongshuOutlineOutputSchema,
+		InputContentHash: contentHash,
+		AllowBody:        true,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	if response.InputContentHash != contentHash {
+		return nil, "", ErrStaleContent
+	}
+	points, err := parseXiaohongshuKnowledgePoints(response.Suggestions)
+	return points, response.Model, err
+}
+
+// generateXiaohongshuRewrite 调用 AI 改写笔记并恢复全部锁定素材。
+func generateXiaohongshuRewrite(ctx context.Context, provider contracts.AIProvider, title, contentHash string, source xiaohongshuRewriteSource, points []XiaohongshuKnowledgePoint) (xiaohongshuAIRewriteResult, string, error) {
+	if err := validateXiaohongshuKnowledgePoints(points); err != nil {
+		return xiaohongshuAIRewriteResult{}, "", err
+	}
+	modelInput, err := json.Marshal(xiaohongshuRewriteModelInput{SourceHTML: source.HTML, KnowledgePoints: points})
+	if err != nil {
+		return xiaohongshuAIRewriteResult{}, "", fmt.Errorf("编码小红书改写输入: %w", err)
+	}
+	response, err := provider.Generate(ctx, contracts.AIRequest{
+		Task:             contracts.AITaskXiaohongshuRewrite,
+		Article:          contracts.ArticleInput{Title: title, Body: string(modelInput)},
+		OutputSchema:     xiaohongshuRewriteOutputSchema,
+		InputContentHash: contentHash,
+		AllowBody:        true,
+	})
+	if err != nil {
+		return xiaohongshuAIRewriteResult{}, "", err
+	}
+	if response.InputContentHash != contentHash {
+		return xiaohongshuAIRewriteResult{}, "", ErrStaleContent
+	}
+	result, err := parseXiaohongshuRewriteOutput(response.Suggestions)
+	if err != nil {
+		return xiaohongshuAIRewriteResult{}, "", err
+	}
+	if err := validateXiaohongshuCoverage(points, result.CoveredPointIDs); err != nil {
+		return xiaohongshuAIRewriteResult{}, "", err
+	}
+	restored, err := restoreXiaohongshuMedia(result.Generated.BodyHTML, source.Media)
+	if err != nil {
+		return xiaohongshuAIRewriteResult{}, "", err
+	}
+	result.Generated.BodyHTML = restored
+	return result, response.Model, nil
+}
+
+func parseXiaohongshuRewriteOutput(items []contracts.Suggestion) (xiaohongshuAIRewriteResult, error) {
+	values := make(map[string]json.RawMessage, len(items))
+	for _, item := range items {
+		values[item.Field] = item.Value
+	}
+	generated, err := parseXiaohongshuAIOutput(items)
+	if err != nil {
+		return xiaohongshuAIRewriteResult{}, newXiaohongshuAIResponseError(err.Error())
+	}
+	var coveredIDs []string
+	if err := json.Unmarshal(values["covered_point_ids"], &coveredIDs); err != nil || len(coveredIDs) == 0 {
+		return xiaohongshuAIRewriteResult{}, newXiaohongshuAIResponseError("AI 知识点覆盖格式无效")
+	}
+	return xiaohongshuAIRewriteResult{Generated: generated, CoveredPointIDs: coveredIDs}, nil
+}
+
+// saveXiaohongshuAIDraft 在全部生成校验完成后持久化新的草稿版本。
+func (h *runtimeHandler) saveXiaohongshuAIDraft(ctx context.Context, articleID, workspaceID, contentHash, model string, result xiaohongshuAIRewriteResult, knowledgePointCount, mediaCount int) (xiaohongshu.Draft, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	generated := result.Generated
+	draft := xiaohongshu.Draft{
+		ID:                stableXiaohongshuID("draft", articleID, contentHash, now),
+		ArticleID:         articleID,
+		WorkspaceID:       workspaceID,
+		SourceContentHash: contentHash,
+		Title:             generated.Title,
+		BodyHTML:          generated.BodyHTML,
+		Topics:            generated.Topics,
+		SourceNote:        generated.SourceNote,
+		CommentCopy:       generated.CommentCopy,
+		AIModel:           model,
+		PromptVersion:     "xiaohongshu-v3",
+		State:             xiaohongshu.DraftStateDraft,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	repo := repository.NewXiaohongshuRepository(h.db)
+	if err := repo.SaveDraft(ctx, draft); err != nil {
+		return xiaohongshu.Draft{}, err
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"source": "ai", "model": model, "prompt_version": "xiaohongshu-v3",
+		"knowledge_point_count": knowledgePointCount, "media_count": mediaCount,
+	})
+	_ = repo.SaveEvent(ctx, xiaohongshu.Event{
+		ID: stableXiaohongshuID("event", draft.ID, "generated"), DraftID: draft.ID,
+		EventType: "generated", Payload: string(payload),
+	})
+	return draft, nil
 }
 
 func parseXiaohongshuKnowledgePoints(items []contracts.Suggestion) ([]XiaohongshuKnowledgePoint, error) {
