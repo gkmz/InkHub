@@ -65,8 +65,13 @@ func decodeResponse(content []byte, task contracts.AITask) (decodedResponse, err
 	if err := decoder.Decode(&response); err != nil || len(response.Choices) == 0 {
 		return decodedResponse{}, invalidResponseError(err)
 	}
-	if task == contracts.AITaskXiaohongshu {
+	switch task {
+	case contracts.AITaskXiaohongshu:
 		return decodeXiaohongshuResponse(response.Choices[0].Message.Content, response.Model)
+	case contracts.AITaskXiaohongshuOutline:
+		return decodeXiaohongshuOutlineResponse(response.Choices[0].Message.Content, response.Model)
+	case contracts.AITaskXiaohongshuRewrite:
+		return decodeXiaohongshuRewriteResponse(response.Choices[0].Message.Content, response.Model)
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(response.Choices[0].Message.Content), &fields); err != nil {
@@ -113,6 +118,59 @@ func decodeResponse(content []byte, task contracts.AITask) (decodedResponse, err
 		suggestions = append(suggestions, contracts.Suggestion{Field: "keywords", Value: mustJSON(keywords), Rationale: metadata.Reasons["keywords"]})
 	}
 	return decodedResponse{Model: response.Model, Suggestions: suggestions}, nil
+}
+
+type xiaohongshuKnowledgePointResponse struct {
+	ID             string `json:"id"`
+	Kind           string `json:"kind"`
+	Summary        string `json:"summary"`
+	SourceEvidence string `json:"source_evidence"`
+}
+
+// decodeXiaohongshuOutlineResponse 校验知识清单并保留结构化数组供传输层复核。
+func decodeXiaohongshuOutlineResponse(content, model string) (decodedResponse, error) {
+	var output struct {
+		KnowledgePoints []xiaohongshuKnowledgePointResponse `json:"knowledge_points"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&output); err != nil {
+		return decodedResponse{}, invalidResponseError(err)
+	}
+	if len(output.KnowledgePoints) == 0 {
+		return decodedResponse{}, invalidResponseError(errors.New("小红书知识清单不能为空"))
+	}
+	return decodedResponse{Model: model, Suggestions: []contracts.Suggestion{
+		{Field: "knowledge_points", Value: mustJSON(output.KnowledgePoints)},
+	}}, nil
+}
+
+// decodeXiaohongshuRewriteResponse 校验小红书笔记及其知识点覆盖声明。
+func decodeXiaohongshuRewriteResponse(content, model string) (decodedResponse, error) {
+	var output struct {
+		Title           string   `json:"title"`
+		BodyHTML        string   `json:"body_html"`
+		CoveredPointIDs []string `json:"covered_point_ids"`
+		Topics          string   `json:"topics"`
+		SourceNote      string   `json:"source_note"`
+		CommentCopy     string   `json:"comment_copy"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&output); err != nil {
+		return decodedResponse{}, invalidResponseError(err)
+	}
+	if strings.TrimSpace(output.Title) == "" || strings.TrimSpace(output.BodyHTML) == "" || len(output.CoveredPointIDs) == 0 {
+		return decodedResponse{}, invalidResponseError(errors.New("小红书标题、正文或知识点覆盖不能为空"))
+	}
+	return decodedResponse{Model: model, Suggestions: []contracts.Suggestion{
+		{Field: "title", Value: mustJSON(strings.TrimSpace(output.Title))},
+		{Field: "body_html", Value: mustJSON(output.BodyHTML)},
+		{Field: "covered_point_ids", Value: mustJSON(output.CoveredPointIDs)},
+		{Field: "topics", Value: mustJSON(output.Topics)},
+		{Field: "source_note", Value: mustJSON(strings.TrimSpace(output.SourceNote))},
+		{Field: "comment_copy", Value: mustJSON(strings.TrimSpace(output.CommentCopy))},
+	}}, nil
 }
 
 // decodeXiaohongshuResponse 校验小红书适配结果并转换为统一的结构化建议项。

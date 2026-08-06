@@ -233,8 +233,8 @@ func (p *Provider) buildRequest(request contracts.AIRequest) ([]byte, error) {
 		return nil, &contracts.ProviderError{Code: "openai.input_too_large", Category: contracts.ErrorValidation, Message: "AI 输入超过配置限制"}
 	}
 	instruction := "请只返回合法的 json 对象，不要输出 Markdown 代码围栏或额外解释。"
-	if request.Task == contracts.AITaskXiaohongshu {
-		instruction += " 你是小红书内容编辑，请从原文提炼适合手机阅读的短文案，保留核心观点，删除完整文章的展开论证，不要复述全文。"
+	if taskInstruction := xiaohongshuInstruction(request.Task); taskInstruction != "" {
+		instruction += " " + taskInstruction
 	}
 	payload, err := json.Marshal(chatRequest{
 		Model: p.config.Model,
@@ -249,6 +249,20 @@ func (p *Provider) buildRequest(request contracts.AIRequest) ([]byte, error) {
 		return nil, &contracts.ProviderError{Code: "openai.request_invalid", Category: contracts.ErrorInternal, Message: "无法编码 AI 请求", Cause: err}
 	}
 	return payload, nil
+}
+
+// xiaohongshuInstruction 返回知识提取和笔记改写各自的强约束提示词。
+func xiaohongshuInstruction(task contracts.AITask) string {
+	switch task {
+	case contracts.AITaskXiaohongshuOutline:
+		return "你是技术文章知识编辑。请穷举理解和复述原文必需的核心观点、事实、步骤、注意事项、案例与结论；合并重复表达；source_evidence 必须直接来自原文；不要把素材标记当作普通文字改写。"
+	case contracts.AITaskXiaohongshuRewrite:
+		return "你是小红书技术笔记编辑。必须覆盖输入知识清单中的每个 ID，忠于原文事实、术语、链接和主要顺序；只合并重复内容和缩短铺垫；使用短段落、小标题和列表；每个素材标记必须原样出现一次；禁止虚构经历、事实和夸张承诺。"
+	case contracts.AITaskXiaohongshu:
+		return "你是小红书内容编辑。请忠于原文核心观点，生成适合手机阅读的结构化笔记，不要虚构原文没有的事实。"
+	default:
+		return ""
+	}
 }
 
 func (p *Provider) do(ctx context.Context, payload []byte) ([]byte, error) {
