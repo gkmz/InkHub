@@ -266,7 +266,7 @@ export interface XiaohongshuDraft {
   title: string;
   body_html: string;
   pages: XiaohongshuPage[];
-	topics: string;
+  topics: string;
   source_note: string;
   comment_copy: string;
   ai_model: string;
@@ -275,6 +275,18 @@ export interface XiaohongshuDraft {
   stale: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface XiaohongshuKnowledgePoint {
+  id: string;
+  kind: "claim" | "fact" | "step" | "warning" | "example" | "conclusion";
+  summary: string;
+  source_evidence: string;
+}
+
+export interface XiaohongshuRewriteOutline {
+  content_hash: string;
+  knowledge_points: XiaohongshuKnowledgePoint[];
 }
 
 export type XiaohongshuBlockKind = "paragraph" | "heading" | "image" | "code" | "table" | "text";

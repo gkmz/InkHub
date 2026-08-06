@@ -1,4 +1,4 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, MermaidTheme, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, SuggestionHistoryResponse, SuggestionVersionView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft, XiaohongshuDraft, XiaohongshuView } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, MermaidTheme, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, SuggestionHistoryResponse, SuggestionVersionView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft, XiaohongshuDraft, XiaohongshuRewriteOutline, XiaohongshuView } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -175,6 +175,19 @@ export function getXiaohongshu(articleID: string, signal?: AbortSignal) {
 /** generateXiaohongshuDraft 调用 AI 提炼并生成新的小红书草稿版本，不覆盖历史。 */
 export function generateXiaohongshuDraft(articleID: string) {
   return request<XiaohongshuDraft>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/drafts/generate`, { method: "POST", body: "{}" });
+}
+
+/** outlineXiaohongshuDraft 从原文提取必须由最终笔记覆盖的知识清单。 */
+export function outlineXiaohongshuDraft(articleID: string) {
+  return request<XiaohongshuRewriteOutline>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/drafts/outline`, { method: "POST", body: "{}" });
+}
+
+/** rewriteXiaohongshuDraft 使用知识清单生成并保存新的小红书笔记版本。 */
+export function rewriteXiaohongshuDraft(articleID: string, outline: XiaohongshuRewriteOutline) {
+  return request<XiaohongshuDraft>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/drafts/rewrite`, {
+    method: "POST",
+    body: JSON.stringify({ content_hash: outline.content_hash, knowledge_points: outline.knowledge_points }),
+  });
 }
 
 /** saveXiaohongshuDraft 保存用户整体编辑后的小红书草稿。 */

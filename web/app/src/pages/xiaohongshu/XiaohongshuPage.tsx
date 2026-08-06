@@ -1,12 +1,14 @@
 import { Download, History, LayoutTemplate, RefreshCw, Save, Send, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { getArticle, getXiaohongshu, generateXiaohongshuDraft, markXiaohongshuPublished, saveXiaohongshuDraft, saveXiaohongshuRender } from "../../api/client";
+import { getArticle, getXiaohongshu, markXiaohongshuPublished, outlineXiaohongshuDraft, rewriteXiaohongshuDraft, saveXiaohongshuDraft, saveXiaohongshuRender } from "../../api/client";
 import type { ArticleDetail, XiaohongshuDraft, XiaohongshuView } from "../../api/types";
 import { PublicationPageFrame } from "../../components/PublicationPageFrame";
 import { inlineXiaohongshuImages, renderXiaohongshuMermaidImages, stripXiaohongshuTitle } from "./xiaohongshuAdapter";
 import { buildXiaohongshuPages, flattenXiaohongshuPages, getXiaohongshuTemplate, XIAOHONGSHU_DEFAULT_TEMPLATE } from "./xiaohongshuLayout";
 import { XiaohongshuCardEditor } from "./XiaohongshuCardEditor";
 import { measureXiaohongshuContentScale, xiaohongshuScaledContentStyle } from "./xiaohongshuSizing";
+
+type RewriteStage = "idle" | "outline" | "rewrite";
 
 /** XiaohongshuPage 提供页面块编辑、模板切换、图片导出和人工发布确认。 */
 export function XiaohongshuPage({ articleID, onNavigate }: { articleID: string; onNavigate: (path: string) => void }) {
@@ -15,7 +17,7 @@ export function XiaohongshuPage({ articleID, onNavigate }: { articleID: string; 
   const [draft, setDraft] = useState<XiaohongshuDraft | null>(null);
   const template = XIAOHONGSHU_DEFAULT_TEMPLATE.id;
   const [saving, setSaving] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [rewriteStage, setRewriteStage] = useState<RewriteStage>("idle");
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState("");
   const [showHistory, setShowHistory] = useState(false);
@@ -32,15 +34,17 @@ export function XiaohongshuPage({ articleID, onNavigate }: { articleID: string; 
   if (!article || !view) return <div className="page-state">正在打开小红书内容中心…</div>;
   const update = (patch: Partial<XiaohongshuDraft>) => setDraft((current) => current ? { ...current, ...patch } : current);
   const generate = async () => {
-    if (!window.confirm("AI 会从文章中提炼小红书标题、短文案和话题，并创建新的草稿版本。旧版本会保留。继续吗？")) return;
-    setGenerating(true); setMessage("");
+    if (!window.confirm("AI 会先提取原文知识点，再改写为适合小红书阅读的笔记，并创建新版本。当前版本会保留在历史中。继续吗？")) return;
+    setRewriteStage("outline"); setMessage("");
     try {
-      const next = ensurePages(await generateXiaohongshuDraft(articleID), "", template);
+      const outline = await outlineXiaohongshuDraft(articleID);
+      setRewriteStage("rewrite");
+      const next = ensurePages(await rewriteXiaohongshuDraft(articleID, outline), "", template);
       setDraft(next);
       setView((current) => current ? { ...current, latest: next, history: [next, ...current.history] } : current);
-      setMessage("已生成新草稿，旧版本仍保留在历史中");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "生成失败"); }
-    finally { setGenerating(false); }
+      setMessage("已生成小红书笔记，原版本仍保留在历史中");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "AI 改写失败"); }
+    finally { setRewriteStage("idle"); }
   };
   const save = async () => {
     if (!draft) return;
@@ -86,19 +90,22 @@ export function XiaohongshuPage({ articleID, onNavigate }: { articleID: string; 
     catch (error) { setMessage(error instanceof Error ? error.message : "发布确认失败"); }
   };
 
-  return <div className="xiaohongshu-page"><PublicationPageFrame article={article} active="xiaohongshu" onNavigate={onNavigate} toolbarContent={<div className="xiaohongshu-actions"><button className="secondary" onClick={() => setShowHistory((value) => !value)}><History size={15} />历史</button><button className="secondary" onClick={() => void generate()} disabled={generating}><RefreshCw size={15} />{generating ? "AI 提取中" : "重新 AI 提取"}</button></div>}>
+  const rewriting = rewriteStage !== "idle";
+  const rewriteLabel = rewriteStage === "outline" ? "正在提取知识点" : rewriteStage === "rewrite" ? "正在改写笔记" : "AI 一键改写";
+
+  return <div className="xiaohongshu-page"><PublicationPageFrame article={article} active="xiaohongshu" onNavigate={onNavigate} toolbarContent={<div className="xiaohongshu-actions"><button className="secondary" onClick={() => setShowHistory((value) => !value)}><History size={15} />历史</button><button className="secondary" onClick={() => void generate()} disabled={rewriting}><RefreshCw size={15} />{rewriteLabel}</button></div>}>
     {article.review_state !== "已通过" ? <section className="channel-locked" role="status"><h2>审核通过后才能准备小红书内容</h2><p>请先返回审核中心完善元数据并完成审核。</p><button className="secondary" type="button" onClick={() => onNavigate(`/articles/${articleID}`)}>返回审核中心</button></section> : <>
       <section className="xiaohongshu-settings" aria-label="小红书发布设置">
         <div className="tool-heading"><h2>小红书文案草稿</h2><span className="template-current"><LayoutTemplate size={15} />{XIAOHONGSHU_DEFAULT_TEMPLATE.label}</span></div>
-        {!draft ? <div className="empty-state compact wide"><Sparkles size={24} /><p>还没有小红书草稿</p><button className="primary" onClick={() => void generate()}><Sparkles size={15} />AI 提取文案</button></div> : <>
+        {!draft ? <div className="empty-state compact wide"><Sparkles size={24} /><p>还没有小红书草稿</p><button className="primary" onClick={() => void generate()} disabled={rewriting}><Sparkles size={15} />{rewriteLabel}</button></div> : <>
           <label className="wide">标题<input value={draft.title} onChange={(event) => update({ title: event.target.value })} /></label>
-          {draft.ai_model === "inkhub-adapter-v1" && <p className="inline-status wide">这是旧版完整文章草稿，点击“重新 AI 提取”生成短文案。</p>}
+          {draft.ai_model === "inkhub-adapter-v1" && <p className="inline-status wide">这是原文分页版本，可使用“AI 一键改写”生成适合小红书传播的笔记。</p>}
           <label>话题<textarea value={draft.topics} onChange={(event) => update({ topics: event.target.value })} placeholder="#AI编程 #效率工具" /></label>
           <label>来源说明<textarea value={draft.source_note} onChange={(event) => update({ source_note: event.target.value })} /></label>
           <label className="wide">评论区文案<textarea value={draft.comment_copy} onChange={(event) => update({ comment_copy: event.target.value })} /></label>
           <div className="xiaohongshu-settings-actions"><button className="primary" onClick={() => void save()} disabled={saving}><Save size={15} />{saving ? "保存中" : "保存草稿"}</button><button className="secondary" onClick={() => void publish()} disabled={draft.stale || draft.state === "published"}><Send size={15} />标记已发布</button></div>
-          {message && <p className="inline-status wide" role="status">{message}</p>}
         </>}
+        {message && <p className="inline-status wide" role="status">{message}</p>}
       </section>
       {draft && <main className="xiaohongshu-layout"><section className="xiaohongshu-editor-shell"><XiaohongshuCardEditor pages={draft.pages} template={template} title={draft.title} onPagesChange={(pages) => update({ pages, body_html: flattenXiaohongshuPages(pages) })} onSelectionChange={() => undefined} /><div className="xiaohongshu-export"><span>预计 {draft.pages.length} 页图片</span><button className="primary" onClick={() => void exportImages()} disabled={exporting}><Download size={15} />{exporting ? "导出中" : "导出图片集"}</button></div></section></main>}
     </>}
