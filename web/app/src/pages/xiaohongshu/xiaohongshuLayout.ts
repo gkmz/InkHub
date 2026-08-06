@@ -41,7 +41,7 @@ export const XIAOHONGSHU_DEFAULT_TEMPLATE: XiaohongshuTemplate = {
   paddingX: 22,
   paddingY: 28,
   contentWidth: 331,
-  contentHeight: 540,
+  contentHeight: 560,
   firstPageContentHeight: 430,
   backgroundColor: "#f3f6f1",
   textColor: "#26332f",
@@ -118,9 +118,22 @@ export function renderXiaohongshuTableCards(table: HTMLTableElement): string[] {
 export function paginateXiaohongshuBlocks(blocks: XiaohongshuBlock[], metrics: XiaohongshuTemplateMetrics, measure: BlockMeasure): XiaohongshuPage[] {
   const pages: XiaohongshuPage[] = [];
   let current: XiaohongshuPage = createPage(0);
-  for (const block of blocks) {
+  const pending = [...blocks];
+  while (pending.length > 0) {
+    const block = pending.shift();
+    if (!block) continue;
     const height = Math.max(1, measure(block, metrics.contentWidth));
     const pageHeight = pages.length === 0 ? metrics.firstPageContentHeight ?? metrics.contentHeight : metrics.contentHeight;
+    const remainingHeight = pageHeight - current.measured_height;
+    const availableHeight = current.blocks.length > 0 ? remainingHeight : pageHeight;
+    if (height > availableHeight && availableHeight >= 72) {
+      const parts = splitXiaohongshuBlock(block, metrics.contentWidth, availableHeight, measure);
+      if (parts.length > 1) {
+        // 先把当前页能容纳的部分放回队列，后续部分自然进入下一页继续排版。
+        pending.unshift(...parts);
+        continue;
+      }
+    }
     if (current.blocks.length > 0 && current.measured_height + height > pageHeight) {
       pages.push(current);
       current = createPage(pages.length);
@@ -130,6 +143,117 @@ export function paginateXiaohongshuBlocks(blocks: XiaohongshuBlock[], metrics: X
   }
   if (current.blocks.length > 0 || pages.length === 0) pages.push(current);
   return pages;
+}
+
+/** splitXiaohongshuBlock 按句末边界拆分正文块，减少段落整体换页造成的空白。 */
+function splitXiaohongshuBlock(block: XiaohongshuBlock, contentWidth: number, availableHeight: number, measure: BlockMeasure): XiaohongshuBlock[] {
+  if (!block.splittable || block.kind === "image" || block.kind === "code" || block.kind === "table") return [block];
+  const parsed = new DOMParser().parseFromString(`<div>${block.html}</div>`, "text/html");
+  const root = parsed.body.firstElementChild?.firstElementChild;
+  if (!root || root.querySelector("img,pre,table")) return [block];
+  if (/^(UL|OL)$/.test(root.tagName)) return splitXiaohongshuListBlock(root, block, contentWidth, availableHeight, measure);
+  const text = root.textContent ?? "";
+  if (text.trim().length < 2) return [block];
+
+  const charsPerLine = Math.max(12, Math.floor(contentWidth / 16));
+  const sentenceEnds = findSentenceEnds(text);
+  const end = chooseSplitEnd(root, block, text, 0, sentenceEnds, charsPerLine, contentWidth, availableHeight, measure);
+  if (end <= 0 || end >= text.length) return [block];
+  const head = cloneElementTextRange(root, 0, end);
+  const tail = cloneElementTextRange(root, end, text.length);
+  if (!head || !tail) return [block];
+  // 每次只切出当前页可容纳的头部，剩余内容到下一页后会按完整页高重新计算。
+  return [
+    { ...block, id: `${block.id}-head`, html: head.outerHTML },
+    { ...block, id: `${block.id}-tail`, html: tail.outerHTML },
+  ];
+}
+
+/** splitXiaohongshuListBlock 只在列表项之间分页，避免产生断词和重复的残缺项目符号。 */
+function splitXiaohongshuListBlock(root: Element, block: XiaohongshuBlock, contentWidth: number, availableHeight: number, measure: BlockMeasure): XiaohongshuBlock[] {
+  const items = Array.from(root.children).filter((child) => child.tagName === "LI");
+  if (items.length < 2) return [block];
+  let splitIndex = 0;
+  for (let index = 1; index < items.length; index += 1) {
+    const head = cloneListRange(root, items.slice(0, index));
+    if (measure({ ...block, html: head.outerHTML }, contentWidth) <= availableHeight) splitIndex = index;
+    else break;
+  }
+  if (splitIndex <= 0 || splitIndex >= items.length) return [block];
+  const head = cloneListRange(root, items.slice(0, splitIndex));
+  const tail = cloneListRange(root, items.slice(splitIndex));
+  if (root.tagName === "OL" && !tail.hasAttribute("start") && !tail.hasAttribute("reversed")) {
+    const originalStart = Number.parseInt(root.getAttribute("start") ?? "1", 10) || 1;
+    tail.setAttribute("start", String(originalStart + splitIndex));
+  }
+  return [
+    { ...block, id: `${block.id}-head`, html: head.outerHTML },
+    { ...block, id: `${block.id}-tail`, html: tail.outerHTML },
+  ];
+}
+
+function cloneListRange(root: Element, items: Element[]): Element {
+  const clone = root.cloneNode(false) as Element;
+  items.forEach((item) => clone.appendChild(item.cloneNode(true)));
+  return clone;
+}
+
+/** chooseSplitEnd 选择当前页能容纳的最长句子，必要时才退化为字符边界。 */
+function chooseSplitEnd(root: Element, block: XiaohongshuBlock, text: string, start: number, sentenceEnds: number[], charsPerLine: number, contentWidth: number, availableHeight: number, measure: BlockMeasure): number {
+  let best = start;
+  for (const end of sentenceEnds) {
+    if (end <= start) continue;
+    const fragment = cloneElementTextRange(root, start, end);
+    if (!fragment) continue;
+    const candidate: XiaohongshuBlock = { ...block, html: fragment.outerHTML };
+    if (measure(candidate, contentWidth) <= availableHeight) best = end;
+    else if (best > start) break;
+  }
+  if (best > start) return best;
+
+  // 极长且没有标点的段落按估算行数切开，并向后回退到可容纳的位置。
+  let fallback = Math.min(text.length, start + Math.max(1, Math.floor(Math.max(1, availableHeight - 12) / 27) * charsPerLine));
+  while (fallback > start) {
+    const fragment = cloneElementTextRange(root, start, fallback);
+    if (fragment && measure({ ...block, html: fragment.outerHTML }, contentWidth) <= availableHeight) return fallback;
+    fallback -= charsPerLine;
+  }
+  return Math.min(text.length, start + 1);
+}
+
+/** findSentenceEnds 返回中英文常见句末标点后的文本位置。 */
+function findSentenceEnds(text: string): number[] {
+  const ends: number[] = [];
+  const pattern = /[。！？；;.!?](?:["'”’）)\]]*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) ends.push(match.index + match[0].length);
+  if (ends[ends.length - 1] !== text.length) ends.push(text.length);
+  return ends;
+}
+
+/** cloneElementTextRange 保留原有行内标签，只截取指定文本区间。 */
+function cloneElementTextRange(root: Element, start: number, end: number): Element | null {
+  const cursor = { value: 0 };
+  const cloned = cloneNodeTextRange(root, start, end, cursor);
+  return cloned instanceof Element ? cloned : null;
+}
+
+function cloneNodeTextRange(node: Node, start: number, end: number, cursor: { value: number }): Node | null {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const value = node.textContent ?? "";
+    const nodeStart = cursor.value;
+    cursor.value += value.length;
+    const from = Math.max(0, start - nodeStart);
+    const to = Math.min(value.length, end - nodeStart);
+    return to > from ? node.ownerDocument?.createTextNode(value.slice(from, to)) ?? null : null;
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) return null;
+  const clone = node.cloneNode(false) as Element;
+  for (const child of Array.from(node.childNodes)) {
+    const childClone = cloneNodeTextRange(child, start, end, cursor);
+    if (childClone) clone.appendChild(childClone);
+  }
+  return clone.childNodes.length > 0 ? clone : null;
 }
 
 /** getXiaohongshuTemplate 返回指定模板，不认识的模板回退到默认模板。 */
@@ -162,9 +286,12 @@ export function estimateXiaohongshuBlockHeight(block: XiaohongshuBlock, contentW
     return images.length * 170 + lines * 27 + 12;
   }
   if (document.querySelector("pre > code.language-mermaid, pre > code.lang-mermaid")) {
-    // Mermaid 源码很短但生成的图表较高，需要按图形而不是源码行数预留空间。
-    return 240;
+    // 小红书横向流程图会自适应卡片宽度，按图形容器高度预留，避免把源码长度当作图表高度。
+    return 70;
   }
+  // 普通正文使用与预览相同的 CSS 在隐藏容器中测量，避免中英文混排、标题和列表继续依赖字符数猜测。
+  const renderedHeight = measureXiaohongshuBlockInDOM(block, contentWidth);
+  if (renderedHeight !== null) return renderedHeight;
   const tableCard = document.querySelector(".xiaohongshu-table-card");
   if (tableCard) {
     // 字段卡片包含标签、值和分组间距，不能沿用普通段落的紧凑估算。
@@ -180,6 +307,30 @@ export function estimateXiaohongshuBlockHeight(block: XiaohongshuBlock, contentW
     case "table": return Math.max(54, document.querySelectorAll("tr").length * 32 + 18);
     case "heading": return 46;
     default: return lines * 27 + 12;
+  }
+}
+
+/** measureXiaohongshuBlockInDOM 使用真实字体和样式测量单个正文块的有效高度。 */
+function measureXiaohongshuBlockInDOM(block: XiaohongshuBlock, contentWidth: number): number | null {
+  if (typeof window === "undefined" || typeof window.getComputedStyle !== "function" || !document.body) return null;
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;left:-100000px;top:0;width:0;height:0;overflow:visible;visibility:hidden;pointer-events:none;";
+  const content = document.createElement("div");
+  content.className = "xiaohongshu-card-content";
+  content.style.width = `${contentWidth}px`;
+  content.innerHTML = block.html;
+  host.appendChild(content);
+  document.body.appendChild(host);
+  try {
+    const element = content.firstElementChild;
+    if (!(element instanceof HTMLElement)) return null;
+    const style = window.getComputedStyle(element);
+    const marginBottom = Number.parseFloat(style.marginBottom) || 0;
+    // 相邻块的上下边距会在真实文档流中折叠；这里只计下边距，模板预留空间负责吸收剩余差值。
+    const height = element.getBoundingClientRect().height + marginBottom;
+    return height > 0 ? Math.round(height * 10) / 10 : null;
+  } finally {
+    host.remove();
   }
 }
 

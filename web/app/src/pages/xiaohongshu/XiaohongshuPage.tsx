@@ -174,9 +174,10 @@ function xiaohongshuSnapshotStyles(template: ReturnType<typeof getXiaohongshuTem
 
 function escapeText(value: string) { return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] ?? char)); }
 
-/** ensurePages 为旧版只保存正文 HTML 的草稿补齐页面块。 */
+/** ensurePages 使用当前模板规则把正文统一转换为最新分页。 */
 function ensurePages(next: XiaohongshuDraft, sourceHTML: string, templateID: string): XiaohongshuDraft {
-  if (Array.isArray(next.pages) && next.pages.length > 0) return next;
   const bodyHTML = stripXiaohongshuTitle(next.body_html || sourceHTML || "<p>请输入正文</p>");
-  return { ...next, body_html: bodyHTML, pages: buildXiaohongshuPages(bodyHTML, templateID) };
+  // 页面布局规则会随模板和字体调整，加载草稿时从正文重新分页，避免旧版 pages_json 保留过大的底部空白。
+  const pages = buildXiaohongshuPages(bodyHTML, templateID);
+  return { ...next, body_html: bodyHTML, pages };
 }
