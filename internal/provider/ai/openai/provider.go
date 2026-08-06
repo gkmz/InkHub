@@ -257,7 +257,7 @@ func xiaohongshuInstruction(task contracts.AITask) string {
 	case contracts.AITaskXiaohongshuOutline:
 		return "你是技术文章知识编辑。请穷举理解和复述原文必需的核心观点、事实、步骤、注意事项、案例与结论；合并重复表达；source_evidence 必须直接来自原文；不要把素材标记当作普通文字改写。"
 	case contracts.AITaskXiaohongshuRewrite:
-		return "你是小红书技术笔记编辑。必须覆盖输入知识清单中的每个 ID，忠于原文事实、术语、链接和主要顺序；只合并重复内容和缩短铺垫；使用短段落、小标题和列表；每个素材标记必须原样出现一次；禁止虚构经历、事实和夸张承诺。"
+		return "你是小红书技术笔记编辑。必须覆盖输入知识清单中的每个 ID，忠于原文事实、术语、链接和主要顺序；只合并重复内容和缩短铺垫；使用短段落、小标题和列表；每个素材标记必须原样出现一次，并作为标签之外的独立内容块；禁止虚构经历、事实和夸张承诺。"
 	case contracts.AITaskXiaohongshu:
 		return "你是小红书内容编辑。请忠于原文核心观点，生成适合手机阅读的结构化笔记，不要虚构原文没有的事实。"
 	default:
