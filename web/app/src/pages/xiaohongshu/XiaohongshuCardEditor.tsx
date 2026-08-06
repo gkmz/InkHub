@@ -2,6 +2,8 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { sanitizePreviewHTML } from "../../api/safeHTML";
 import type { XiaohongshuPage } from "../../api/types";
+import { renderXiaohongshuMermaidImages } from "./xiaohongshuAdapter";
+import { measureXiaohongshuContentScale, xiaohongshuScaledContentStyle } from "./xiaohongshuSizing";
 
 /** XiaohongshuCardEditorProps 描述卡片编辑器的受控输入输出。 */
 export interface XiaohongshuCardEditorProps {
@@ -67,14 +69,12 @@ function XiaohongshuEditablePage({ page, index, total, template, title, setPageR
   const html = page.blocks.map((block) => block.html).join("");
   const safeHTML = sanitizePreviewHTML(html);
 
-  // 小红书卡片不提供正文滚动，内容超出时按可用高度整体缩放，保证每张图都能完整查看。
+  // 小红书卡片不提供正文滚动，缩放时同步补偿布局宽度，避免不同页看起来忽宽忽窄。
   const measureScale = useCallback(() => {
     const content = contentRef.current;
     const frame = contentFrameRef.current;
     if (!content || !frame) return;
-    const naturalHeight = content.scrollHeight;
-    const availableHeight = frame.clientHeight;
-    setScale(availableHeight > 0 && naturalHeight > availableHeight ? Math.min(1, availableHeight / naturalHeight) : 1);
+    setScale(measureXiaohongshuContentScale(content, frame.clientHeight));
   }, []);
 
   useLayoutEffect(() => {
@@ -89,12 +89,51 @@ function XiaohongshuEditablePage({ page, index, total, template, title, setPageR
 
   useEffect(() => {
     const frame = contentFrameRef.current;
-    if (!frame) return;
+    const content = contentRef.current;
+    if (!frame || !content) return;
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measureScale);
+    let animationFrame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(measureScale);
+    });
     observer.observe(frame);
-    return () => observer.disconnect();
+    observer.observe(content);
+    return () => { cancelAnimationFrame(animationFrame); observer.disconnect(); };
   }, [measureScale]);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const images = Array.from(content.querySelectorAll("img"));
+    const onSettled = () => requestAnimationFrame(measureScale);
+    images.forEach((image) => {
+      if (!image.complete) {
+        image.addEventListener("load", onSettled, { once: true });
+        image.addEventListener("error", onSettled, { once: true });
+      }
+    });
+    void document.fonts?.ready.then(onSettled);
+    return () => images.forEach((image) => {
+      image.removeEventListener("load", onSettled);
+      image.removeEventListener("error", onSettled);
+    });
+  }, [measureScale, safeHTML]);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || !safeHTML.includes("language-mermaid")) return;
+    let cancelled = false;
+    const render = async () => {
+      const rendered = await renderXiaohongshuMermaidImages(safeHTML);
+      if (cancelled || document.activeElement === content) return;
+      content.innerHTML = rendered;
+      // Mermaid 完成替换后重新测量，避免异步图表撑出固定卡片高度。
+      measureScale();
+    };
+    void render();
+    return () => { cancelled = true; };
+  }, [measureScale, safeHTML]);
 
   return <article ref={setPageRef} className={`xiaohongshu-card-page template-${template}`} role="listitem" aria-label={`第 ${index + 1} 页，共 ${total} 页`} onClick={onFocus}>
     <div className="xiaohongshu-card-page-label">{index + 1} / {total}</div>
@@ -108,7 +147,7 @@ function XiaohongshuEditablePage({ page, index, total, template, title, setPageR
         role="textbox"
         aria-label={`第 ${index + 1} 页正文`}
         aria-multiline="true"
-        style={{ transform: `scale(${scale})` }}
+        style={xiaohongshuScaledContentStyle(scale)}
         onFocus={onFocus}
         onInput={(event) => { onChange(sanitizePreviewHTML(event.currentTarget.innerHTML)); requestAnimationFrame(measureScale); }}
       />

@@ -134,7 +134,8 @@ func (h publicationJobHandler) handle(ctx context.Context, execution *appjob.Exe
 	}
 	recordID := stableAPIID("publication", payload.ArticleID, payload.ProviderID)
 	eventType := string(state)
-	err = h.publications.SaveWithEvent(ctx, repository.PublicationRecord{ID: recordID, ArticleID: payload.ArticleID, ProviderInstanceID: payload.ProviderID, WorkspaceID: execution.Job.WorkspaceID, State: state, ContentHash: payload.ContentHash, ProviderRevision: revision}, repository.PublicationEvent{ID: stableAPIID("event", recordID, eventType, payload.ContentHash), Type: eventType, ContentHash: payload.ContentHash, Payload: map[string]string{"job": execution.Job.ID}})
+	// 事件身份必须绑定本次任务实例；同一文章版本重新准备时也要产生独立事件，避免唯一键冲突。
+	err = h.publications.SaveWithEvent(ctx, repository.PublicationRecord{ID: recordID, ArticleID: payload.ArticleID, ProviderInstanceID: payload.ProviderID, WorkspaceID: execution.Job.WorkspaceID, State: state, ContentHash: payload.ContentHash, ProviderRevision: revision}, repository.PublicationEvent{ID: stableAPIID("event", recordID, eventType, payload.ContentHash, execution.Job.ID), Type: eventType, ContentHash: payload.ContentHash, Payload: map[string]string{"job": execution.Job.ID}})
 	if err != nil {
 		return "", err
 	}

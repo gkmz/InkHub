@@ -6,7 +6,7 @@ import type { MermaidTheme } from "../../api/types";
 import { useToast } from "../../components/toast";
 
 /** WeChatPlan 在任何外部写入前展示模板和本地图片清单。 */
-export function WeChatPlan({ articleID, templateID, mermaidTheme, onConfirmed }: { articleID: string; templateID: string; mermaidTheme: MermaidTheme; onConfirmed: () => void }) {
+export function WeChatPlan({ articleID, templateID, mermaidTheme = "handdrawn", onConfirmed }: { articleID: string; templateID: string; mermaidTheme?: MermaidTheme; onConfirmed: () => void }) {
   const toast = useToast();
   const [plan, setPlan] = useState<WeChatPlanView | null>(null);
   const [loading, setLoading] = useState(true);

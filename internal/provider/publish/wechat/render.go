@@ -114,8 +114,9 @@ func referenceSection(references []linkReference) *html.Node {
 	list := elementNode("ul", "margin:0;padding-left:0;list-style-type:none")
 	for _, reference := range references {
 		item := elementNode("li", "display:block;margin:7px 0;color:#5c6975;font-size:14px;line-height:1.55;word-break:break-word")
-		label := elementNode("span", "color:#42b883;font-weight:700;margin-right:6px")
-		label.AppendChild(&html.Node{Type: html.TextNode, Data: fmt.Sprintf("[%d]", reference.index)})
+		label := elementNode("span", "color:#42b883;font-weight:700;white-space:nowrap")
+		// 不换行空格把编号与引用标题首字绑定，避免编号孤立在上一行。
+		label.AppendChild(&html.Node{Type: html.TextNode, Data: fmt.Sprintf("[%d]\u00a0", reference.index)})
 		item.AppendChild(label)
 		item.AppendChild(&html.Node{Type: html.TextNode, Data: reference.text + ": "})
 		value := elementNode("span", "color:#34495e;word-break:break-all")
@@ -231,12 +232,25 @@ func matchesSelector(node *html.Node, selector string) bool {
 	if node.Data != parts[len(parts)-1] {
 		return false
 	}
-	for parent := node.Parent; parent != nil; parent = parent.Parent {
-		if hasClass(parent, "inkhub-root") {
-			return true
+	// 从右向左逐层匹配后代选择器，避免把 `pre code` 的代码块样式误用到行内 code。
+	parent := node.Parent
+	for index := len(parts) - 2; index >= 0; index-- {
+		for parent != nil && !matchesSimpleSelector(parent, parts[index]) {
+			parent = parent.Parent
 		}
+		if parent == nil {
+			return false
+		}
+		parent = parent.Parent
 	}
-	return false
+	return true
+}
+
+func matchesSimpleSelector(node *html.Node, selector string) bool {
+	if selector == ".inkhub-root" {
+		return hasClass(node, "inkhub-root")
+	}
+	return node.Type == html.ElementNode && node.Data == selector
 }
 
 func hasClass(node *html.Node, class string) bool {

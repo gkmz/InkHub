@@ -135,6 +135,21 @@ func (a jobQueueAdapter) Enqueue(ctx context.Context, intent publication.JobInte
 	if intent.MermaidTheme != "" {
 		dedupeContent += "\x00" + intent.MermaidTheme
 	}
+	// 微信准备任务使用确定性 ID：重复点击时复用活动任务，失败任务则原子重排。
+	if intent.Kind == "wechat_prepare" {
+		if existing, findErr := a.repository.FindByID(ctx, intent.ID); findErr == nil && existing.WorkspaceID == intent.WorkspaceID && existing.Kind == intent.Kind {
+			switch existing.State {
+			case domainjob.StateQueued, domainjob.StateRunning, domainjob.StateSucceeded:
+				return existing.ID, nil
+			case domainjob.StateFailed:
+				requeued, requeueErr := a.repository.RequeueFailed(ctx, existing.ID, intent.WorkspaceID, intent.Kind, time.Now().UTC())
+				if requeueErr == nil {
+					return requeued.ID, nil
+				}
+				return "", requeueErr
+			}
+		}
+	}
 	value, _, err := a.repository.Enqueue(ctx, domainjob.Job{ID: intent.ID, WorkspaceID: intent.WorkspaceID, Kind: intent.Kind, DedupeKey: appjob.BuildDedupeKey(intent.Kind, intent.ArticleID, intent.ProviderInstanceID, dedupeContent), PayloadJSON: string(payload), AvailableAt: time.Now().UTC()})
 	return value.ID, err
 }

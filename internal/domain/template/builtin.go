@@ -42,9 +42,9 @@ func Builtin(id string) (Validated, error) {
 .inkhub-root li { margin: 8px 0; }
 .inkhub-root blockquote { background-color: #f7fcf9; border-left: 3px solid #42b883; border-radius: 0 8px 8px 0; color: #5c7080; font-style: italic; margin: 29px 0; padding: 11px 20px; }
 .inkhub-root blockquote p { margin: 6px 0; }
-.inkhub-root code { background-color: #f0f4f8; border-radius: 5px; color: #c7522a; font-family: system-monospace; font-size: 13px; padding: 2px 7px; white-space: pre-wrap; word-break: break-word; }
+.inkhub-root code { background-color: #f0f4f8; border-radius: 5px; color: #c7522a; display: inline; font-family: system-monospace; font-size: 1em; padding: 2px 7px; white-space: pre-wrap; word-break: break-word; }
 .inkhub-root pre { background-color: #1a1b26; border: 1px solid #2a2d3e; border-radius: 8px; color: #c0caf5; line-height: 1.72; margin: 26px 0; overflow-wrap: break-word; padding: 18px; white-space: pre-wrap; }
-.inkhub-root pre code { background-color: #1a1b26; color: #c0caf5; display: block; font-family: system-monospace; line-height: 1.72; margin: 0; padding: 0; white-space: pre-wrap; }
+.inkhub-root pre code { background-color: #1a1b26; color: #c0caf5; display: block; font-family: system-monospace; font-size: 13px; line-height: 1.72; margin: 0; padding: 0; white-space: pre-wrap; }
 .inkhub-root table { border-collapse: collapse; border-spacing: 0; display: table; font-size: 15px; line-height: 1.65; margin-bottom: 22px; max-width: 100%; width: 100%; }
 .inkhub-root tr { border-top: 1px solid #e4ecf2; }
 .inkhub-root th { background-color: #eef3f8; border: 1px solid #dde6ee; color: #1a2733; font-weight: 700; padding: 9px 16px; text-align: left; vertical-align: top; }

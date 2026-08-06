@@ -118,7 +118,7 @@ func parseXiaohongshuPath(path string) (string, string, bool) {
 }
 
 func (h *runtimeHandler) xiaohongshuView(response http.ResponseWriter, request *http.Request, articleID string) {
-	workspaceID, contentHash, _, _, err := h.xiaohongshuArticle(request.Context(), articleID)
+	workspaceID, contentHash, _, rendered, err := h.xiaohongshuArticle(request.Context(), articleID)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -130,6 +130,8 @@ func (h *runtimeHandler) xiaohongshuView(response http.ResponseWriter, request *
 	}
 	history := make([]XiaohongshuDraftView, 0, len(drafts))
 	for _, draft := range drafts {
+		// 本地图片地址使用进程级签名，读取历史草稿时必须替换为当前有效地址。
+		draft = refreshXiaohongshuDraftAssets(draft, rendered)
 		history = append(history, xiaohongshuDraftView(draft, contentHash))
 	}
 	var latest *XiaohongshuDraftView

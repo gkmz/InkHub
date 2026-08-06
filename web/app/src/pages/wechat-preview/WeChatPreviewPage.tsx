@@ -52,7 +52,17 @@ export function WeChatPreviewPage({ articleID, onNavigate }: { articleID: string
   const deliveryActions = <WeChatActions
     html={preparedHTML}
     copied={article.wechat_copied}
-    onCopy={async () => { await copyFormattedHTML(preparedHTML); await markWeChatCopied(article); }}
+    onCopy={async () => {
+      await copyFormattedHTML(preparedHTML);
+      if (article.wechat_copied) return;
+      try {
+        // 状态记录失败不能伪装成剪贴板失败，内容成功写入后仍应允许用户继续发布。
+        await markWeChatCopied(article);
+        if (mounted.current) setArticle((current) => current ? { ...current, wechat_copied: true } : current);
+      } catch (error) {
+        console.warn("微信内容已复制，但复制状态记录失败", error);
+      }
+    }}
     onConfirm={async () => { await confirmWeChatDraft(article); }}
   />;
 
@@ -63,7 +73,7 @@ export function WeChatPreviewPage({ articleID, onNavigate }: { articleID: string
           <label><span><LayoutTemplate size={15} />排版模板</span><select value="default" disabled aria-label="排版模板"><option value="default">InkHub 墨绿</option></select></label>
           <div className="wechat-mermaid-setting"><span><Palette size={15} />Mermaid 样式</span><div className="segmented-control" role="group" aria-label="Mermaid 样式">{(["handdrawn", "modern"] as MermaidTheme[]).map((theme) => <button key={theme} type="button" aria-pressed={mermaidTheme === theme} disabled={settingsDisabled} onClick={() => setMermaidTheme(theme)}>{theme === "handdrawn" ? "手绘" : "现代"}</button>)}</div></div>
         </section>
-        {preparing ? <p><Image size={16} />正在上传图片并生成微信内容…</p> : !preparedHTML ? <WeChatPlan articleID={articleID} templateID="default" mermaidTheme={mermaidTheme} onConfirmed={() => { setPreparing(true); void pollPrepared(); }} /> : <section className="wechat-ready"><h2>内容已准备</h2><p><Image size={16} />图片与模板处理完成</p>{deliveryActions}</section>}
+        {preparing ? <p className="wechat-status"><Image size={16} />正在上传图片并生成微信内容…</p> : !preparedHTML ? <WeChatPlan articleID={articleID} templateID="default" mermaidTheme={mermaidTheme} onConfirmed={() => { setPreparing(true); void pollPrepared(); }} /> : <section className="wechat-ready"><h2>内容已准备</h2><p className="wechat-status"><Image size={16} />图片与模板处理完成</p>{deliveryActions}</section>}
       </aside>
       <article className="wechat-document template-green">{showMetadataTitle && <h1>{article.metadata.title}</h1>}<p className="wechat-description">{article.metadata.description}</p><MarkdownPreview html={previewHTML} mermaidTheme={mermaidTheme} /></article>
     </main>}

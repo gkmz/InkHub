@@ -4,10 +4,13 @@ interface WeChatReference {
   href: string;
 }
 
-/** formatWeChatReferences 将微信不支持的正文链接转换为上标和文末引用。 */
+/** formatWeChatReferences 修正微信行内代码，并将正文链接转换为上标和文末引用。 */
 export function formatWeChatReferences(value: string) {
   if (!value || typeof DOMParser === "undefined") return value;
   const document = new DOMParser().parseFromString(value, "text/html");
+  normalizeInlineCode(document);
+  normalizeImages(document);
+  normalizeReferenceLabels(document);
   if (hasReferenceSection(document)) return document.body.innerHTML;
 
   const references: WeChatReference[] = [];
@@ -28,8 +31,65 @@ export function formatWeChatReferences(value: string) {
   return document.body.innerHTML;
 }
 
+function normalizeImages(document: Document) {
+  for (const image of document.body.querySelectorAll<HTMLImageElement>("img")) {
+    // 微信编辑器可能保留上游浮动规则，图片必须以内联样式明确独占一行并居中。
+    image.style.display = "block";
+    image.style.float = "none";
+    image.style.clear = "both";
+    image.style.maxWidth = "100%";
+    image.style.height = "auto";
+    image.style.marginLeft = "auto";
+    image.style.marginRight = "auto";
+  }
+}
+
+function normalizeInlineCode(document: Document) {
+  for (const code of document.body.querySelectorAll<HTMLElement>("code")) {
+    if (code.closest("pre")) continue;
+    // 兼容已经生成的旧产物：移除误继承的代码块属性，并恢复随上下文继承的字号和行高。
+    code.style.backgroundColor = "#f0f4f8";
+    code.style.borderRadius = "5px";
+    code.style.color = "#c7522a";
+    code.style.display = "inline";
+    code.style.fontFamily = "system-monospace";
+    code.style.fontSize = "1em";
+    code.style.padding = "2px 7px";
+    code.style.whiteSpace = "pre-wrap";
+    code.style.wordBreak = "break-word";
+    code.style.removeProperty("line-height");
+    code.style.removeProperty("margin");
+  }
+}
+
+function normalizeReferenceLabels(document: Document) {
+  for (const section of referenceSections(document)) {
+    for (const item of section.querySelectorAll("li")) {
+      const label = item.querySelector<HTMLElement>(":scope > span:first-child");
+      const value = label?.textContent?.trim() ?? "";
+      if (!label || !/^\[\d+\]$/.test(value)) continue;
+      const titleNode = label.nextSibling;
+      if (!titleNode || titleNode.nodeType !== 3) continue;
+
+      // 编号与标题必须位于同一个不可换行容器，单独放置 NBSP 仍可能在节点边界换行。
+      const prefix = document.createElement("span");
+      prefix.style.whiteSpace = "nowrap";
+      item.insertBefore(prefix, label);
+      prefix.append(label, document.createTextNode(`\u00a0${titleNode.textContent?.trimStart() ?? ""}`));
+      titleNode.remove();
+      label.textContent = value;
+      label.style.removeProperty("margin-right");
+      label.style.whiteSpace = "nowrap";
+    }
+  }
+}
+
 function hasReferenceSection(document: Document) {
-  return Array.from(document.body.querySelectorAll("section > h3")).some((heading) => heading.textContent?.trim() === "引用链接");
+  return referenceSections(document).length > 0;
+}
+
+function referenceSections(document: Document) {
+  return Array.from(document.body.querySelectorAll<HTMLElement>("section")).filter((section) => section.querySelector(":scope > h3")?.textContent?.trim() === "引用链接");
 }
 
 function isReferenceLink(link: HTMLAnchorElement) {
@@ -56,12 +116,15 @@ function createReferenceSection(document: Document, references: WeChatReference[
 function createReferenceItem(document: Document, reference: WeChatReference) {
   const item = document.createElement("li");
   item.setAttribute("style", "display:block;margin:7px 0;color:#5c6975;font-size:14px;line-height:1.55;word-break:break-word");
+  const prefix = document.createElement("span");
+  prefix.setAttribute("style", "white-space:nowrap");
   const label = document.createElement("span");
   label.textContent = `[${reference.index}]`;
-  label.setAttribute("style", "color:#42b883;font-weight:700;margin-right:6px");
+  label.setAttribute("style", "color:#42b883;font-weight:700;white-space:nowrap");
+  prefix.append(label, `\u00a0${reference.text}: `);
   const url = document.createElement("span");
   url.textContent = reference.href;
   url.setAttribute("style", "color:#34495e;word-break:break-all");
-  item.append(label, `${reference.text}: `, url);
+  item.append(prefix, url);
   return item;
 }
