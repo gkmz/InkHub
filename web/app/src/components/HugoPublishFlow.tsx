@@ -1,17 +1,19 @@
 import { Check, CloudUpload, FileText, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { confirmHugoPreview, createHugoPreview, getHugoPreview, getHugoSections, getJob, getPublicationWorkflow } from "../api/client";
+import { APIError, batchDisposition, confirmHugoPreview, createHugoPreview, getHugoPreview, getHugoSections, getJob, getPublicationWorkflow } from "../api/client";
 import type { HugoPreviewView, HugoSectionView, PublicationFailureView, PublicationWorkflowView, RecoveredHugoPreviewView } from "../api/types";
+import { HugoManualSuccessDialog } from "./HugoManualSuccessDialog";
 import { useToast } from "./toast";
 
 interface HugoPublishFlowProps {
   articleID: string;
   contentHash: string;
+  manualPublished?: boolean;
   onPublished: () => void | Promise<void>;
 }
 
 /** HugoPublishFlow 管理 Section 选择、Artifact 预览和确认交付闭环。 */
-export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPublishFlowProps) {
+export function HugoPublishFlow({ articleID, contentHash, manualPublished = false, onPublished }: HugoPublishFlowProps) {
   const toast = useToast();
   const mounted = useRef(true);
   const onPublishedRef = useRef(onPublished);
@@ -27,6 +29,7 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
   const [filesystemStale, setFilesystemStale] = useState(false);
   const [published, setPublished] = useState(false);
   const [publishedTarget, setPublishedTarget] = useState("");
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
   onPublishedRef.current = onPublished;
 
   const showError = useCallback((reason: unknown) => {
@@ -54,11 +57,27 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
   useEffect(() => {
     mounted.current = true;
     controller.current = new AbortController();
+    const cleanup = () => {
+      mounted.current = false;
+      controller.current?.abort();
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    };
+    setLoading(true);
     setPublished(false);
     setPublishedTarget("");
+    setManualDialogOpen(false);
     const pollWorkflow = async () => {
       const value = await getPublicationWorkflow(articleID, controller.current?.signal);
       if (!mounted.current) return;
+      // 仅让人工确认覆盖旧失败任务；正常同步成功仍需校验真实 Hugo Bundle。
+      if (manualPublished && (!value.hugo || value.hugo.state === "failed")) {
+        setWorkflow(null);
+        setPreview(null);
+        setFilesystemStale(false);
+        setPublished(true);
+        setLoading(false);
+        return;
+      }
       setWorkflow(value.hugo);
       if (value.hugo?.preview && value.hugo.state !== "published") setPreview(recoveredPreview(value.hugo.preview));
       // 已同步状态也要重新扫描真实目录；外部删除 Bundle 后不能继续相信数据库状态。
@@ -87,12 +106,8 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
       setLoading(false);
     };
     void pollWorkflow().catch((reason: unknown) => { showError(reason); if (mounted.current) setLoading(false); });
-    return () => {
-      mounted.current = false;
-      controller.current?.abort();
-      if (timer.current !== null) window.clearTimeout(timer.current);
-    };
-  }, [articleID, contentHash, loadSections, showError]);
+    return cleanup;
+  }, [articleID, contentHash, loadSections, manualPublished, showError]);
 
   const pollPreview = async (previewID: string) => {
     const next = await getHugoPreview(previewID);
@@ -157,25 +172,52 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
       if (mounted.current) setBusy(false);
     }
   };
+  const markManualSuccess = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await batchDisposition({ operation: "published", articles: [{ id: articleID, content_version: contentHash }], channels: ["hugo"] });
+      if (!mounted.current) return;
+      setManualDialogOpen(false);
+      setPreview(null);
+      setWorkflow(null);
+      setPublished(true);
+      setPublishedTarget("");
+      toast.show({ kind: "success", message: "已手动标记为 Hugo 同步成功" });
+      try {
+        await onPublishedRef.current();
+      } catch {
+        // 标记已经落库，刷新失败不能再向用户宣称本次标记失败。
+        toast.show({ kind: "error", message: "状态已记录，但页面刷新失败，请手动刷新" });
+      }
+    } catch (reason) {
+      const message = reason instanceof APIError && reason.status === 409
+        ? "文章内容已更新，请刷新页面后重新确认"
+        : reason instanceof Error ? reason.message : "手动标记 Hugo 成功失败";
+      toast.show({ kind: "error", message });
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  };
 
   if (loading) return <section className="hugo-publish-flow" aria-live="polite"><LoaderCircle className="spin" size={16} />正在恢复 Hugo 发布状态…</section>;
   if (workflow && !preview && workflow.state !== "failed" && workflow.state !== "published") return <section className="hugo-publish-flow" aria-live="polite"><p className="hugo-preview-state"><LoaderCircle className="spin" size={16} />{workflow.stage} · {workflow.progress}%</p>{workflow.error && <p className="hugo-flow-error">{workflow.error}</p>}</section>;
-  if (published) return <section className="hugo-publish-flow" aria-live="polite"><p className="hugo-published-state"><Check size={16} /><strong>当前版本已同步到 Hugo</strong></p>{publishedTarget && <code className="hugo-published-target">{publishedTarget}</code>}<p>内容版本未变化，无需重复同步。</p></section>;
-  if (!discovery && !preview) return <section className="hugo-publish-flow" aria-live="polite"><LoaderCircle className="spin" size={16} />正在读取 Hugo 发布目录…</section>;
-  if (discovery && discovery.sections.length === 0 && !preview) return <section className="hugo-publish-flow"><b>Hugo 中还没有可用发布目录</b><p>请先在 Hugo content 中创建一级目录，再重新读取目录。</p><button type="button" className="secondary compact-button" onClick={() => void loadSections().catch(showError)}>重新读取 Hugo 目录</button></section>;
+  if (published) return <section className="hugo-publish-flow" aria-live="polite"><p className="hugo-published-state"><Check size={16} /><strong>{publishedTarget ? "当前版本已同步到 Hugo" : "当前版本已标记为 Hugo 发布成功"}</strong></p>{publishedTarget && <code className="hugo-published-target">{publishedTarget}</code>}<p>{publishedTarget ? "内容版本未变化，无需重复同步。" : "已记录外部发布状态，不会重复写入 Hugo 文件。"}</p></section>;
   const failure = preview?.failure ?? workflow?.failure ?? fallbackFailure(preview?.error || workflow?.error);
   const failed = preview?.state === "failed" || workflow?.state === "failed";
+  if (!discovery && !preview && !failed) return <section className="hugo-publish-flow" aria-live="polite"><LoaderCircle className="spin" size={16} />正在读取 Hugo 发布目录…</section>;
+  if (discovery && discovery.sections.length === 0 && !preview && !failed) return <section className="hugo-publish-flow"><b>Hugo 中还没有可用发布目录</b><p>请先在 Hugo content 中创建一级目录，再重新读取目录。</p><button type="button" className="secondary compact-button" onClick={() => void loadSections().catch(showError)}>重新读取 Hugo 目录</button></section>;
   const directories = discovery?.sections.find((item) => item.name === section)?.directories ?? [];
   const targetReady = Boolean(section) && (directories.length === 0 || Boolean(directory));
   return <section className="hugo-publish-flow" aria-label="Hugo 发布">
     {filesystemStale && <p className="hugo-flow-error">检测到 Hugo 原发布目录已不存在，将按当前文章重新生成。</p>}
-    {discovery && <label>发布目录<select aria-label="发布目录" value={section} disabled={discovery.selection_locked || busy} onChange={(event) => { const next = event.target.value; setSection(next); const nextDirectories = discovery.sections.find((item) => item.name === next)?.directories ?? []; setDirectory(nextDirectories.length === 1 ? nextDirectories[0].path : ""); }}><option value="">请选择</option>{discovery.sections.map((item) => <option key={item.name} value={item.name}>{item.name}（{item.article_count} 篇）</option>)}</select></label>}
+    {discovery && discovery.sections.length > 0 && <label>发布目录<select aria-label="发布目录" value={section} disabled={discovery.selection_locked || busy} onChange={(event) => { const next = event.target.value; setSection(next); const nextDirectories = discovery.sections.find((item) => item.name === next)?.directories ?? []; setDirectory(nextDirectories.length === 1 ? nextDirectories[0].path : ""); }}><option value="">请选择</option>{discovery.sections.map((item) => <option key={item.name} value={item.name}>{item.name}（{item.article_count} 篇）</option>)}</select></label>}
     {directories.length > 0 && <label>分类目录<select aria-label="分类目录" value={directory} disabled={discovery?.selection_locked || busy} onChange={(event) => setDirectory(event.target.value)}><option value="">请选择</option>{directories.map((item) => <option key={item.path} value={item.path}>{item.path}（{item.article_count} 篇）</option>)}</select></label>}
     {discovery?.selection_locked && <p className="hugo-section-lock">已有文章将继续更新 {discovery.existing_section}{discovery.existing_directory ? `/${discovery.existing_directory}` : ""}</p>}
     {failed && failure && <PublicationFailure failure={failure} />}
-    {!preview && <button type="button" className="primary compact-button" disabled={!targetReady || busy} onClick={() => void prepare()}>{busy ? <LoaderCircle className="spin" size={16} /> : <CloudUpload size={16} />}{failed ? "重新生成预览" : "生成发布预览"}</button>}
+    {!preview && !failed && <button type="button" className="primary compact-button" disabled={!targetReady || busy} onClick={() => void prepare()}>{busy ? <LoaderCircle className="spin" size={16} /> : <CloudUpload size={16} />}生成发布预览</button>}
+    {failed && (!preview || preview.state === "failed") && <div className="hugo-failure-actions"><button type="button" className="primary compact-button" disabled={busy} onClick={() => void prepare()}>{busy ? <LoaderCircle className="spin" size={16} /> : <CloudUpload size={16} />}重新生成预览</button><button type="button" className="secondary compact-button" disabled={busy} onClick={() => setManualDialogOpen(true)}><Check size={16} />手动标记成功</button></div>}
     {preview?.state === "preparing" && <p className="hugo-preview-state"><LoaderCircle className="spin" size={16} />正在构建真实 Hugo 预览…</p>}
-    {preview?.state === "failed" && <button type="button" className="primary compact-button" disabled={busy} onClick={() => void prepare()}>{busy ? <LoaderCircle className="spin" size={16} /> : <CloudUpload size={16} />}重新生成预览</button>}
     {preview && (preview.state === "ready" || preview.state === "expired") && <div className="hugo-artifact-summary">
       <div><span>{preview.change === "added" ? "新增" : "更新"}</span><code>{preview.target_path}</code></div>
       <ul>{preview.files.map((file) => <li key={file.relative_path}><FileText size={14} /><span>{file.relative_path}</span><small>{formatBytes(file.size)}</small></li>)}</ul>
@@ -183,6 +225,8 @@ export function HugoPublishFlow({ articleID, contentHash, onPublished }: HugoPub
       {discovery && discovery.sections.length === 0 && <p className="diagnostic-blocking">当前 Hugo content 目录未发现可用发布目录，请恢复文件夹后重新生成预览。</p>}
       <div className="hugo-artifact-actions"><button type="button" className="secondary compact-button" disabled={busy} onClick={() => void prepare()}>重新生成预览</button>{preview.state === "ready" && <button type="button" className="primary compact-button" disabled={busy} onClick={() => void confirm()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}确认同步到 Hugo</button>}</div>
     </div>}
+    {failed && preview && (preview.state === "ready" || preview.state === "expired") && <button type="button" className="secondary compact-button hugo-manual-success-button" disabled={busy} onClick={() => setManualDialogOpen(true)}><Check size={16} />手动标记成功</button>}
+    {manualDialogOpen && <HugoManualSuccessDialog busy={busy} onClose={() => setManualDialogOpen(false)} onConfirm={() => void markManualSuccess()} />}
   </section>;
 }
 

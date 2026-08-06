@@ -17,6 +17,7 @@ export function HugoPage({ articleID, onNavigate }: { articleID: string; onNavig
 
   if (!article) return <div className="page-state">正在打开 Hugo 发布页…</div>;
   const available = article.content_stage !== "draft" && article.review_state === "已通过";
+  const manualPublished = article.disposition?.kind === "published" && article.disposition.channels.includes("hugo");
   const showMetadataTitle = !previewHasHeading(article.preview_html);
   return <div className="hugo-page">
     <PublicationPageFrame article={article} active="hugo" onNavigate={onNavigate}>
@@ -24,7 +25,7 @@ export function HugoPage({ articleID, onNavigate }: { articleID: string; onNavig
         <div className="hugo-page-layout">
           <aside className="hugo-page-sidebar" aria-label="Hugo 发布操作">
             <section className="hugo-page-intro"><CloudUpload size={20} /><div><p className="eyebrow">独立渠道</p><h2>同步到 Hugo</h2><p>选择发布目录，生成预览并确认写入博客。这个操作不会影响微信和小红书。</p></div></section>
-            {!available ? <section className="channel-locked" role="status"><strong>审核通过后才能同步到 Hugo</strong><p>请先返回审核中心完善元数据并完成审核。</p><button className="secondary" type="button" onClick={() => onNavigate(`/articles/${articleID}`)}>返回审核中心</button></section> : <HugoPublishFlow articleID={article.id} contentHash={article.content_version} onPublished={async () => { setRefreshKey((value) => value + 1); await load(); }} />}
+            {!available ? <section className="channel-locked" role="status"><strong>审核通过后才能同步到 Hugo</strong><p>请先返回审核中心完善元数据并完成审核。</p><button className="secondary" type="button" onClick={() => onNavigate(`/articles/${articleID}`)}>返回审核中心</button></section> : <HugoPublishFlow articleID={article.id} contentHash={article.content_version} manualPublished={manualPublished} onPublished={async () => { setRefreshKey((value) => value + 1); await load(); }} />}
             <PublicationHistory articleID={articleID} refreshKey={refreshKey} />
           </aside>
           <article className="hugo-document" aria-label="Hugo 发布内容">
