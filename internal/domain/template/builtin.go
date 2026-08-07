@@ -51,6 +51,7 @@ func Builtin(id string) (Validated, error) {
 .inkhub-root td { border: 1px solid #dde6ee; padding: 9px 16px; text-align: left; vertical-align: top; }
 .inkhub-root img { display: block; height: auto; margin: 29px auto; max-width: 100%; }
 .inkhub-root hr { border: 0; border-bottom: 1px solid #e4ecf2; margin: 35px 0; }`
+		css += tokyoNightCodeCSS
 	default:
 		return Validated{}, fmt.Errorf("未知内置模板: %s", id)
 	}

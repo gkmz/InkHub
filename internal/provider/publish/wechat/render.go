@@ -229,7 +229,7 @@ func matchesSelector(node *html.Node, selector string) bool {
 	if len(parts) == 1 {
 		return hasClass(node, "inkhub-root")
 	}
-	if node.Data != parts[len(parts)-1] {
+	if !matchesSimpleSelector(node, parts[len(parts)-1]) {
 		return false
 	}
 	// 从右向左逐层匹配后代选择器，避免把 `pre code` 的代码块样式误用到行内 code。
@@ -247,8 +247,9 @@ func matchesSelector(node *html.Node, selector string) bool {
 }
 
 func matchesSimpleSelector(node *html.Node, selector string) bool {
-	if selector == ".inkhub-root" {
-		return hasClass(node, "inkhub-root")
+	if strings.HasPrefix(selector, ".") {
+		class := strings.TrimPrefix(selector, ".")
+		return class != "" && !strings.Contains(class, ".") && hasClass(node, class)
 	}
 	return node.Type == html.ElementNode && node.Data == selector
 }
