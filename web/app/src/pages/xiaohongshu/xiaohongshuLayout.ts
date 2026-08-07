@@ -1,5 +1,6 @@
 import { sanitizePreviewHTML } from "../../api/safeHTML";
 import type { XiaohongshuBlock, XiaohongshuPage } from "../../api/types";
+import { TOKYO_NIGHT_CODE_THEME, type XiaohongshuCodeTheme } from "./xiaohongshuCodeTheme";
 
 export type { XiaohongshuBlock, XiaohongshuPage } from "../../api/types";
 
@@ -30,6 +31,7 @@ export interface XiaohongshuTemplate extends XiaohongshuTemplateMetrics {
   borderColor: string;
   bodyFontFamily: string;
   headingFontFamily: string;
+  codeTheme: XiaohongshuCodeTheme;
 }
 
 /** XIAOHONGSHU_DEFAULT_TEMPLATE 是唯一对外提供的中文悦读模板。 */
@@ -52,6 +54,7 @@ export const XIAOHONGSHU_DEFAULT_TEMPLATE: XiaohongshuTemplate = {
   borderColor: "#c9d4cc",
   bodyFontFamily: "'Songti SC','STSong','Noto Serif CJK SC','Source Han Serif SC',serif",
   headingFontFamily: "'PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif",
+  codeTheme: TOKYO_NIGHT_CODE_THEME,
 };
 
 /** XIAOHONGSHU_TEMPLATES 是预览、分页和导出共同使用的模板注册表。 */
