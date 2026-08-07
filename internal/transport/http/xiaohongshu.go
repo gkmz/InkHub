@@ -405,7 +405,7 @@ func (h *runtimeHandler) xiaohongshuArticle(ctx context.Context, articleID strin
 	}
 	// wiki 链接预处理（小红书渠道），将交叉引用转为博客外链，未发布目标保留纯文本。
 	linkResolver := editorial.NewArticleLinkResolver(h.db, workspaceID)
-	document.Body = editorial.ProcessWebWikiLinks(ctx, linkResolver, document.Body, h.db, workspaceID)
+	document.Body = editorial.ProcessWebWikiLinks(ctx, linkResolver, document.Body, h.db, workspaceID).Body
 	rendered, err = h.renderArticlePreview(ctx, source, document, articleID)
 	return
 }

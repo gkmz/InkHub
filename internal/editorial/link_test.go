@@ -3,6 +3,8 @@ package editorial
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,37 +26,25 @@ func TestProcessWikiLinksConvertsBasicWikiLink(t *testing.T) {
 	}
 }
 
-func TestProcessWikiLinksUsesTargetAsLabelWhenAliasMissing(t *testing.T) {
+func TestProcessWikiLinksOnlyConvertsMarkdownText(t *testing.T) {
 	t.Parallel()
-	body := "[[note]]"
+	body := "正文 [[normal]]\n\n`[[inline-code]]`\n\n```md\n[[code-block]]\n```\n\n[已有 [[link-label]]](https://example.com)\n\n![[image.png]]"
+	var targets []string
 	result := ProcessWikiLinks(body, func(target, alias string) string {
-		return DefaultLabel(target, alias)
+		targets = append(targets, target)
+		return "<" + DefaultLabel(target, alias) + ">"
 	})
-	if result != "note" {
-		t.Fatalf("无 alias 时应使用 target 作为 label: %q", result)
+	if len(targets) != 1 || targets[0] != "normal" {
+		t.Fatalf("只应处理普通正文 WikiLink，实际目标: %+v", targets)
 	}
-}
-
-func TestProcessWikiLinksSkipsImageEmbeds(t *testing.T) {
-	t.Parallel()
-	body := "正文 [[note]] 图片 ![[image.png]] 结尾"
-	calls := 0
-	result := ProcessWikiLinks(body, func(target, alias string) string {
-		calls++
-		if target == "image.png" {
-			t.Fatal("不应处理图片嵌入")
+	for _, untouched := range []string{"`[[inline-code]]`", "[[code-block]]", "[[link-label]]", "![[image.png]]"} {
+		if !strings.Contains(result, untouched) {
+			t.Fatalf("受保护语法不应变化 %q: %s", untouched, result)
 		}
-		return DefaultLabel(target, alias)
-	})
-	if calls != 1 {
-		t.Fatalf("应只处理 1 个 wiki 链接，实际处理 %d 个", calls)
-	}
-	if !strings.Contains(result, "![[image.png]]") {
-		t.Fatalf("图片嵌入应保留原样: %q", result)
 	}
 }
 
-func TestProcessWikiLinksHandlesMultipleLinks(t *testing.T) {
+func TestProcessWikiLinksHandlesMultipleLinksAndAliases(t *testing.T) {
 	t.Parallel()
 	body := "[[a]] 和 [[b|别名]] 以及 [[c]]"
 	result := ProcessWikiLinks(body, func(target, alias string) string {
@@ -67,166 +57,167 @@ func TestProcessWikiLinksHandlesMultipleLinks(t *testing.T) {
 
 func TestProcessWikiLinksReturnsBodyWhenNoMatches(t *testing.T) {
 	t.Parallel()
-	body := "普通文本没有 wiki 链接"
+	body := "普通文本没有 WikiLink"
 	result := ProcessWikiLinks(body, func(target, alias string) string {
 		t.Fatal("不应调用 resolve")
 		return ""
 	})
 	if result != body {
-		t.Fatalf("无 wiki 链接时应原样返回: %q", result)
+		t.Fatalf("无 WikiLink 时应原样返回: %q", result)
 	}
 }
 
-func TestArticleLinkResolverFindsByStem(t *testing.T) {
+func TestArticleLinkResolverFindsByStemAndNestedPath(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	seedArticle(t, db, "w1", "s1", "article_one", "ai-note", "notes/ai-note.md", "ai-note")
+	seedArticle(t, db, "w1", "s1", "article_one", "ai-note", "notes/ai-note.md", "AI Note")
 	resolver := NewArticleLinkResolver(db, "w1")
-	resolution, err := resolver.Resolve(context.Background(), "ai-note")
-	if err != nil {
-		t.Fatalf("Resolve 错误: %v", err)
-	}
-	if !resolution.Found {
-		t.Fatal("应找到目标文章")
-	}
-	if resolution.StableID != "article_one" || resolution.Slug != "ai-note" {
-		t.Fatalf("解析结果不符合预期: %+v", resolution)
+	for _, target := range []string{"ai-note", "notes/ai-note", "ai-note#章节"} {
+		resolution, err := resolver.Resolve(context.Background(), target)
+		if err != nil || !resolution.Found || resolution.StableID != "article_one" {
+			t.Fatalf("应解析目标 %q: resolution=%+v err=%v", target, resolution, err)
+		}
 	}
 }
 
-func TestArticleLinkResolverFindsByNestedPath(t *testing.T) {
-	t.Parallel()
-	db := newTestDB(t)
-	seedArticle(t, db, "w1", "s1", "article_two", "nested-note", "folder/sub/nested-note.md", "nested-note")
-	resolver := NewArticleLinkResolver(db, "w1")
-	resolution, err := resolver.Resolve(context.Background(), "nested-note")
-	if err != nil {
-		t.Fatalf("Resolve 错误: %v", err)
-	}
-	if !resolution.Found || resolution.StableID != "article_two" {
-		t.Fatalf("应通过嵌套路径 stem 找到文章: %+v", resolution)
-	}
-}
-
-func TestArticleLinkResolverReturnsNotFound(t *testing.T) {
-	t.Parallel()
-	db := newTestDB(t)
-	seedArticle(t, db, "w1", "s1", "article_one", "ai-note", "notes/ai-note.md", "ai-note")
-	resolver := NewArticleLinkResolver(db, "w1")
-	resolution, err := resolver.Resolve(context.Background(), "不存在的笔记")
-	if err != nil {
-		t.Fatalf("Resolve 错误: %v", err)
-	}
-	if resolution.Found {
-		t.Fatal("未发布目标应返回 Found=false")
-	}
-	if resolution.Label != "不存在的笔记" {
-		t.Fatalf("Label 应保留原始 target: %q", resolution.Label)
-	}
-}
-
-func TestArticleLinkResolverScopedToWorkspace(t *testing.T) {
+func TestArticleLinkResolverReportsMissingAmbiguousAndWorkspaceScope(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
 	seedWorkspace(t, db, "w2", "s2")
-	seedArticle(t, db, "w1", "s1", "article_one", "note", "note.md", "note")
-	seedArticle(t, db, "w2", "s2", "article_two", "note", "note.md", "note")
-	resolver := NewArticleLinkResolver(db, "w2")
-	resolution, err := resolver.Resolve(context.Background(), "note")
-	if err != nil {
-		t.Fatalf("Resolve 错误: %v", err)
+	seedArticle(t, db, "w1", "s1", "article_one", "one", "one/note.md", "One")
+	seedArticle(t, db, "w1", "s1", "article_two", "two", "two/note.md", "Two")
+	seedArticle(t, db, "w2", "s2", "article_three", "three", "note.md", "Three")
+	if _, err := NewArticleLinkResolver(db, "w1").Resolve(context.Background(), "note"); err == nil {
+		t.Fatal("同工作区同名目标必须报告歧义")
+	} else if _, ok := err.(*AmbiguousLinkError); !ok {
+		t.Fatalf("歧义错误类型错误: %T", err)
 	}
-	if !resolution.Found || resolution.StableID != "article_two" {
-		t.Fatalf("应只查询当前工作区文章: %+v", resolution)
+	resolution, err := NewArticleLinkResolver(db, "w2").Resolve(context.Background(), "note")
+	if err != nil || !resolution.Found || resolution.StableID != "article_three" {
+		t.Fatalf("应限定当前工作区: resolution=%+v err=%v", resolution, err)
+	}
+	missing, err := NewArticleLinkResolver(db, "w2").Resolve(context.Background(), "missing")
+	if err != nil || missing.Found {
+		t.Fatalf("不存在目标应返回 Found=false: %+v err=%v", missing, err)
 	}
 }
 
-func TestProcessWebWikiLinksUsesSlug(t *testing.T) {
+func TestProcessWebWikiLinksUsesPublishedSlug(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	seedHugoProvider(t, db, "w1", "https://blog.hankmo.com")
-	seedArticle(t, db, "w1", "s1", "article_one", "my-slug", "notes/target.md", "my-slug")
-	resolver := NewArticleLinkResolver(db, "w1")
-	body := "[[target|相关内容]]"
-	result := ProcessWebWikiLinks(context.Background(), resolver, body, db, "w1")
+	root := t.TempDir()
+	seedHugoProvider(t, db, "w1", root, "https://blog.hankmo.com")
+	seedArticle(t, db, "w1", "s1", "article_one", "my-slug", "notes/target.md", "Target")
+	seedHugoBundle(t, root, "posts/original-directory", "article_one", "", "my-slug")
+	result := ProcessWebWikiLinks(context.Background(), NewArticleLinkResolver(db, "w1"), "[[target|相关内容]]", db, "w1")
 	expected := "[相关内容](https://blog.hankmo.com/my-slug/)"
-	if result != expected {
-		t.Fatalf("Web 链接应使用 slug: 期望 %q, 实际 %q", expected, result)
+	if result.Body != expected || len(result.Links) != 1 || result.Links[0].Status != LinkStatusConverted {
+		t.Fatalf("Web 链接应使用已发布 slug: 期望 %q, 实际 %+v", expected, result)
+	}
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "internal_link.converted" {
+		t.Fatalf("转换成功诊断错误: %+v", result.Diagnostics)
 	}
 }
 
-func TestProcessWebWikiLinksFallsBackToStemWhenSlugEmpty(t *testing.T) {
+func TestProcessWebWikiLinksUsesExplicitPublishedURL(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	seedHugoProvider(t, db, "w1", "https://blog.hankmo.com")
-	seedArticle(t, db, "w1", "s1", "article_one", "", "notes/target-note.md", "")
-	resolver := NewArticleLinkResolver(db, "w1")
-	body := "[[target-note]]"
-	result := ProcessWebWikiLinks(context.Background(), resolver, body, db, "w1")
-	expected := "[target-note](https://blog.hankmo.com/target-note/)"
-	if result != expected {
-		t.Fatalf("slug 为空时应使用 stem: 期望 %q, 实际 %q", expected, result)
+	root := t.TempDir()
+	seedHugoProvider(t, db, "w1", root, "https://blog.hankmo.com/base")
+	seedArticle(t, db, "w1", "s1", "article_one", "", "target.md", "Target")
+	seedHugoBundle(t, root, "posts/target", "article_one", "/fixed/path", "")
+	result := ProcessWebWikiLinks(context.Background(), NewArticleLinkResolver(db, "w1"), "[[target]]", db, "w1")
+	if result.Body != "[target](https://blog.hankmo.com/fixed/path/)" {
+		t.Fatalf("显式 Hugo URL 应优先: %s", result.Body)
 	}
 }
 
-func TestProcessWebWikiLinksReturnsBodyWhenBaseURLEmpty(t *testing.T) {
+func TestProcessWebWikiLinksFallsBackToPublishedBundlePath(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	seedArticle(t, db, "w1", "s1", "article_one", "slug", "target.md", "slug")
-	resolver := NewArticleLinkResolver(db, "w1")
-	body := "[[target]]"
-	result := ProcessWebWikiLinks(context.Background(), resolver, body, db, "w1")
-	if result != body {
-		t.Fatalf("未配置 baseURL 时应原样返回: %q", result)
+	root := t.TempDir()
+	seedHugoProvider(t, db, "w1", root, "https://blog.hankmo.com")
+	seedArticle(t, db, "w1", "s1", "article_one", "", "target-note.md", "Target")
+	seedHugoBundle(t, root, "posts/target-note", "article_one", "", "")
+	result := ProcessWebWikiLinks(context.Background(), NewArticleLinkResolver(db, "w1"), "[[target-note]]", db, "w1")
+	expected := "[target-note](https://blog.hankmo.com/posts/target-note/)"
+	if result.Body != expected {
+		t.Fatalf("应使用已发布 Bundle 路径: 期望 %q, 实际 %q", expected, result.Body)
 	}
 }
 
-func TestProcessWebWikiLinksReturnsLabelForUnpublished(t *testing.T) {
+func TestProcessWebWikiLinksReturnsPlainTextWithoutBlogConfig(t *testing.T) {
 	t.Parallel()
 	db := newTestDB(t)
-	seedHugoProvider(t, db, "w1", "https://blog.hankmo.com")
-	resolver := NewArticleLinkResolver(db, "w1")
-	body := "[[未发布|显示文本]]"
-	result := ProcessWebWikiLinks(context.Background(), resolver, body, db, "w1")
-	if result != "显示文本" {
-		t.Fatalf("未发布目标应保留纯文本 label: %q", result)
+	seedArticle(t, db, "w1", "s1", "article_one", "slug", "target.md", "Target")
+	result := ProcessWebWikiLinks(context.Background(), NewArticleLinkResolver(db, "w1"), "[[target|显示文本]]", db, "w1")
+	if result.Body != "显示文本" || result.Links[0].Status != LinkStatusUnavailable {
+		t.Fatalf("未配置博客时应清理 WikiLink 并保留纯文本: %+v", result)
+	}
+}
+
+func TestProcessWebWikiLinksReportsUnpublishedAndMissingTargets(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	root := t.TempDir()
+	seedHugoProvider(t, db, "w1", root, "https://blog.hankmo.com")
+	seedArticle(t, db, "w1", "s1", "article_one", "draft", "draft.md", "Draft")
+	result := ProcessWebWikiLinks(context.Background(), NewArticleLinkResolver(db, "w1"), "[[draft|尚未发布]] 和 [[missing|不存在]]", db, "w1")
+	if result.Body != "尚未发布 和 不存在" || len(result.Links) != 2 || result.Links[0].Status != LinkStatusUnpublished || result.Links[1].Status != LinkStatusMissing {
+		t.Fatalf("未发布和不存在目标应降级并区分诊断: %+v", result)
+	}
+	if len(result.Diagnostics) != 2 || result.Diagnostics[0].Code != "internal_link.unpublished" || result.Diagnostics[1].Code != "internal_link.missing" {
+		t.Fatalf("内部链接诊断错误: %+v", result.Diagnostics)
+	}
+}
+
+func TestProcessWebWikiLinksBlocksAmbiguousTarget(t *testing.T) {
+	t.Parallel()
+	db := newTestDB(t)
+	result := ProcessWebWikiLinks(context.Background(), errorLinkResolver{err: &AmbiguousLinkError{Target: "同名文章"}}, "[[同名文章]]", db, "w1")
+	if result.Body != "同名文章" || !result.Links[0].Blocking || !result.Diagnostics[0].Blocking || result.Diagnostics[0].Code != "internal_link.ambiguous" {
+		t.Fatalf("歧义目标必须阻断发布: %+v", result)
+	}
+}
+
+func TestProcessHugoWikiLinksBuildsRelrefForPublishedTarget(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	seedHugoBundle(t, root, "posts/target", "article_123", "", "")
+	resolver := &mockLinkResolver{resolutions: map[string]LinkResolution{"目标文章": {Found: true, StableID: "article_123"}}}
+	config := `{"root":` + mustJSONString(t, root) + `}`
+	result := ProcessHugoWikiLinks(context.Background(), resolver, "[[目标文章|相关内容]]", config)
+	expected := `[相关内容]({{< relref "posts/target/index.md" >}})`
+	if result.Body != expected || result.Links[0].Status != LinkStatusConverted {
+		t.Fatalf("Hugo 应生成 relref: 期望 %q, 实际 %+v", expected, result)
 	}
 }
 
 func TestProcessHugoWikiLinksFallsBackToPlainTextWhenConfigInvalid(t *testing.T) {
 	t.Parallel()
-	resolver := &mockLinkResolver{
-		resolutions: map[string]LinkResolution{
-			"目标文章": {Found: true, StableID: "article_123"},
-		},
-	}
+	resolver := &mockLinkResolver{resolutions: map[string]LinkResolution{"目标文章": {Found: true, StableID: "article_123"}}}
 	body := "请查看 [[目标文章|相关内容]]。"
-
-	// 空配置应该退化为纯文本
-	result := ProcessHugoWikiLinks(context.Background(), resolver, body, "")
-	if !strings.Contains(result, "相关内容") {
-		t.Fatalf("空配置应退化为纯文本 label: %q", result)
-	}
-	if strings.Contains(result, "[[") || strings.Contains(result, "]]") {
-		t.Fatalf("空配置应移除 wiki 语法: %q", result)
-	}
-
-	// 无效配置（无 root）也应退化为纯文本
-	result = ProcessHugoWikiLinks(context.Background(), resolver, body, `{"base_url":"https://example.com"}`)
-	if !strings.Contains(result, "相关内容") {
-		t.Fatalf("无 root 配置应退化为纯文本 label: %q", result)
+	for _, config := range []string{"", `{"base_url":"https://example.com"}`} {
+		result := ProcessHugoWikiLinks(context.Background(), resolver, body, config)
+		if result.Body != "请查看 相关内容。" || result.Links[0].Status != LinkStatusUnavailable {
+			t.Fatalf("无效配置应退化为纯文本: %+v", result)
+		}
 	}
 }
 
-type mockLinkResolver struct {
-	resolutions map[string]LinkResolution
-}
+type mockLinkResolver struct{ resolutions map[string]LinkResolution }
 
-func (m *mockLinkResolver) Resolve(ctx context.Context, target string) (LinkResolution, error) {
-	if r, ok := m.resolutions[target]; ok {
-		return r, nil
+func (m *mockLinkResolver) Resolve(_ context.Context, target string) (LinkResolution, error) {
+	if resolution, ok := m.resolutions[target]; ok {
+		return resolution, nil
 	}
 	return LinkResolution{Found: false}, nil
+}
+
+type errorLinkResolver struct{ err error }
+
+func (r errorLinkResolver) Resolve(context.Context, string) (LinkResolution, error) {
+	return LinkResolution{}, r.err
 }
 
 func newTestDB(t *testing.T) *sql.DB {
@@ -243,12 +234,10 @@ func newTestDB(t *testing.T) *sql.DB {
 func seedWorkspace(t *testing.T, db *sql.DB, workspaceID, sourceID string) {
 	t.Helper()
 	now := "2026-01-01T00:00:00Z"
-	_, err := db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES(?,?,'/tmp/test',?,?,?)`, workspaceID, workspaceID, now, now, now)
-	if err != nil {
+	if _, err := db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES(?,?,'/tmp/test',?,?,?)`, workspaceID, workspaceID, now, now, now); err != nil {
 		t.Fatalf("插入测试工作区: %v", err)
 	}
-	_, err = db.Exec(`INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES(?,?,'obsidian','/tmp/vault',?,?)`, sourceID, workspaceID, now, now)
-	if err != nil {
+	if _, err := db.Exec(`INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES(?,?,'obsidian','/tmp/vault',?,?)`, sourceID, workspaceID, now, now); err != nil {
 		t.Fatalf("插入测试 Source: %v", err)
 	}
 }
@@ -257,21 +246,47 @@ func seedArticle(t *testing.T, db *sql.DB, workspaceID, sourceID, stableID, slug
 	t.Helper()
 	now := "2026-01-01T00:00:00Z"
 	_, err := db.Exec(`INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,slug,content_hash,frontmatter_hash,indexed_at,created_at,updated_at,content_stage)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		stableID+"_id", workspaceID, sourceID, stableID, relativePath, title, slug, "hash1", "fh1", now, now, now, "ready")
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, stableID+"_id", workspaceID, sourceID, stableID, relativePath, title, slug, "hash1", "fh1", now, now, now, "ready")
 	if err != nil {
 		t.Fatalf("插入测试文章: %v", err)
 	}
 }
 
-func seedHugoProvider(t *testing.T, db *sql.DB, workspaceID, baseURL string) {
+func seedHugoProvider(t *testing.T, db *sql.DB, workspaceID, root, baseURL string) {
 	t.Helper()
 	now := "2026-01-01T00:00:00Z"
-	config := `{"root":"/tmp/hugo","staging_root":"/tmp/staging","base_url":"` + baseURL + `"}`
+	config := `{"root":` + mustJSONString(t, root) + `,"staging_root":` + mustJSONString(t, filepath.Join(root, "staging")) + `,"base_url":` + mustJSONString(t, baseURL) + `}`
 	_, err := db.Exec(`INSERT INTO provider_instances(id,workspace_id,provider_type,name,enabled,config_json,created_at,updated_at)
-VALUES(?,?,'hugo','Hugo',1,?,?,?)`,
-		"hugo_"+workspaceID, workspaceID, config, now, now)
+VALUES(?,?,'hugo','Hugo',1,?,?,?)`, "hugo_"+workspaceID, workspaceID, config, now, now)
 	if err != nil {
 		t.Fatalf("插入测试 Hugo Provider: %v", err)
 	}
+}
+
+func seedHugoBundle(t *testing.T, root, relative, sourceID, fixedURL, slug string) {
+	t.Helper()
+	directory := filepath.Join(root, "content", filepath.FromSlash(relative))
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nsource_id: " + sourceID + "\n"
+	if fixedURL != "" {
+		content += "url: " + fixedURL + "\n"
+	}
+	if slug != "" {
+		content += "slug: " + slug + "\n"
+	}
+	content += "---\n\n正文\n"
+	if err := os.WriteFile(filepath.Join(directory, "index.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustJSONString(t *testing.T, value string) string {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
 }

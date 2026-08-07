@@ -1,6 +1,6 @@
-import { Activity, Bot, Check, Database, FolderOpen, Globe2, Link2, MessageCircle, NotebookPen, RefreshCw, Save, ScanSearch } from "lucide-react";
+import { Activity, Bot, Check, Database, FolderOpen, Globe2, MessageCircle, NotebookPen, RefreshCw, Save, ScanSearch } from "lucide-react";
 import { useEffect, useState } from "react";
-import { confirmHugoTakeover, getSettings, pickDirectory, previewContentScope, previewHugoTakeover, saveAISettings, saveContentScope, saveCrossReferenceSections, saveHugoSettings, saveWeChatSettings, saveXiaohongshuSettings } from "../../api/client";
+import { confirmHugoTakeover, getSettings, pickDirectory, previewContentScope, previewHugoTakeover, saveAISettings, saveContentScope, saveHugoSettings, saveWeChatSettings, saveXiaohongshuSettings } from "../../api/client";
 import type { HugoTakeoverReport, SettingsView } from "../../api/types";
 import { ContentScopePicker } from "../../components/ContentScopePicker";
 import { SecretField } from "../../components/SecretField";
@@ -12,7 +12,6 @@ const settingsTabs = [
   { id: "wechat", label: "微信", icon: MessageCircle },
   { id: "xiaohongshu", label: "小红书", icon: NotebookPen },
   { id: "ai", label: "AI", icon: Bot },
-  { id: "cross-reference", label: "交叉引用", icon: Link2 },
   { id: "diagnostics", label: "诊断", icon: Activity },
 ] as const;
 
@@ -40,8 +39,6 @@ export function SettingsPage() {
   const [savingHugo, setSavingHugo] = useState(false);
   const [takeoverReport, setTakeoverReport] = useState<HugoTakeoverReport | null>(null);
   const [takingOver, setTakingOver] = useState(false);
-  const [savingCrossRef, setSavingCrossRef] = useState(false);
-  const [crossRefInput, setCrossRefInput] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     void getSettings(controller.signal).then(async (value) => {
@@ -201,30 +198,6 @@ export function SettingsPage() {
       setTakingOver(false);
     }
   };
-  const addCrossRefSection = () => {
-    const trimmed = crossRefInput.trim();
-    if (!trimmed) return;
-    const current = settings.cross_reference_sections ?? [];
-    if (current.includes(trimmed)) { setCrossRefInput(""); return; }
-    setSettings({ ...settings, cross_reference_sections: [...current, trimmed] });
-    setCrossRefInput("");
-  };
-  const removeCrossRefSection = (section: string) => {
-    const current = settings.cross_reference_sections ?? [];
-    setSettings({ ...settings, cross_reference_sections: current.filter((item) => item !== section) });
-  };
-  const persistCrossRef = async () => {
-    setSavingCrossRef(true);
-    try {
-      const result = await saveCrossReferenceSections(settings.cross_reference_sections ?? []);
-      setSettings({ ...settings, cross_reference_sections: result.cross_reference_sections });
-      toast.show({ kind: "success", message: "交叉引用配置已保存" });
-    } catch (reason) {
-      toast.show({ kind: "error", message: reason instanceof Error ? reason.message : "交叉引用配置保存失败" });
-    } finally {
-      setSavingCrossRef(false);
-    }
-  };
   const selectTab = (tab: SettingsTabID) => {
     setActiveTab(tab);
     sessionStorage.setItem("inkhub.settings.tab", tab);
@@ -284,7 +257,6 @@ export function SettingsPage() {
         </SettingsGroup>
       </SettingsSection>}
       {activeTab === "ai" && <SettingsSection icon={<Bot />} title="AI" description="审核建议和小红书改写服务"><SettingsGroup title="服务状态" description="关闭后仍可手工审核和编辑各发布渠道内容。"><label className="switch-line">启用 AI<input type="checkbox" checked={settings.ai_enabled} onChange={(event) => setSettings({ ...settings, ai_enabled: event.target.checked })} /></label></SettingsGroup><SettingsGroup title="模型连接" description="配置兼容 OpenAI API 的服务地址、模型和访问密钥。"><label>服务地址<input value={settings.ai_base_url ?? ""} onChange={(event) => setSettings({ ...settings, ai_base_url: event.target.value })} placeholder="https://api.openai.com/v1" /></label><label>模型<input value={settings.ai_model ?? ""} onChange={(event) => setSettings({ ...settings, ai_model: event.target.value })} placeholder="gpt-4.1-mini" /></label><SecretField label="AI API Key" saved={settings.ai_secret_saved} value={aiKey} onValueChange={setAIKey} onDelete={() => toast.show({ kind: "info", message: "请保存空配置前先关闭 AI" })} /><button className="secondary" disabled={savingAI} onClick={() => void persistAI()}><Save size={15} />{savingAI ? "正在保存…" : "保存 AI 设置"}</button></SettingsGroup></SettingsSection>}
-      {activeTab === "cross-reference" && <SettingsSection icon={<Link2 />} title="交叉引用" description="WikiLink 发布规则"><SettingsGroup title="引用段落" description="这些段落下的 WikiLink 会按渠道转换；未发布目标保留纯文本。"><div className="cross-ref-list">{(settings.cross_reference_sections ?? []).map((section) => <div key={section} className="cross-ref-item"><span>{section}</span><button className="link-button" onClick={() => removeCrossRefSection(section)}>删除</button></div>)}</div><div className="field-pair"><input value={crossRefInput} onChange={(event) => setCrossRefInput(event.target.value)} placeholder="段落标题，如：相关链接" onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addCrossRefSection(); } }} /><button className="secondary" onClick={addCrossRefSection}>添加</button></div><button className="secondary" disabled={savingCrossRef} onClick={() => void persistCrossRef()}><Save size={15} />{savingCrossRef ? "正在保存…" : "保存交叉引用配置"}</button></SettingsGroup></SettingsSection>}
       {activeTab === "diagnostics" && <SettingsSection icon={<Activity />} title="诊断" description="本机依赖和工作区状态"><SettingsGroup title="运行检查" description="确认内容目录、发布渠道和本机数据库是否可用。"><div className="diagnostic-list">{settings.diagnostics.map((item) => <div key={item.name}><span className={`doctor-${item.state}`}>{item.state}</span><b>{item.name}</b><p>{item.message}</p></div>)}</div><button className="secondary" disabled={diagnosing} onClick={refreshDiagnostics}><RefreshCw size={15} />{diagnosing ? "正在诊断…" : "重新诊断"}</button></SettingsGroup></SettingsSection>}
     </div>
   </div>;

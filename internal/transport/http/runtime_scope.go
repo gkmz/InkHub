@@ -1,8 +1,6 @@
 package httptransport
 
 import (
-	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -201,9 +199,6 @@ func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Re
 		}
 		settings["diagnostics"] = diagnostics
 	}
-	if sections, found := loadCrossReferenceSections(request.Context(), h.db, workspaceID); found {
-		settings["cross_reference_sections"] = sections
-	}
 	if inspectErr != nil {
 		settings["directories"] = []directoryCandidate{}
 		settings["diagnostics"] = []map[string]string{{"name": "内容目录", "state": "异常", "message": "无法读取 Vault 目录"}}
@@ -312,54 +307,4 @@ func hasBlockingRuntimeDiagnostic(diagnostics []contracts.Diagnostic) bool {
 
 func systemScopeDirectory(name string) bool {
 	return name == ".obsidian" || name == ".git" || name == ".trash" || strings.HasPrefix(name, ".inkhub-")
-}
-
-// crossReferenceSettingsKey 是 settings 表中存储交叉引用段落标题的键。
-const crossReferenceSettingsKey = "cross_reference_sections"
-
-// loadCrossReferenceSections 从 settings 表读取交叉引用段落标题列表。
-func loadCrossReferenceSections(ctx context.Context, db *sql.DB, workspaceID string) ([]string, bool) {
-	var valueJSON string
-	err := db.QueryRowContext(ctx, `SELECT value_json FROM settings WHERE workspace_id=? AND key=?`, workspaceID, crossReferenceSettingsKey).Scan(&valueJSON)
-	if err != nil {
-		return nil, false
-	}
-	var sections []string
-	if json.Unmarshal([]byte(valueJSON), &sections) != nil {
-		return nil, false
-	}
-	return sections, true
-}
-
-// saveCrossReference 保存交叉引用段落标题列表到 settings 表。
-func (h *runtimeHandler) saveCrossReference(response http.ResponseWriter, request *http.Request) {
-	var input struct {
-		Sections []string `json:"sections"`
-	}
-	if decodeJSON(request, &input) != nil {
-		writeError(response, http.StatusBadRequest, "request.invalid", "交叉引用配置无效")
-		return
-	}
-	normalized := make([]string, 0, len(input.Sections))
-	seen := make(map[string]bool, len(input.Sections))
-	for _, section := range input.Sections {
-		section = strings.TrimSpace(section)
-		if section == "" || seen[section] {
-			continue
-		}
-		seen[section] = true
-		normalized = append(normalized, section)
-	}
-	var workspaceID string
-	if err := h.db.QueryRowContext(request.Context(), `SELECT id FROM workspaces ORDER BY last_used_at DESC LIMIT 1`).Scan(&workspaceID); err != nil {
-		mapError(response, ErrNotFound)
-		return
-	}
-	valueJSON, _ := json.Marshal(normalized)
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := h.db.ExecContext(request.Context(), `INSERT INTO settings(workspace_id,key,value_json,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(workspace_id,key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at`, workspaceID, crossReferenceSettingsKey, string(valueJSON), now, now); err != nil {
-		mapError(response, err)
-		return
-	}
-	writeJSON(response, http.StatusOK, map[string]any{"cross_reference_sections": normalized})
 }

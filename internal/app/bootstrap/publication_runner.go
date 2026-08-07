@@ -168,11 +168,16 @@ func (h publicationJobHandler) loadInput(ctx context.Context, operationID string
 	input := contracts.PublishInput{OperationID: operationID, Article: document.Article, Body: document.Body, ResourceRefs: document.ResourceRefs, Diagnostics: document.Diagnostics, ContentHash: contentHash}
 	// wiki 链接预处理：按渠道将 [[target|label]] 转为对应格式，未发布目标保留纯文本 label。
 	linkResolver := editorial.NewArticleLinkResolver(h.db, workspaceID)
+	var links editorial.LinkResult
 	switch contracts.ProviderType(providerType) {
 	case contracts.ProviderHugo:
-		input.Body = editorial.ProcessHugoWikiLinks(ctx, linkResolver, input.Body, config)
+		links = editorial.ProcessHugoWikiLinks(ctx, linkResolver, input.Body, config)
 	case contracts.ProviderWeChat:
-		input.Body = editorial.ProcessWebWikiLinks(ctx, linkResolver, input.Body, h.db, workspaceID)
+		links = editorial.ProcessWebWikiLinks(ctx, linkResolver, input.Body, h.db, workspaceID)
+	}
+	if links.Body != "" {
+		input.Body = links.Body
+		input.Diagnostics = append(input.Diagnostics, links.Diagnostics...)
 	}
 	return input, providerType, []byte(config), nil
 }

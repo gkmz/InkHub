@@ -281,8 +281,3 @@ export function saveContentScope(contentRoots: string[], ignoredFolders: string[
 export function previewContentScope(contentRoots: string[], ignoredFolders: string[], ignoredFileNames: string[]) {
   return request<{ added: number; removed: number }>("/settings/content-scope/preview", { method: "POST", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders, ignored_file_names: ignoredFileNames }) });
 }
-
-/** saveCrossReferenceSections 保存交叉引用段落标题列表。 */
-export function saveCrossReferenceSections(sections: string[]) {
-  return request<{ cross_reference_sections: string[] }>("/settings/cross-reference", { method: "PUT", body: JSON.stringify({ sections }) });
-}

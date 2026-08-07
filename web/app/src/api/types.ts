@@ -417,7 +417,6 @@ export interface SettingsView {
   xiaohongshu_enabled: boolean;
   xiaohongshu_template: string;
   xiaohongshu_templates: TemplateSummary[];
-  cross_reference_sections?: string[];
   obsidian_settings?: ObsidianSettingsView;
   diagnostics: { name: string; state: "正常" | "需要处理" | "未启用"; message: string }[];
 }

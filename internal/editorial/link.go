@@ -1,4 +1,4 @@
-// Package editorial 提供发布前的编辑加工能力，包括 Obsidian wiki 链接的跨渠道解析。
+// Package editorial 提供发布前的编辑加工能力，包括 Obsidian WikiLink 的跨渠道解析。
 package editorial
 
 import (
@@ -8,15 +8,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
+	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/provider/publish/hugo"
 )
 
-var wikiLinkPattern = regexp.MustCompile(`\[\[([^\]|]+)(?:\|([^\]]+))?\]\]`)
+// LinkStatus 描述一个内部链接在目标渠道中的处理结果。
+type LinkStatus string
 
-// LinkResolution 保存 wiki 链接目标的解析结果。
+const (
+	LinkStatusConverted   LinkStatus = "converted"
+	LinkStatusUnpublished LinkStatus = "unpublished"
+	LinkStatusMissing     LinkStatus = "missing"
+	LinkStatusAmbiguous   LinkStatus = "ambiguous"
+	LinkStatusUnavailable LinkStatus = "unavailable"
+)
+
+// LinkResolution 保存 WikiLink 目标的索引解析结果。
 type LinkResolution struct {
 	Label        string
 	RelativePath string
@@ -25,9 +34,32 @@ type LinkResolution struct {
 	Found        bool
 }
 
-// LinkResolver 将 Obsidian wiki 链接目标解析为文章索引信息。
+// LinkOutcome 保存一个 WikiLink 的渠道转换结果，供测试和后续预览报告使用。
+type LinkOutcome struct {
+	Target   string
+	Label    string
+	Status   LinkStatus
+	Blocking bool
+}
+
+// LinkResult 同时返回转换后的正文、链接结果和发布预检诊断。
+type LinkResult struct {
+	Body        string
+	Links       []LinkOutcome
+	Diagnostics []contracts.Diagnostic
+}
+
+// LinkResolver 将 Obsidian WikiLink 目标解析为文章索引信息。
 type LinkResolver interface {
 	Resolve(ctx context.Context, wikiTarget string) (LinkResolution, error)
+}
+
+// AmbiguousLinkError 表示不带路径的 WikiLink 同时匹配到多篇文章。
+type AmbiguousLinkError struct{ Target string }
+
+// Error 返回不包含本机路径的歧义说明。
+func (e *AmbiguousLinkError) Error() string {
+	return fmt.Sprintf("WikiLink 目标不唯一: %s", e.Target)
 }
 
 // ArticleLinkResolver 基于 article 表查询的 LinkResolver 实现。
@@ -43,16 +75,15 @@ func NewArticleLinkResolver(db *sql.DB, workspaceID string) *ArticleLinkResolver
 
 // Resolve 按 Obsidian 目标路径或唯一文件名匹配文章，歧义目标不会静默任选一篇。
 func (r *ArticleLinkResolver) Resolve(ctx context.Context, wikiTarget string) (LinkResolution, error) {
-	target := strings.TrimSpace(wikiTarget)
-	label := target
-	if target == "" {
-		return LinkResolution{Label: label}, nil
+	target := linkDocumentTarget(wikiTarget)
+	if target == "" || r == nil || r.db == nil || r.workspaceID == "" {
+		return LinkResolution{Label: target}, nil
 	}
 	normalized := filepath.ToSlash(strings.TrimSuffix(target, ".md")) + ".md"
-	query := `SELECT stable_id,slug,relative_path FROM articles WHERE workspace_id=? AND deleted_at IS NULL AND stable_id<>'' AND relative_path=?`
+	query := `SELECT stable_id,slug,relative_path FROM articles WHERE workspace_id=? AND deleted_at IS NULL AND relative_path=?`
 	args := []any{r.workspaceID, normalized}
 	if !strings.Contains(normalized, "/") {
-		query = `SELECT stable_id,slug,relative_path FROM articles WHERE workspace_id=? AND deleted_at IS NULL AND stable_id<>'' AND (relative_path=? OR relative_path LIKE ?)`
+		query = `SELECT stable_id,slug,relative_path FROM articles WHERE workspace_id=? AND deleted_at IS NULL AND (relative_path=? OR relative_path LIKE ?)`
 		args = append(args, "%/"+normalized)
 	}
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -66,50 +97,30 @@ func (r *ArticleLinkResolver) Resolve(ctx context.Context, wikiTarget string) (L
 		if err := rows.Scan(&resolution.StableID, &resolution.Slug, &resolution.RelativePath); err != nil {
 			return LinkResolution{}, err
 		}
-		resolution.Label, resolution.Found = label, true
+		resolution.Label, resolution.Found = target, true
 		matches = append(matches, resolution)
 	}
 	if err := rows.Err(); err != nil {
 		return LinkResolution{}, err
 	}
 	if len(matches) == 0 {
-		return LinkResolution{Label: label}, nil
+		return LinkResolution{Label: target}, nil
 	}
 	if len(matches) > 1 {
-		return LinkResolution{}, fmt.Errorf("WikiLink 目标不唯一: %s", target)
+		return LinkResolution{}, &AmbiguousLinkError{Target: target}
 	}
 	return matches[0], nil
 }
 
-// ProcessWikiLinks 处理 body 中的 [[...]] wiki 链接（跳过 ![[...]] 图片嵌入）。
-// resolve 回调接收 (target, alias)，返回最终的 markdown 片段。
+// ProcessWikiLinks 只转换 Markdown 正文文本中的 WikiLink，跳过代码、已有链接和图片。
 func ProcessWikiLinks(body string, resolve func(target, alias string) string) string {
-	matches := wikiLinkPattern.FindAllStringSubmatchIndex(body, -1)
-	if len(matches) == 0 {
-		return body
-	}
-	var result strings.Builder
-	position := 0
-	for _, match := range matches {
-		start, end := match[0], match[1]
-		// 跳过 ![[...]] 图片嵌入
-		if start > 0 && body[start-1] == '!' {
-			continue
-		}
-		result.WriteString(body[position:start])
-		target := strings.TrimSpace(body[match[2]:match[3]])
-		var alias string
-		if match[4] >= 0 {
-			alias = strings.TrimSpace(body[match[4]:match[5]])
-		}
-		result.WriteString(resolve(target, alias))
-		position = end
-	}
-	result.WriteString(body[position:])
-	return result.String()
+	result := rewriteWikiLinks(body, func(target, alias string) linkReplacement {
+		return linkReplacement{Text: resolve(target, alias), Status: LinkStatusConverted}
+	})
+	return result.Body
 }
 
-// DefaultLabel 返回 wiki 链接的默认显示文本。
+// DefaultLabel 返回 WikiLink 的默认显示文本。
 func DefaultLabel(target, alias string) string {
 	if alias != "" {
 		return alias
@@ -117,16 +128,19 @@ func DefaultLabel(target, alias string) string {
 	return target
 }
 
-// hugoProviderConfig 是 Hugo Provider 配置 JSON 的子集，用于读取 root 和 base_url。
 type hugoProviderConfig struct {
 	Root    string `json:"root"`
 	BaseURL string `json:"base_url,omitempty"`
 }
 
-// ProcessHugoWikiLinks 将 wiki 链接转为 Hugo relref 内部链接。
-// 未发布或 Hugo 站点未找到目标时，保留纯文本 label。
-// 当 Hugo 配置不可用时，退化为纯文本 label，避免 Hugo 因无法识别 wiki 语法而构建失败。
-func ProcessHugoWikiLinks(ctx context.Context, resolver LinkResolver, body, configJSON string) string {
+type linkReplacement struct {
+	Text     string
+	Status   LinkStatus
+	Blocking bool
+}
+
+// ProcessHugoWikiLinks 将全文 WikiLink 转为 Hugo relref，并返回可供预检展示的诊断。
+func ProcessHugoWikiLinks(ctx context.Context, resolver LinkResolver, body, configJSON string) LinkResult {
 	var cfg hugoProviderConfig
 	hasConfig := json.Unmarshal([]byte(configJSON), &cfg) == nil && cfg.Root != ""
 	if hasConfig {
@@ -134,75 +148,54 @@ func ProcessHugoWikiLinks(ctx context.Context, resolver LinkResolver, body, conf
 			hasConfig = false
 		}
 	}
-	if !hasConfig {
-		return ProcessWikiLinks(body, func(target, alias string) string {
-			return DefaultLabel(target, alias)
-		})
-	}
-	contentRoot := filepath.Join(cfg.Root, "content")
-	return ProcessWikiLinks(body, func(target, alias string) string {
-		label := DefaultLabel(target, alias)
-		resolution, err := resolver.Resolve(ctx, target)
-		if err != nil || !resolution.Found {
-			return label
+	return rewriteWikiLinks(body, func(target, alias string) linkReplacement {
+		label := markdownLabel(DefaultLabel(target, alias))
+		resolution, status := resolveIndexedLink(ctx, resolver, target)
+		if status != LinkStatusConverted {
+			return linkReplacement{Text: label, Status: status, Blocking: status == LinkStatusAmbiguous}
 		}
-		bundlePath, _, found, err := hugo.FindBundleBySourceID(cfg.Root, resolution.StableID)
-		if err != nil || !found {
-			return label
+		if !hasConfig {
+			return linkReplacement{Text: label, Status: LinkStatusUnavailable}
+		}
+		bundlePath, _, published, err := hugo.FindBundleBySourceID(cfg.Root, resolution.StableID)
+		if err != nil {
+			return linkReplacement{Text: label, Status: LinkStatusUnavailable, Blocking: true}
+		}
+		if !published {
+			return linkReplacement{Text: label, Status: LinkStatusUnpublished}
 		}
 		indexPath := filepath.Join(bundlePath, "index.md")
-		if _, statErr := os.Stat(indexPath); statErr != nil {
-			return label
+		relPath, err := filepath.Rel(filepath.Join(cfg.Root, "content"), indexPath)
+		if err != nil || strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
+			return linkReplacement{Text: label, Status: LinkStatusUnavailable, Blocking: true}
 		}
-		relPath, err := filepath.Rel(contentRoot, indexPath)
+		return linkReplacement{Text: fmt.Sprintf(`[%s]({{< relref %q >}})`, label, filepath.ToSlash(relPath)), Status: LinkStatusConverted}
+	})
+}
+
+// ProcessWebWikiLinks 将全文 WikiLink 转为博客绝对链接；未发布目标退化为纯文本。
+func ProcessWebWikiLinks(ctx context.Context, resolver LinkResolver, body string, db *sql.DB, workspaceID string) LinkResult {
+	cfg := loadHugoLinkConfig(ctx, db, workspaceID)
+	return rewriteWikiLinks(body, func(target, alias string) linkReplacement {
+		label := markdownLabel(DefaultLabel(target, alias))
+		resolution, status := resolveIndexedLink(ctx, resolver, target)
+		if status != LinkStatusConverted {
+			return linkReplacement{Text: label, Status: status, Blocking: status == LinkStatusAmbiguous}
+		}
+		if cfg.BaseURL == "" || cfg.Root == "" {
+			return linkReplacement{Text: label, Status: LinkStatusUnavailable}
+		}
+		bundlePath, _, published, err := hugo.FindBundleBySourceID(cfg.Root, resolution.StableID)
 		if err != nil {
-			return label
+			return linkReplacement{Text: label, Status: LinkStatusUnavailable, Blocking: true}
 		}
-		if strings.HasPrefix(relPath, "..") || strings.HasPrefix(relPath, "/") {
-			return label
+		if !published {
+			return linkReplacement{Text: label, Status: LinkStatusUnpublished}
 		}
-		return fmt.Sprintf(`[%s]({{< relref %q >}})`, label, filepath.ToSlash(relPath))
+		publicURL, err := publishedArticleURL(cfg, bundlePath)
+		if err != nil {
+			return linkReplacement{Text: label, Status: LinkStatusUnavailable, Blocking: true}
+		}
+		return linkReplacement{Text: fmt.Sprintf("[%s](%s)", label, publicURL), Status: LinkStatusConverted}
 	})
-}
-
-// ProcessWebWikiLinks 将 wiki 链接转为指向 Hugo 博客的外部 markdown 链接。
-// 微信公众号和小红书使用相同的处理逻辑。未发布时保留纯文本 label。
-func ProcessWebWikiLinks(ctx context.Context, resolver LinkResolver, body string, db *sql.DB, workspaceID string) string {
-	config := loadHugoLinkConfig(ctx, db, workspaceID)
-	if config.BaseURL == "" || config.Root == "" {
-		return body
-	}
-	return ProcessWikiLinks(body, func(target, alias string) string {
-		label := DefaultLabel(target, alias)
-		resolution, err := resolver.Resolve(ctx, target)
-		if err != nil || !resolution.Found {
-			return label
-		}
-		bundlePath, _, found, err := hugo.FindBundleBySourceID(config.Root, resolution.StableID)
-		if err != nil || !found {
-			return label
-		}
-		relative, err := filepath.Rel(filepath.Join(config.Root, "content"), bundlePath)
-		if err != nil || strings.HasPrefix(relative, "..") {
-			return label
-		}
-		return fmt.Sprintf(`[%s](%s/%s/)`, label, strings.TrimRight(config.BaseURL, "/"), strings.Trim(filepath.ToSlash(relative), "/"))
-	})
-}
-
-// loadHugoLinkConfig 从已启用 Hugo Provider 读取公开链接所需配置。
-func loadHugoLinkConfig(ctx context.Context, db *sql.DB, workspaceID string) hugoProviderConfig {
-	var configJSON string
-	err := db.QueryRowContext(ctx,
-		`SELECT config_json FROM provider_instances WHERE workspace_id=? AND provider_type='hugo' AND enabled=1`,
-		workspaceID,
-	).Scan(&configJSON)
-	if err != nil {
-		return hugoProviderConfig{}
-	}
-	var cfg hugoProviderConfig
-	if json.Unmarshal([]byte(configJSON), &cfg) != nil {
-		return hugoProviderConfig{}
-	}
-	return cfg
 }

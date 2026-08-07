@@ -170,10 +170,6 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.saveContentScope(response, request)
 		}
-	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/cross-reference":
-		if validateWriteRequest(response, request) {
-			h.saveCrossReference(response, request)
-		}
 	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/settings/content-scope/preview":
 		if validateWriteRequest(response, request) {
 			h.previewContentScope(response, request)
@@ -801,5 +797,5 @@ func stableRuntimeID(kind, key string) string {
 }
 
 func defaultSettings() map[string]any {
-	return map[string]any{"ai_enabled": false, "ai_secret_saved": false, "hugo_enabled": false, "hugo_path": "", "hugo_base_url": "", "hugo_valid": false, "hugo_bundle_count": 0, "hugo_linked_count": 0, "hugo_unlinked_count": 0, "hugo_conflict_count": 0, "wechat_enabled": true, "wechat_secret_saved": false, "github_token_saved": false, "github_owner": "", "github_repository": "", "github_branch": "main", "github_prefix": "inkhub", "default_template": "default", "templates": []map[string]any{{"id": "default", "name": "InkHub 墨绿", "version": "1.0.0", "compatible": true}}, "xiaohongshu_enabled": true, "xiaohongshu_template": xiaohongshuDefaultTemplateID, "xiaohongshu_templates": xiaohongshuTemplateSummaries(), "cross_reference_sections": []string{}, "diagnostics": []map[string]string{{"name": "工作区", "state": "正常", "message": "本地数据库可用"}, {"name": "AI", "state": "未启用", "message": "不影响手工审核"}}}
+	return map[string]any{"ai_enabled": false, "ai_secret_saved": false, "hugo_enabled": false, "hugo_path": "", "hugo_base_url": "", "hugo_valid": false, "hugo_bundle_count": 0, "hugo_linked_count": 0, "hugo_unlinked_count": 0, "hugo_conflict_count": 0, "wechat_enabled": true, "wechat_secret_saved": false, "github_token_saved": false, "github_owner": "", "github_repository": "", "github_branch": "main", "github_prefix": "inkhub", "default_template": "default", "templates": []map[string]any{{"id": "default", "name": "InkHub 墨绿", "version": "1.0.0", "compatible": true}}, "xiaohongshu_enabled": true, "xiaohongshu_template": xiaohongshuDefaultTemplateID, "xiaohongshu_templates": xiaohongshuTemplateSummaries(), "diagnostics": []map[string]string{{"name": "工作区", "state": "正常", "message": "本地数据库可用"}, {"name": "AI", "state": "未启用", "message": "不影响手工审核"}}}
 }
