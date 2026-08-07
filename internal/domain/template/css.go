@@ -15,6 +15,7 @@ var allowedCSSProperties = map[string]bool{
 	"border-color": true, "border-top": true, "border-right": true, "border-bottom": true, "border-left": true,
 	"border-radius": true, "width": true, "max-width": true, "min-width": true, "height": true, "display": true,
 	"vertical-align": true, "list-style-type": true, "border-collapse": true, "border-spacing": true, "box-sizing": true,
+	"tab-size": true,
 }
 
 var cssRulePattern = regexp.MustCompile(`(?s)([^{}]+)\{([^{}]*)\}`)
