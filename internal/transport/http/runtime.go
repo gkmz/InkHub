@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -149,9 +150,29 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.saveWeChatSettings(response, request)
 		}
+	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/xiaohongshu":
+		if validateWriteRequest(response, request) {
+			h.saveXiaohongshuSettings(response, request)
+		}
+	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/hugo":
+		if validateWriteRequest(response, request) {
+			h.saveHugoSettings(response, request)
+		}
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/settings/hugo/takeover/preview":
+		if validateWriteRequest(response, request) {
+			h.previewHugoTakeover(response, request)
+		}
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/settings/hugo/takeover/confirm":
+		if validateWriteRequest(response, request) {
+			h.confirmHugoTakeover(response, request)
+		}
 	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/content-scope":
 		if validateWriteRequest(response, request) {
 			h.saveContentScope(response, request)
+		}
+	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/cross-reference":
+		if validateWriteRequest(response, request) {
+			h.saveCrossReference(response, request)
 		}
 	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/settings/content-scope/preview":
 		if validateWriteRequest(response, request) {
@@ -301,6 +322,12 @@ func (h *runtimeHandler) writeMetadata(response http.ResponseWriter, request *ht
 		mapError(response, err)
 		return
 	}
+	if sourceStableID == "" {
+		if err := h.adoptArticleStableID(request.Context(), articleID, stableID); err != nil {
+			mapError(response, err)
+			return
+		}
+	}
 	if _, err := workspaceapp.ScanWorkspace(request.Context(), source, repository.NewArticleRepository(h.db), workspaceapp.ScanOptions{WorkspaceID: workspaceID, SourceID: sourceID}, contracts.ScanCursor{}); err != nil {
 		mapError(response, err)
 		return
@@ -371,10 +398,6 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 	}
 	reviewState := "等待审核"
 	_ = h.db.QueryRowContext(request.Context(), `SELECT CASE state WHEN 'approved' THEN '已通过' WHEN 'changed' THEN '内容已更新' WHEN 'blocked' THEN '处理失败' ELSE '等待审核' END FROM editorial_reviews WHERE article_id=?`, id).Scan(&reviewState)
-	if article.StableID(stableID).Validate() != nil && reviewState == "已通过" {
-		// 旧数据可能在稳定身份规则引入前已审核，详情页不能继续暴露为可发布状态。
-		reviewState = "内容已更新"
-	}
 	providers := map[string]string{"hugo": "", "wechat": "", "openai-compatible": ""}
 	rows, _ := h.db.QueryContext(request.Context(), `SELECT provider_type,id FROM provider_instances WHERE workspace_id=? AND enabled=1`, workspaceID)
 	if rows != nil {
@@ -388,6 +411,14 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 	}
 	hugoState, wechatState, wechatCopied := "尚未同步", "尚未准备", false
 	xiaohongshuState := "尚未准备"
+	xiaohongshuSettings, err := loadStoredXiaohongshuSettings(request.Context(), h.db, workspaceID)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	if !xiaohongshuSettings.Enabled {
+		xiaohongshuState = "未配置"
+	}
 	if contentStage != "ready" {
 		reviewState, hugoState, wechatState = "不适用", "未进入发布流程", "未进入发布流程"
 	}
@@ -412,7 +443,7 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 		}
 	}
 	var xhsDraftState, xhsDraftHash string
-	if h.db.QueryRowContext(request.Context(), `SELECT state,source_content_hash FROM xiaohongshu_drafts WHERE article_id=? ORDER BY created_at DESC,id DESC LIMIT 1`, id).Scan(&xhsDraftState, &xhsDraftHash) == nil {
+	if xiaohongshuSettings.Enabled && h.db.QueryRowContext(request.Context(), `SELECT state,source_content_hash FROM xiaohongshu_drafts WHERE article_id=? ORDER BY created_at DESC,id DESC LIMIT 1`, id).Scan(&xhsDraftState, &xhsDraftHash) == nil {
 		xiaohongshuState = runtimeXiaohongshuLabel(xhsDraftState, xhsDraftHash, contentHash)
 	}
 	metadata := map[string]any{"title": title, "description": description, "category": category, "series": series, "tags": tags, "keywords": keywords, "slug": slug, "cover": cover}
@@ -437,7 +468,7 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 			resourceDiagnostics = append(resourceDiagnostics, map[string]any{"code": diagnostic.Code, "message": diagnostic.Message, "blocking": diagnostic.Blocking})
 		}
 	}
-	result := map[string]any{"id": id, "stable_id": stableID, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "xiaohongshu_state": xiaohongshuState, "resource_diagnostics": resourceDiagnostics, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信 · 小红书"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_id": suggestionsID, "suggestions_generated_at": suggestionsGeneratedAt, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
+	result := map[string]any{"id": id, "stable_id": stableID, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "xiaohongshu_enabled": xiaohongshuSettings.Enabled, "xiaohongshu_state": xiaohongshuState, "resource_diagnostics": resourceDiagnostics, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信 · 小红书"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_id": suggestionsID, "suggestions_generated_at": suggestionsGeneratedAt, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
 	if disposition != nil {
 		result["disposition"] = disposition
 	}
@@ -522,8 +553,12 @@ func runtimePublicationLabel(state, channel string) string {
 
 func (h *runtimeHandler) reviewArticle(response http.ResponseWriter, request *http.Request) {
 	id := strings.TrimSuffix(strings.TrimPrefix(request.URL.Path, "/api/v1/articles/"), "/review")
+	// 审核是文章首次进入发布流程的边界，在这里自动建立稳定身份。
+	h.metadataWriteMu.Lock()
+	defer h.metadataWriteMu.Unlock()
 	var stableID, contentHash, frontmatterHash, contentStage string
-	if err := h.db.QueryRowContext(request.Context(), `SELECT stable_id,content_hash,frontmatter_hash,content_stage FROM articles WHERE id=?`, id).Scan(&stableID, &contentHash, &frontmatterHash, &contentStage); err != nil {
+	var workspaceID, sourceID, relativePath, fingerprint string
+	if err := h.db.QueryRowContext(request.Context(), `SELECT workspace_id,source_id,stable_id,relative_path,source_fingerprint,content_hash,frontmatter_hash,content_stage FROM articles WHERE id=?`, id).Scan(&workspaceID, &sourceID, &stableID, &relativePath, &fingerprint, &contentHash, &frontmatterHash, &contentStage); err != nil {
 		mapError(response, ErrNotFound)
 		return
 	}
@@ -532,8 +567,41 @@ func (h *runtimeHandler) reviewArticle(response http.ResponseWriter, request *ht
 		return
 	}
 	if stableID == "" {
-		writeError(response, http.StatusUnprocessableEntity, "article.identity_missing", "请先保存文章元数据以生成稳定 ID")
-		return
+		var err error
+		stableID, err = newArticleStableID()
+		if err != nil {
+			mapError(response, err)
+			return
+		}
+		source, buildErr := h.buildSource(request.Context(), sourceID, nil)
+		if buildErr != nil {
+			mapError(response, buildErr)
+			return
+		}
+		_, writeErr := source.WriteMetadata(request.Context(), contracts.MetadataWriteCommand{
+			Ref: contracts.SourceRef{SourceID: sourceID, RelativePath: relativePath}, ExpectedFingerprint: fingerprint,
+			Patch: contracts.MetadataPatch{StableID: &stableID},
+		})
+		if sourceConflict(writeErr) {
+			mapError(response, ErrStaleContent)
+			return
+		}
+		if writeErr != nil {
+			mapError(response, writeErr)
+			return
+		}
+		if err := h.adoptArticleStableID(request.Context(), id, stableID); err != nil {
+			mapError(response, err)
+			return
+		}
+		if _, scanErr := workspaceapp.ScanWorkspace(request.Context(), source, repository.NewArticleRepository(h.db), workspaceapp.ScanOptions{WorkspaceID: workspaceID, SourceID: sourceID}, contracts.ScanCursor{}); scanErr != nil {
+			mapError(response, scanErr)
+			return
+		}
+		if err := h.db.QueryRowContext(request.Context(), `SELECT stable_id,content_hash,frontmatter_hash,content_stage FROM articles WHERE id=? AND deleted_at IS NULL`, id).Scan(&stableID, &contentHash, &frontmatterHash, &contentStage); err != nil {
+			writeError(response, http.StatusInternalServerError, "article.index_refresh_failed", "文章 ID 已写入，但索引刷新失败，请刷新工作区后重试")
+			return
+		}
 	}
 	if err := article.StableID(stableID).Validate(); err != nil {
 		writeError(response, http.StatusUnprocessableEntity, "article.identity_invalid", "文章稳定 ID 格式无效，请修复源文件后重试")
@@ -546,6 +614,23 @@ func (h *runtimeHandler) reviewArticle(response http.ResponseWriter, request *ht
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]string{"state": "approved"})
+}
+
+// adoptArticleStableID 在源文件写回后显式绑定内部文章记录，普通扫描不再猜测历史路径。
+func (h *runtimeHandler) adoptArticleStableID(ctx context.Context, articleID, stableID string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := h.db.ExecContext(ctx, `UPDATE articles SET stable_id=?,updated_at=? WHERE id=? AND stable_id=''`, stableID, now, articleID)
+	if err != nil {
+		return fmt.Errorf("绑定文章稳定身份: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("读取文章身份绑定结果: %w", err)
+	}
+	if rows != 1 {
+		return fmt.Errorf("文章稳定身份已变化，请刷新后重试")
+	}
+	return nil
 }
 
 func (h *runtimeHandler) session(response http.ResponseWriter, request *http.Request) {
@@ -716,5 +801,5 @@ func stableRuntimeID(kind, key string) string {
 }
 
 func defaultSettings() map[string]any {
-	return map[string]any{"ai_enabled": false, "ai_secret_saved": false, "hugo_enabled": false, "wechat_enabled": true, "wechat_secret_saved": false, "github_token_saved": false, "github_owner": "", "github_repository": "", "github_branch": "main", "github_prefix": "inkhub", "default_template": "default", "templates": []map[string]any{{"id": "default", "name": "InkHub 墨绿", "version": "1.0.0", "compatible": true}}, "diagnostics": []map[string]string{{"name": "工作区", "state": "正常", "message": "本地数据库可用"}, {"name": "AI", "state": "未启用", "message": "不影响手工审核"}}}
+	return map[string]any{"ai_enabled": false, "ai_secret_saved": false, "hugo_enabled": false, "hugo_path": "", "hugo_base_url": "", "hugo_valid": false, "hugo_bundle_count": 0, "hugo_linked_count": 0, "hugo_unlinked_count": 0, "hugo_conflict_count": 0, "wechat_enabled": true, "wechat_secret_saved": false, "github_token_saved": false, "github_owner": "", "github_repository": "", "github_branch": "main", "github_prefix": "inkhub", "default_template": "default", "templates": []map[string]any{{"id": "default", "name": "InkHub 墨绿", "version": "1.0.0", "compatible": true}}, "xiaohongshu_enabled": true, "xiaohongshu_template": xiaohongshuDefaultTemplateID, "xiaohongshu_templates": xiaohongshuTemplateSummaries(), "cross_reference_sections": []string{}, "diagnostics": []map[string]string{{"name": "工作区", "state": "正常", "message": "本地数据库可用"}, {"name": "AI", "state": "未启用", "message": "不影响手工审核"}}}
 }

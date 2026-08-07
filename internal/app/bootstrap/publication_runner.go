@@ -11,6 +11,7 @@ import (
 	apppublication "github.com/gkmz/InkHub/internal/app/publication"
 	domainjob "github.com/gkmz/InkHub/internal/domain/job"
 	domainpublication "github.com/gkmz/InkHub/internal/domain/publication"
+	"github.com/gkmz/InkHub/internal/editorial"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
 	"go.uber.org/zap"
@@ -93,13 +94,6 @@ func (h publicationJobHandler) handle(ctx context.Context, execution *appjob.Exe
 		return "", err
 	}
 	input.MermaidTheme = payload.MermaidTheme
-	// 升级前已持久化的 Hugo publication 任务没有目标字段，只在兼容 Handler 中沿用旧配置默认 Section。
-	if providerType == string(contracts.ProviderHugo) && input.TargetSection == "" {
-		input.TargetSection, err = configuredHugoSection(config)
-		if err != nil {
-			return "", err
-		}
-	}
 	preflight, err := provider.Preflight(ctx, input)
 	if err != nil {
 		return "", err
@@ -143,16 +137,6 @@ func (h publicationJobHandler) handle(ctx context.Context, execution *appjob.Exe
 	return string(result), nil
 }
 
-func configuredHugoSection(data []byte) (string, error) {
-	var config struct {
-		Section string `json:"section"`
-	}
-	if err := json.Unmarshal(data, &config); err != nil {
-		return "", fmt.Errorf("解析 Hugo Section 配置: %w", err)
-	}
-	return config.Section, nil
-}
-
 func (h publicationJobHandler) loadInput(ctx context.Context, operationID string, payload publicationPayload) (contracts.PublishInput, string, []byte, error) {
 	var workspaceID, sourceID, stableID, relative, contentHash, providerType, config string
 	err := h.db.QueryRowContext(ctx, `SELECT articles.workspace_id,articles.source_id,articles.stable_id,articles.relative_path,articles.content_hash,provider_instances.provider_type,provider_instances.config_json FROM articles JOIN provider_instances ON provider_instances.id=? AND provider_instances.workspace_id=articles.workspace_id WHERE articles.id=?`, payload.ProviderID, payload.ArticleID).Scan(&workspaceID, &sourceID, &stableID, &relative, &contentHash, &providerType, &config)
@@ -181,5 +165,14 @@ func (h publicationJobHandler) loadInput(ctx context.Context, operationID string
 	document.Article.WorkspaceID = workspaceID
 	document.Article.ID = payload.ArticleID
 	document.Article.ContentHash = contentHash
-	return contracts.PublishInput{OperationID: operationID, Article: document.Article, Body: document.Body, ResourceRefs: document.ResourceRefs, Diagnostics: document.Diagnostics, ContentHash: contentHash}, providerType, []byte(config), nil
+	input := contracts.PublishInput{OperationID: operationID, Article: document.Article, Body: document.Body, ResourceRefs: document.ResourceRefs, Diagnostics: document.Diagnostics, ContentHash: contentHash}
+	// wiki 链接预处理：按渠道将 [[target|label]] 转为对应格式，未发布目标保留纯文本 label。
+	linkResolver := editorial.NewArticleLinkResolver(h.db, workspaceID)
+	switch contracts.ProviderType(providerType) {
+	case contracts.ProviderHugo:
+		input.Body = editorial.ProcessHugoWikiLinks(ctx, linkResolver, input.Body, config)
+	case contracts.ProviderWeChat:
+		input.Body = editorial.ProcessWebWikiLinks(ctx, linkResolver, input.Body, h.db, workspaceID)
+	}
+	return input, providerType, []byte(config), nil
 }

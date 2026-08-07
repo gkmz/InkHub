@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gkmz/InkHub/internal/domain/xiaohongshu"
+	"github.com/gkmz/InkHub/internal/editorial"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
 )
@@ -42,6 +43,7 @@ type XiaohongshuDraftView struct {
 type XiaohongshuView struct {
 	ArticleID          string                 `json:"article_id"`
 	CurrentContentHash string                 `json:"current_content_hash"`
+	TemplateID         string                 `json:"template_id"`
 	Mode               string                 `json:"mode"`
 	State              string                 `json:"state"`
 	Latest             *XiaohongshuDraftView  `json:"latest"`
@@ -90,6 +92,23 @@ func (h *runtimeHandler) xiaohongshu(response http.ResponseWriter, request *http
 		writeError(response, http.StatusNotFound, "resource.not_found", "请求的资源不存在")
 		return
 	}
+	var workspaceID string
+	if err := h.db.QueryRowContext(request.Context(), `SELECT workspace_id FROM articles WHERE id=? AND deleted_at IS NULL`, articleID).Scan(&workspaceID); errors.Is(err, sql.ErrNoRows) {
+		mapError(response, ErrNotFound)
+		return
+	} else if err != nil {
+		mapError(response, err)
+		return
+	}
+	settings, err := loadStoredXiaohongshuSettings(request.Context(), h.db, workspaceID)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
+	if !settings.Enabled {
+		writeError(response, http.StatusConflict, "xiaohongshu.not_enabled", "请先在设置中启用小红书发布")
+		return
+	}
 	switch {
 	case request.Method == http.MethodGet && suffix == "":
 		h.xiaohongshuView(response, request, articleID)
@@ -134,6 +153,11 @@ func (h *runtimeHandler) xiaohongshuView(response http.ResponseWriter, request *
 		mapError(response, err)
 		return
 	}
+	settings, err := loadStoredXiaohongshuSettings(request.Context(), h.db, workspaceID)
+	if err != nil {
+		mapError(response, err)
+		return
+	}
 	mode, err := requestedXiaohongshuMode(request)
 	if err != nil {
 		writeError(response, http.StatusBadRequest, "xiaohongshu.mode_invalid", err.Error())
@@ -160,7 +184,7 @@ func (h *runtimeHandler) xiaohongshuView(response http.ResponseWriter, request *
 	if latest != nil {
 		state = xiaohongshuState(*latest)
 	}
-	writeJSON(response, http.StatusOK, XiaohongshuView{ArticleID: articleID, CurrentContentHash: contentHash, Mode: string(mode), State: state, Latest: latest, History: history})
+	writeJSON(response, http.StatusOK, XiaohongshuView{ArticleID: articleID, CurrentContentHash: contentHash, TemplateID: settings.TemplateID, Mode: string(mode), State: state, Latest: latest, History: history})
 }
 
 func requestedXiaohongshuMode(request *http.Request) (xiaohongshu.DraftMode, error) {
@@ -299,6 +323,10 @@ func (h *runtimeHandler) xiaohongshuRender(response http.ResponseWriter, request
 		writeError(response, http.StatusBadRequest, "request.invalid", "小红书渲染请求无效")
 		return
 	}
+	if !validXiaohongshuTemplate(input.TemplateID) {
+		writeError(response, http.StatusBadRequest, "xiaohongshu.template_invalid", "小红书模板不可用")
+		return
+	}
 	repo := repository.NewXiaohongshuRepository(h.db)
 	draft, err := repo.FindDraft(request.Context(), workspaceID, articleID, input.DraftID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -375,6 +403,9 @@ func (h *runtimeHandler) xiaohongshuArticle(ctx context.Context, articleID strin
 	if readErr != nil {
 		return "", "", "", "", readErr
 	}
+	// wiki 链接预处理（小红书渠道），将交叉引用转为博客外链，未发布目标保留纯文本。
+	linkResolver := editorial.NewArticleLinkResolver(h.db, workspaceID)
+	document.Body = editorial.ProcessWebWikiLinks(ctx, linkResolver, document.Body, h.db, workspaceID)
 	rendered, err = h.renderArticlePreview(ctx, source, document, articleID)
 	return
 }

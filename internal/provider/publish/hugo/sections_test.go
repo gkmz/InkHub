@@ -35,12 +35,12 @@ func TestDiscoverSectionsFiltersUnsafeEntriesAndCountsMarkdown(t *testing.T) {
 func TestFindBundleAcrossSectionsReturnsOriginalSection(t *testing.T) {
 	root := t.TempDir()
 	writeSectionFixture(t, filepath.Join(root, "content", "notes", "existing", "index.md"), "---\nsource_id: article_ONE\n---\n")
-	target, section, found, err := findBundleBySourceID(root, "article_ONE")
+	target, section, found, err := FindBundleBySourceID(root, "article_ONE")
 	if err != nil || !found || section != "notes" || target != filepath.Join(root, "content", "notes", "existing") {
-		t.Fatalf("findBundleBySourceID() = %q, %q, %v, %v", target, section, found, err)
+		t.Fatalf("FindBundleBySourceID() = %q, %q, %v, %v", target, section, found, err)
 	}
 	writeSectionFixture(t, filepath.Join(root, "content", "posts", "duplicate", "index.md"), "---\nsource_id: article_ONE\n---\n")
-	if _, _, _, err := findBundleBySourceID(root, "article_ONE"); err == nil {
+	if _, _, _, err := FindBundleBySourceID(root, "article_ONE"); err == nil {
 		t.Fatal("重复 source_id 应阻止目标选择")
 	}
 }

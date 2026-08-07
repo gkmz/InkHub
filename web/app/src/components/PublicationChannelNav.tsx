@@ -2,7 +2,7 @@ import { BookCheck, CloudUpload, MessageCircle, Sparkles } from "lucide-react";
 import type { ArticleDetail, PublicationChannel, PublicationChannelSummary, PublicationDisplayState } from "../api/types";
 
 type PublicationSection = "review" | PublicationChannel;
-type ChannelArticle = Pick<ArticleDetail, "id" | "review_state" | "hugo_provider_id" | "wechat_provider_id" | "hugo_state" | "wechat_state" | "xiaohongshu_state">;
+type ChannelArticle = Pick<ArticleDetail, "id" | "review_state" | "hugo_provider_id" | "wechat_provider_id" | "hugo_state" | "wechat_state" | "xiaohongshu_enabled" | "xiaohongshu_state">;
 
 interface PublicationChannelNavProps {
   article: ChannelArticle;
@@ -38,8 +38,15 @@ export function PublicationChannelNav({ article, active, onNavigate }: Publicati
       const definition = channelDefinitions.find((item) => item.channel === summary.channel)!;
       const Icon = definition.icon;
       const blocked = summary.state === "blocked";
-      const target = summary.state === "not_configured" ? "/settings" : `/articles/${article.id}/${summary.channel}`;
-      return <button key={summary.channel} type="button" className={`publication-channel-item state-${summary.state}`} aria-current={active === summary.channel ? "page" : undefined} disabled={blocked} title={blocked ? "审核通过后可用" : summary.actionLabel} onClick={() => onNavigate(target)}>
+      const openChannel = () => {
+        if (summary.state === "not_configured") {
+          sessionStorage.setItem("inkhub.settings.tab", summary.channel);
+          onNavigate("/settings");
+          return;
+        }
+        onNavigate(`/articles/${article.id}/${summary.channel}`);
+      };
+      return <button key={summary.channel} type="button" className={`publication-channel-item state-${summary.state}`} aria-current={active === summary.channel ? "page" : undefined} disabled={blocked} title={blocked ? "审核通过后可用" : summary.actionLabel} onClick={openChannel}>
         <Icon size={17} /><span><b>{summary.actionLabel}</b><small>{blocked ? "审核通过后可用" : summary.rawState}</small></span>
       </button>;
     })}
@@ -48,7 +55,7 @@ export function PublicationChannelNav({ article, active, onNavigate }: Publicati
 
 function channelSummary(article: ChannelArticle, channel: PublicationChannel, label: string): PublicationChannelSummary {
   const rawState = channel === "hugo" ? article.hugo_state : channel === "wechat" ? article.wechat_state : article.xiaohongshu_state ?? "尚未准备";
-  const configured = channel === "hugo" ? article.hugo_provider_id !== "" : channel === "wechat" ? article.wechat_provider_id !== "" : true;
+  const configured = channel === "hugo" ? article.hugo_provider_id !== "" : channel === "wechat" ? article.wechat_provider_id !== "" : article.xiaohongshu_enabled !== false;
   const state = normalizePublicationState(rawState, article.review_state, configured);
   const completed = state === "completed";
   const actionLabel = state === "not_configured" ? `配置${label}` : channel === "hugo" ? (completed ? "查看 Hugo" : "同步到 Hugo") : channel === "wechat" ? (completed ? "查看微信" : "发布到微信") : (completed ? "查看小红书" : "发布到小红书");

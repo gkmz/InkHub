@@ -32,7 +32,7 @@ func TestConvertArticleMapsMetadataAndObsidianSyntax(t *testing.T) {
 	text := string(content)
 	for _, expected := range []string{
 		"source_id: article_ONE", "source_path: 文章/示例.md", "date: \"2026-07-30\"", "updated: \"2026-07-30\"", "url: 20260730-inkhub-hugo", "keywords:", "- InkHub",
-		`[相关内容]({{< relref "另一篇文章" >}})`, "> **注意事项**", "![](cover.png)",
+		"[[另一篇文章|相关内容]]", "> **注意事项**", "![](cover.png)",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("转换结果缺少 %q:\n%s", expected, text)

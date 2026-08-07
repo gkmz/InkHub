@@ -1,5 +1,5 @@
 import { Copy, Download, History, LayoutTemplate, RefreshCw, Save, Send, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { generateXiaohongshuStoryboard, getArticle, getXiaohongshu, markXiaohongshuPublished, outlineXiaohongshuDraft, rewriteXiaohongshuDraft, saveXiaohongshuDraft, saveXiaohongshuRender } from "../../api/client";
 import type { ArticleDetail, XiaohongshuDraft, XiaohongshuDraftMode, XiaohongshuView } from "../../api/types";
 import { PublicationPageFrame } from "../../components/PublicationPageFrame";
@@ -19,23 +19,36 @@ export function XiaohongshuPage({ articleID, onNavigate }: { articleID: string; 
   const [mode, setMode] = useState<XiaohongshuDraftMode>("long_card");
   const [view, setView] = useState<XiaohongshuView | null>(null);
   const [draft, setDraft] = useState<XiaohongshuDraft | null>(null);
-  const template = XIAOHONGSHU_DEFAULT_TEMPLATE.id;
+  const template = view?.template_id ?? XIAOHONGSHU_DEFAULT_TEMPLATE.id;
   const [saving, setSaving] = useState(false);
   const [rewriteStage, setRewriteStage] = useState<RewriteStage>("idle");
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState("");
   const [showHistory, setShowHistory] = useState(false);
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
-    const [nextArticle, nextView] = await Promise.all([getArticle(articleID), getXiaohongshu(articleID, mode)]);
+    const sequence = loadSequence.current + 1;
+    loadSequence.current = sequence;
+    const nextArticle = await getArticle(articleID);
+    if (sequence !== loadSequence.current) return;
     setArticle(nextArticle);
+    if (nextArticle.xiaohongshu_enabled === false) {
+      setView(null);
+      setDraft(null);
+      return;
+    }
+    const nextView = await getXiaohongshu(articleID, mode);
+    if (sequence !== loadSequence.current) return;
     setView(nextView);
-    setDraft(nextView.latest ? prepareXiaohongshuDraft(nextView.latest, nextArticle.preview_html, XIAOHONGSHU_DEFAULT_TEMPLATE.id) : null);
+    setDraft(nextView.latest ? prepareXiaohongshuDraft(nextView.latest, nextArticle.preview_html, nextView.template_id) : null);
   }, [articleID, mode]);
 
   useEffect(() => { void load(); }, [load]);
 
-  if (!article || !view) return <div className="page-state">正在打开小红书内容中心…</div>;
+  if (!article) return <div className="page-state">正在打开小红书内容中心…</div>;
+  if (article.xiaohongshu_enabled === false) return <PublicationPageFrame article={article} active="xiaohongshu" onNavigate={onNavigate}><section className="channel-locked" role="status"><h2>小红书发布尚未启用</h2><p>启用后可生成笔记、选择模板并导出图片集。</p><button className="primary" type="button" onClick={() => { sessionStorage.setItem("inkhub.settings.tab", "xiaohongshu"); onNavigate("/settings"); }}>前往小红书设置</button></section></PublicationPageFrame>;
+  if (!view) return <div className="page-state">正在读取小红书草稿…</div>;
   const update = (patch: Partial<XiaohongshuDraft>) => setDraft((current) => current ? { ...current, ...patch } : current);
   const generate = async () => {
     const visualScript = mode === "visual_script";
@@ -133,7 +146,7 @@ export function XiaohongshuPage({ articleID, onNavigate }: { articleID: string; 
         {showHistory && <aside id="xiaohongshu-history" className="xiaohongshu-history"><div className="tool-heading"><h2>版本历史</h2><button className="back" type="button" onClick={() => setShowHistory(false)}>关闭</button></div>{view.history.map((item) => <button key={item.id} type="button" className={`xiaohongshu-history-item${draft?.id === item.id ? " active" : ""}`} onClick={() => { setDraft(prepareXiaohongshuDraft(item, article.preview_html, template)); setShowHistory(false); }}><strong>{item.title || "未命名草稿"}</strong><span>{item.state}{item.stale ? " · 内容已更新" : ""}</span><time>{new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.created_at))}</time></button>)}</aside>}
       </section>
       <section className="xiaohongshu-settings" aria-label="小红书发布设置">
-        <div className="tool-heading"><h2>{mode === "visual_script" ? "图片短文发布文案" : "小红书文案草稿"}</h2>{mode === "long_card" ? <span className="template-current"><LayoutTemplate size={15} />{XIAOHONGSHU_DEFAULT_TEMPLATE.label}</span> : null}</div>
+        <div className="tool-heading"><h2>{mode === "visual_script" ? "图片短文发布文案" : "小红书文案草稿"}</h2>{mode === "long_card" ? <span className="template-current"><LayoutTemplate size={15} />{getXiaohongshuTemplate(template).label}</span> : null}</div>
         {!draft ? <div className="empty-state compact wide"><Sparkles size={24} /><p>还没有小红书草稿</p><button className="primary" onClick={() => void generate()} disabled={rewriting}><Sparkles size={15} />{rewriteLabel}</button></div> : <>
           <label className="wide">标题<input value={draft.title} onChange={(event) => update({ title: event.target.value })} /></label>
           {mode === "visual_script" ? <label className="wide">发布正文<textarea className="xiaohongshu-publish-body" value={draft.body_html} onChange={(event) => update({ body_html: event.target.value })} /></label> : null}

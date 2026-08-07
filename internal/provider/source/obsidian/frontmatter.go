@@ -56,10 +56,6 @@ func parseDocument(content []byte) (contracts.SourceDocument, error) {
 		ContentStage:      contentStage,
 		ContentStageIssue: contentStageIssue,
 	}
-	if value.URL == "" {
-		// 兼容将 URL 放在 publish 对象中的旧写法。
-		value.URL = scalarValue(publish, "url")
-	}
 	sum := sha256.Sum256(content)
 	return contracts.SourceDocument{
 		Article:        value,

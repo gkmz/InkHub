@@ -47,7 +47,7 @@ func (p *Provider) DiscoverSections(ctx context.Context, sourceID string) (contr
 	sort.Slice(sections, func(i, j int) bool { return sections[i].Name < sections[j].Name })
 	result := contracts.SectionDiscovery{Sections: sections}
 	if sourceID != "" {
-		target, section, found, findErr := findBundleBySourceID(p.config.Root, sourceID)
+		target, section, found, findErr := FindBundleBySourceID(p.config.Root, sourceID)
 		if findErr != nil {
 			return contracts.SectionDiscovery{}, findErr
 		}

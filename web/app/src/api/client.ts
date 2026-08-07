@@ -1,4 +1,5 @@
 import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, MermaidTheme, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, SuggestionHistoryResponse, SuggestionVersionView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft, XiaohongshuDraft, XiaohongshuRewriteOutline, XiaohongshuView } from "./types";
+import type { HugoTakeoverReport } from "./types";
 import type { XiaohongshuDraftMode } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
@@ -251,6 +252,26 @@ export function saveWeChatSettings(input: { enabled: boolean; template: string; 
   return request<Partial<SettingsView>>("/settings/wechat", { method: "PUT", body: JSON.stringify(input) });
 }
 
+/** saveXiaohongshuSettings 保存小红书启用状态和默认模板。 */
+export function saveXiaohongshuSettings(input: { enabled: boolean; template: string }) {
+  return request<Partial<SettingsView>>("/settings/xiaohongshu", { method: "PUT", body: JSON.stringify(input) });
+}
+
+/** saveHugoSettings 校验并保存当前工作区的 Hugo 本机目录。 */
+export function saveHugoSettings(input: { enabled: boolean; path: string; base_url: string }) {
+  return request<Partial<SettingsView>>("/settings/hugo", { method: "PUT", body: JSON.stringify(input) });
+}
+
+/** previewHugoTakeover 只扫描历史内容并返回确定匹配和冲突。 */
+export function previewHugoTakeover() {
+  return request<HugoTakeoverReport>("/settings/hugo/takeover/preview", { method: "POST", body: "{}" });
+}
+
+/** confirmHugoTakeover 补齐 Stable ID 并写入历史 Hugo Bundle 关联。 */
+export function confirmHugoTakeover() {
+  return request<{ assigned_ids: number; recovered_articles: number; linked_bundles: number; remaining_source_issues: number; state: string }>("/settings/hugo/takeover/confirm", { method: "POST", body: "{}" });
+}
+
 /** saveContentScope 保存当前 Source 的目录规则并返回重扫结果。 */
 export function saveContentScope(contentRoots: string[], ignoredFolders: string[], ignoredFileNames: string[]) {
   return request<{ indexed: number; failed: number }>("/settings/content-scope", { method: "PUT", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders, ignored_file_names: ignoredFileNames }) });
@@ -259,4 +280,9 @@ export function saveContentScope(contentRoots: string[], ignoredFolders: string[
 /** previewContentScope 计算保存目录规则将新增和移出的索引数量。 */
 export function previewContentScope(contentRoots: string[], ignoredFolders: string[], ignoredFileNames: string[]) {
   return request<{ added: number; removed: number }>("/settings/content-scope/preview", { method: "POST", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders, ignored_file_names: ignoredFileNames }) });
+}
+
+/** saveCrossReferenceSections 保存交叉引用段落标题列表。 */
+export function saveCrossReferenceSections(sections: string[]) {
+  return request<{ cross_reference_sections: string[] }>("/settings/cross-reference", { method: "PUT", body: JSON.stringify({ sections }) });
 }

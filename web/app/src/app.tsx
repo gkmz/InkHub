@@ -29,14 +29,14 @@ function AppContent() {
   const navigate = (target: string) => { window.history.pushState({}, "", target); setPath(target); };
   if (error) return <main className="fatal-state"><h1>无法连接 InkHub</h1><p>{error}</p><button onClick={() => window.location.reload()}>重新连接</button></main>;
   if (!session) return <main className="boot-state"><span className="brand-mark">I</span><p>正在打开 InkHub…</p></main>;
-  if (!session.has_workspace) return <SetupPage onComplete={async (draft: WorkspaceDraft) => { const result = await createWorkspace(draft, crypto.randomUUID()); sessionStorage.removeItem("inkhub.setup"); sessionStorage.setItem("inkhub.scan-job", result.job_id); setScanJob(result.job_id); setSession({ has_workspace: true, workspace: result.workspace }); navigate("/"); }} />;
-  if (scanJob && session.workspace) return <ScanPage workspace={session.workspace} jobID={scanJob} onDone={() => { sessionStorage.removeItem("inkhub.scan-job"); setScanJob(""); }} />;
+  if (!session.has_workspace) return <SetupPage onComplete={async (draft: WorkspaceDraft) => { const result = await createWorkspace(draft, crypto.randomUUID()); sessionStorage.removeItem("inkhub.setup"); sessionStorage.setItem("inkhub.scan-job", result.job_id); if (draft.hugo_path?.trim()) sessionStorage.setItem("inkhub.hugo-takeover-pending", "true"); setScanJob(result.job_id); setSession({ has_workspace: true, workspace: result.workspace }); navigate("/"); }} />;
+  if (scanJob && session.workspace) return <ScanPage workspace={session.workspace} jobID={scanJob} onDone={() => { sessionStorage.removeItem("inkhub.scan-job"); setScanJob(""); if (sessionStorage.getItem("inkhub.hugo-takeover-pending")) navigate("/settings"); }} />;
   const articleMatch = path.match(/^\/articles\/([^/]+)(\/hugo|\/wechat|\/xiaohongshu)?$/);
   const channelPage = articleMatch?.[2] === "/hugo" ? <HugoPage articleID={articleMatch[1]} onNavigate={navigate} />
     : articleMatch?.[2] === "/wechat" ? <WeChatPreviewPage articleID={articleMatch[1]} onNavigate={navigate} />
       : articleMatch?.[2] === "/xiaohongshu" ? <XiaohongshuPage articleID={articleMatch[1]} onNavigate={navigate} /> : null;
   // 发布渠道沿用审核页的主内容容器，切换渠道时保持顶部位置和内容宽度稳定。
-  if (channelPage) return <AppShell path={path} title="文章审核" workspaceName={session.workspace?.name ?? "InkHub"} onNavigate={navigate} contentClassName="article-shell">{channelPage}</AppShell>;
+  if (channelPage) return <AppShell path={path} title="文章审核" onNavigate={navigate} contentClassName="article-shell">{channelPage}</AppShell>;
   const title = path === "/library" ? "内容库" : path === "/taxonomy" ? "类目管理" : path === "/settings" ? "设置" : "工作台";
-  return <AppShell path={path} title={articleMatch ? "文章审核" : title} workspaceName={session.workspace?.name ?? "InkHub"} onNavigate={navigate} contentClassName={articleMatch ? "article-shell" : undefined}>{articleMatch ? <ArticlePage articleID={articleMatch[1]} onNavigate={navigate} /> : path === "/library" ? <LibraryPage onNavigate={navigate} /> : path === "/taxonomy" ? <TaxonomyPage /> : path === "/settings" ? <SettingsPage /> : <DashboardPage onNavigate={navigate} />}</AppShell>;
+  return <AppShell path={path} title={articleMatch ? "文章审核" : title} onNavigate={navigate} contentClassName={articleMatch ? "article-shell" : undefined}>{articleMatch ? <ArticlePage articleID={articleMatch[1]} onNavigate={navigate} /> : path === "/library" ? <LibraryPage onNavigate={navigate} /> : path === "/taxonomy" ? <TaxonomyPage /> : path === "/settings" ? <SettingsPage /> : <DashboardPage onNavigate={navigate} />}</AppShell>;
 }

@@ -42,7 +42,7 @@ type staticWeChatPlanAPI struct {
 	token string
 }
 
-func (api *staticWeChatPlanAPI) Plan(context.Context, string, string) (publication.WeChatPlanView, error) {
+func (api *staticWeChatPlanAPI) Plan(context.Context, string, string, string) (publication.WeChatPlanView, error) {
 	return api.plan, nil
 }
 

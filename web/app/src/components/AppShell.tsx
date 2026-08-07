@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 interface AppShellProps {
   path: string;
   title: string;
-  workspaceName: string;
   children: ReactNode;
   onNavigate: (path: string) => void;
   contentClassName?: string;
@@ -18,13 +17,11 @@ const links = [
 ];
 
 /** AppShell 提供桌面侧栏和移动端底栏共用的四项主导航。 */
-export function AppShell({ path, title, workspaceName, children, onNavigate, contentClassName = "" }: AppShellProps) {
+export function AppShell({ path, title, children, onNavigate, contentClassName = "" }: AppShellProps) {
   return (
     <div className="app-shell">
       <aside className="side-rail">
         <div className="brand"><span className="brand-mark">I</span><strong>InkHub</strong></div>
-        <p className="workspace-label">当前工作区</p>
-        <p className="workspace-name">{workspaceName}</p>
         <Navigation path={path} onNavigate={onNavigate} />
         <p className="rail-status"><span />本地内容已连接</p>
       </aside>

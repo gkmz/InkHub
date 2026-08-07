@@ -3,6 +3,8 @@ package obsidian
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -172,6 +174,48 @@ func (p *Provider) WriteMetadata(ctx context.Context, command contracts.Metadata
 		return contracts.SourceDocument{}, err
 	}
 	return p.Read(ctx, command.Ref)
+}
+
+// WriteTakeoverIdentity 为一次性知识库接管补齐身份，并规范化已知的旧标量类型。
+func (p *Provider) WriteTakeoverIdentity(ctx context.Context, command contracts.MetadataWriteCommand) (contracts.SourceDocument, error) {
+	if command.Patch.StableID == nil || strings.TrimSpace(*command.Patch.StableID) == "" {
+		return contracts.SourceDocument{}, fmt.Errorf("接管文章缺少稳定 ID")
+	}
+	path, err := p.resolve(command.Ref.RelativePath)
+	if err != nil {
+		return contracts.SourceDocument{}, err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return contracts.SourceDocument{}, fmt.Errorf("读取待接管文章: %w", err)
+	}
+	fingerprint := sha256.Sum256(content)
+	if hex.EncodeToString(fingerprint[:]) != command.ExpectedFingerprint {
+		return contracts.SourceDocument{}, &contracts.ProviderError{Code: "obsidian.source_changed", Category: contracts.ErrorConflict, Message: "源文章已在外部修改", Cause: ErrSourceChanged}
+	}
+	updated := insertTakeoverStableID(content, *command.Patch.StableID)
+	if _, parseErr := parseDocument(content); parseErr != nil {
+		// 只有旧类型不满足当前契约时才重编码 frontmatter，正常文章保持最小文本改动。
+		frontmatter, body, splitErr := splitDocument(string(content))
+		if splitErr != nil {
+			return contracts.SourceDocument{}, splitErr
+		}
+		updated, err = applyTakeoverIdentity(frontmatter, body, *command.Patch.StableID)
+		if err != nil {
+			return contracts.SourceDocument{}, err
+		}
+	}
+	if err := filesystem.AtomicWrite(path, updated, func(temp string) error {
+		candidate, readErr := os.ReadFile(temp)
+		if readErr != nil {
+			return readErr
+		}
+		_, parseErr := parseDocument(candidate)
+		return parseErr
+	}); err != nil {
+		return contracts.SourceDocument{}, err
+	}
+	return p.Read(ctx, contracts.SourceRef{SourceID: command.Ref.SourceID, RelativePath: command.Ref.RelativePath})
 }
 
 func (p *Provider) resolve(relativePath string) (string, error) {

@@ -28,7 +28,6 @@ type hugoFrontmatter struct {
 }
 
 var (
-	wikiLinkPattern      = regexp.MustCompile(`\[\[([^\]|]+)(?:\|([^\]]+))?\]\]`)
 	calloutPattern       = regexp.MustCompile(`(?m)^> \[!([A-Za-z]+)\](?:[ \t]+([^\r\n]+))?[ \t]*$`)
 	obsidianImagePattern = regexp.MustCompile(`!\[\[([^\]|]+)(?:\|[^\]]+)?\]\]`)
 )
@@ -70,15 +69,6 @@ func convertObsidianSyntax(body string) string {
 	body = obsidianImagePattern.ReplaceAllStringFunc(body, func(value string) string {
 		matches := obsidianImagePattern.FindStringSubmatch(value)
 		return "![](" + filepath.Base(strings.TrimSpace(matches[1])) + ")"
-	})
-	body = wikiLinkPattern.ReplaceAllStringFunc(body, func(value string) string {
-		matches := wikiLinkPattern.FindStringSubmatch(value)
-		target := strings.TrimSpace(matches[1])
-		label := strings.TrimSpace(matches[2])
-		if label == "" {
-			label = target
-		}
-		return fmt.Sprintf(`[%s]({{< relref %q >}})`, label, target)
 	})
 	body = calloutPattern.ReplaceAllStringFunc(body, func(value string) string {
 		matches := calloutPattern.FindStringSubmatch(value)

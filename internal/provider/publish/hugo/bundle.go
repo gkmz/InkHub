@@ -78,7 +78,8 @@ func findBundle(root, section, sourceID string) (string, bool, error) {
 	return found, found != "", nil
 }
 
-func findBundleBySourceID(root, sourceID string) (string, string, bool, error) {
+// FindBundleBySourceID 扫描 Hugo content 目录，按 frontmatter source_id 反查 bundle 路径。
+func FindBundleBySourceID(root, sourceID string) (string, string, bool, error) {
 	contentRoot := filepath.Join(root, "content")
 	if _, err := os.Stat(contentRoot); os.IsNotExist(err) {
 		return "", "", false, nil

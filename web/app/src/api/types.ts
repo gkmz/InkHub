@@ -247,6 +247,7 @@ export interface ArticleDetail {
   review_state: string;
   hugo_state: string;
   wechat_state: string;
+  xiaohongshu_enabled?: boolean;
   xiaohongshu_state?: string;
   checks: CheckResult[];
   ai_configured: boolean;
@@ -317,6 +318,8 @@ export interface XiaohongshuPage {
 export interface XiaohongshuView {
   article_id: string;
   current_content_hash: string;
+  template_id: string;
+  mode: XiaohongshuDraftMode;
   state: string;
   latest: XiaohongshuDraft | null;
   history: XiaohongshuDraft[];
@@ -395,6 +398,13 @@ export interface SettingsView {
   ai_base_url?: string;
   ai_model?: string;
   hugo_enabled: boolean;
+  hugo_path?: string;
+  hugo_base_url?: string;
+  hugo_valid?: boolean;
+  hugo_bundle_count?: number;
+  hugo_linked_count?: number;
+  hugo_unlinked_count?: number;
+  hugo_conflict_count?: number;
   wechat_enabled: boolean;
   wechat_secret_saved: boolean;
   github_token_saved?: boolean;
@@ -404,6 +414,31 @@ export interface SettingsView {
   github_prefix?: string;
   default_template: string;
   templates: TemplateSummary[];
+  xiaohongshu_enabled: boolean;
+  xiaohongshu_template: string;
+  xiaohongshu_templates: TemplateSummary[];
+  cross_reference_sections?: string[];
   obsidian_settings?: ObsidianSettingsView;
   diagnostics: { name: string; state: "正常" | "需要处理" | "未启用"; message: string }[];
+}
+
+export interface HugoTakeoverCandidate {
+  bundle_path: string;
+  article_path?: string;
+  title: string;
+  stable_id?: string;
+  status: "matched" | "conflict" | "unmatched";
+  match_reason?: string;
+}
+
+export interface HugoTakeoverReport {
+  bundle_count: number;
+  linked_count: number;
+  matched_count: number;
+  conflict_count: number;
+  unmatched_count: number;
+  articles_missing_id: number;
+  source_issue_count: number;
+  source_issues: { article_path: string; code: string; message: string }[];
+  candidates: HugoTakeoverCandidate[];
 }

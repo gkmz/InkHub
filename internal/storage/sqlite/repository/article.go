@@ -46,17 +46,13 @@ func (r *ArticleRepository) Upsert(ctx context.Context, value article.Article) e
 		return fmt.Errorf("开始文章索引事务: %w", err)
 	}
 	defer tx.Rollback()
-	identityIntroduced := false
 	identityInvalid := value.StableID.Validate() != nil
 	if value.StableID != "" {
-		var existingID, existingStableID string
-		err := tx.QueryRowContext(ctx, `SELECT id,stable_id FROM articles
-WHERE workspace_id=? AND source_id=? AND (stable_id=? OR (stable_id='' AND relative_path=?))
-ORDER BY CASE WHEN stable_id=? THEN 0 ELSE 1 END LIMIT 1`, value.WorkspaceID, value.SourceID, value.StableID, value.RelativePath, value.StableID).Scan(&existingID, &existingStableID)
+		var existingID string
+		err := tx.QueryRowContext(ctx, `SELECT id FROM articles WHERE workspace_id=? AND source_id=? AND stable_id=?`, value.WorkspaceID, value.SourceID, value.StableID).Scan(&existingID)
 		if err == nil {
-			// 旧文章首次补充稳定 ID 时沿用内部主键，避免审核和发布历史断开。
+			// Stable ID 是重命名和移动后的唯一身份来源，内部主键继续保持不变。
 			value.ID = existingID
-			identityIntroduced = existingStableID == ""
 		} else if err != sql.ErrNoRows {
 			return fmt.Errorf("解析文章稳定身份: %w", err)
 		}
@@ -77,8 +73,7 @@ indexed_at=excluded.indexed_at,deleted_at=excluded.deleted_at,content_stage=excl
 	if err != nil {
 		return fmt.Errorf("保存文章索引: %w", err)
 	}
-	// 稳定 ID 不参与内容摘要，但它是发布前置条件，首次生成后仍需用户重新确认审核。
-	if _, err = tx.ExecContext(ctx, `UPDATE editorial_reviews SET state='changed',updated_at=? WHERE article_id=? AND state='approved' AND (approved_content_hash<>? OR ? OR ?)`, now, value.ID, value.ContentHash, identityIntroduced, identityInvalid); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE editorial_reviews SET state='changed',updated_at=? WHERE article_id=? AND state='approved' AND (approved_content_hash<>? OR ?)`, now, value.ID, value.ContentHash, identityInvalid); err != nil {
 		return fmt.Errorf("使旧审核失效: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
