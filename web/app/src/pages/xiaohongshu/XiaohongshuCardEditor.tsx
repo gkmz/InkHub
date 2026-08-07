@@ -3,6 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { sanitizePreviewHTML } from "../../api/safeHTML";
 import type { XiaohongshuPage } from "../../api/types";
 import { renderXiaohongshuMermaidImages } from "./xiaohongshuAdapter";
+import { xiaohongshuCodeThemeCSS } from "./xiaohongshuCodeTheme";
+import { getXiaohongshuTemplate } from "./xiaohongshuLayout";
 import { measureXiaohongshuContentScale, xiaohongshuScaledContentStyle } from "./xiaohongshuSizing";
 
 /** XiaohongshuCardEditorProps 描述卡片编辑器的受控输入输出。 */
@@ -18,6 +20,7 @@ export interface XiaohongshuCardEditorProps {
 export function XiaohongshuCardEditor({ pages, template, title, onPagesChange, onSelectionChange }: XiaohongshuCardEditorProps) {
   const pageRefs = useRef(new Map<string, HTMLElement>());
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const selectedTemplate = getXiaohongshuTemplate(template);
   const scrollToPage = (index: number) => {
     const target = pages[Math.max(0, Math.min(pages.length - 1, index))];
     if (!target) return;
@@ -28,6 +31,7 @@ export function XiaohongshuCardEditor({ pages, template, title, onPagesChange, o
   };
 
   return <section className={`xiaohongshu-card-editor template-${template}`} aria-label="小红书卡片编辑器">
+    <style>{xiaohongshuCodeThemeCSS(selectedTemplate.codeTheme, ".xiaohongshu-card-content")}</style>
     <div className="xiaohongshu-card-toolbar">
       <span>{pages.length} 页卡片</span>
     </div>

@@ -249,7 +249,7 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .xiaohongshu-card-content img { box-shadow: 0 5px 14px rgb(34 58 49 / 14%); }
 .xiaohongshu-mermaid-image { width: 100%; overflow: hidden; margin: 14px 0; padding: 8px; border: 1px solid #c9d4cc; border-radius: 6px; background: #fbfcfa; }
 .xiaohongshu-mermaid-image svg { width: 100%; max-width: 100%; height: auto; margin: 0 auto; }
-.xiaohongshu-card-content pre { max-width: 100%; margin: 13px 0; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; padding: 11px; border: 1px solid #c9d4cc; border-radius: 5px; background: #e8eeea; color: #24362f; font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.xiaohongshu-card-content pre { max-width: 100%; margin: 13px 0; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; padding: 11px; border: 1px solid #2a2d3e; border-radius: 5px; background: #1a1b26; color: #c0caf5; font: 12px/1.65 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .xiaohongshu-card-content code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .xiaohongshu-card-content :not(pre) > code { padding: 1px 4px; border-radius: 3px; background: #e5ece7; color: #704638; }
 .xiaohongshu-card-content table { width: 100%; max-width: 100%; margin: 12px 0; border-collapse: collapse; font-size: .9em; }
@@ -282,7 +282,26 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .prose { font-size: 15px; line-height: 1.85; }
 .prose h2 { margin: 36px 0 10px; font-size: 20px; }
 .prose blockquote { margin: 24px 0; padding: 10px 18px; border-left: 3px solid var(--action); background: #f3f7f4; color: #46504b; }
-.prose pre { overflow: auto; padding: 15px; border: 1px solid var(--line); border-radius: 4px; background: #f1f3f1; }
+.prose pre { overflow: auto; padding: 15px; border: 1px solid #2a2d3e; border-radius: 4px; background: #1a1b26; color: #c0caf5; }
+.prose pre.chroma code { color: inherit; font-size: 13px; line-height: 1.72; }
+.prose :not(pre) > code { padding: 2px 5px; border-radius: 4px; background: #f0f4f8; color: #c7522a; font-size: 1em; }
+.prose .chroma .w, .wechat-document .chroma .w { color: #3b4261; }
+.prose .chroma .err, .prose .chroma .ne, .prose .chroma .nv, .prose .chroma .vc, .prose .chroma .vg, .prose .chroma .vi, .prose .chroma .vm, .prose .chroma .gd, .prose .chroma .gr, .prose .chroma .gt, .wechat-document .chroma .err, .wechat-document .chroma .ne, .wechat-document .chroma .nv, .wechat-document .chroma .vc, .wechat-document .chroma .vg, .wechat-document .chroma .vi, .wechat-document .chroma .vm, .wechat-document .chroma .gd, .wechat-document .chroma .gr, .wechat-document .chroma .gt { color: #f7768e; }
+.prose .chroma .c, .prose .chroma .ch, .prose .chroma .cm, .prose .chroma .c1, .prose .chroma .cs, .prose .chroma .sd, .wechat-document .chroma .c, .wechat-document .chroma .ch, .wechat-document .chroma .cm, .wechat-document .chroma .c1, .wechat-document .chroma .cs, .wechat-document .chroma .sd { color: #565f89; font-style: italic; }
+.prose .chroma .cp, .prose .chroma .cpf, .prose .chroma .kd, .prose .chroma .kn, .prose .chroma .nb, .prose .chroma .bp, .prose .chroma .nc, .prose .chroma .nd, .prose .chroma .nf, .prose .chroma .fm, .prose .chroma .nt, .prose .chroma .nn, .prose .chroma .gh, .prose .chroma .gu, .wechat-document .chroma .cp, .wechat-document .chroma .cpf, .wechat-document .chroma .kd, .wechat-document .chroma .kn, .wechat-document .chroma .nb, .wechat-document .chroma .bp, .wechat-document .chroma .nc, .wechat-document .chroma .nd, .wechat-document .chroma .nf, .wechat-document .chroma .fm, .wechat-document .chroma .nt, .wechat-document .chroma .nn, .wechat-document .chroma .gh, .wechat-document .chroma .gu { color: #7aa2f7; }
+.prose .chroma .k, .prose .chroma .kp, .prose .chroma .kr, .prose .chroma .se, .wechat-document .chroma .k, .wechat-document .chroma .kp, .wechat-document .chroma .kr, .wechat-document .chroma .se { color: #bb9af7; }
+.prose .chroma .kc, .prose .chroma .no, .prose .chroma .ss, .prose .chroma .m, .prose .chroma .mb, .prose .chroma .mf, .prose .chroma .mh, .prose .chroma .mi, .prose .chroma .il, .prose .chroma .mo, .wechat-document .chroma .kc, .wechat-document .chroma .no, .wechat-document .chroma .ss, .wechat-document .chroma .m, .wechat-document .chroma .mb, .wechat-document .chroma .mf, .wechat-document .chroma .mh, .wechat-document .chroma .mi, .wechat-document .chroma .il, .wechat-document .chroma .mo { color: #ff9e64; }
+.prose .chroma .kt, .prose .chroma .gp, .wechat-document .chroma .kt, .wechat-document .chroma .gp { color: #2ac3de; }
+.prose .chroma .o, .prose .chroma .ow, .wechat-document .chroma .o, .wechat-document .chroma .ow { color: #89ddff; }
+.prose .chroma .p, .prose .chroma .n, .prose .chroma .nx, .wechat-document .chroma .p, .wechat-document .chroma .n, .wechat-document .chroma .nx { color: #c0caf5; }
+.prose .chroma .na, .prose .chroma .ni, .prose .chroma .py, .wechat-document .chroma .na, .wechat-document .chroma .ni, .wechat-document .chroma .py { color: #73daca; }
+.prose .chroma .nl, .wechat-document .chroma .nl { color: #7dcfff; }
+.prose .chroma .l, .prose .chroma .s, .prose .chroma .sa, .prose .chroma .sb, .prose .chroma .sc, .prose .chroma .dl, .prose .chroma .s2, .prose .chroma .sh, .prose .chroma .sx, .prose .chroma .s1, .prose .chroma .gi, .wechat-document .chroma .l, .wechat-document .chroma .s, .wechat-document .chroma .sa, .wechat-document .chroma .sb, .wechat-document .chroma .sc, .wechat-document .chroma .dl, .wechat-document .chroma .s2, .wechat-document .chroma .sh, .wechat-document .chroma .sx, .wechat-document .chroma .s1, .wechat-document .chroma .gi { color: #9ece6a; }
+.prose .chroma .ld, .prose .chroma .si, .wechat-document .chroma .ld, .wechat-document .chroma .si { color: #e0af68; }
+.prose .chroma .sr, .wechat-document .chroma .sr { color: #b4f9f8; }
+.prose .chroma .go, .wechat-document .chroma .go { color: #565f89; }
+.prose .chroma .kd, .prose .chroma .ow, .prose .chroma .gh, .prose .chroma .gp, .prose .chroma .gs, .prose .chroma .gu, .wechat-document .chroma .kd, .wechat-document .chroma .ow, .wechat-document .chroma .gh, .wechat-document .chroma .gp, .wechat-document .chroma .gs, .wechat-document .chroma .gu { font-weight: bold; }
+.prose .chroma .ge, .wechat-document .chroma .ge { font-style: italic; }
 .prose img { display: block; max-width: 100%; height: auto; margin: 20px auto; }
 .markdown-preview table { width: 100%; margin: 20px 0; border-collapse: collapse; font-size: .92em; }
 .markdown-preview th, .markdown-preview td { padding: 8px 10px; border: 1px solid var(--line); text-align: left; }
@@ -503,6 +522,7 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .wechat-document a { color:#42b883; font-weight:600; text-decoration:none; border-bottom:1px solid #a4ddc4; }
 .wechat-document .markdown-preview table { width: 100%; border-collapse: collapse; }
 .wechat-document .markdown-preview th, .wechat-document .markdown-preview td { padding: 7px 9px; border: 1px solid var(--line); }
+.wechat-document .markdown-preview :not(pre) > code { padding: 2px 7px; border-radius: 5px; background:#f0f4f8; color:#c7522a; font-size:1em; }
 .wechat-document .markdown-preview pre { overflow: auto; padding: 18px; border:1px solid #2a2d3e; border-radius:8px; background:#1a1b26; color:#c0caf5; line-height: 1.72; }
 .wechat-document .markdown-preview pre code { background:transparent; color:inherit; }
 .mermaid-render-error { margin:20px 0; padding:12px 14px; border-left:3px solid var(--danger); background:#fff6f6; color:var(--danger); font-size:13px; }
