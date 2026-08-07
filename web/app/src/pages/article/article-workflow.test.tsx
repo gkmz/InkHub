@@ -96,6 +96,20 @@ test("Keywords 建议替换数组，Tags 建议大小写不敏感去重", async 
   expect(screen.getAllByText("Go")).toHaveLength(1);
 });
 
+test("Keywords 输入框允许键入逗号并保留待输入的尾逗号", async () => {
+  render(<MetadataForm value={metadata} sourceChanged={false} onSave={vi.fn()} />);
+  const input = screen.getByLabelText("Keywords");
+  await userEvent.clear(input);
+  await userEvent.type(input, "go,");
+  // 键入中的尾逗号必须保留，否则无法继续输入第二个关键字
+  expect(input).toHaveValue("go,");
+  await userEvent.type(input, " ai");
+  expect(input).toHaveValue("go, ai");
+  // 失焦后归一化为标准分隔形式
+  await userEvent.tab();
+  expect(input).toHaveValue("go, ai");
+});
+
 test("批量采用多个 AI 建议时全部进入文章草稿", async () => {
   render(<MetadataForm value={metadata} sourceChanged={false} externalSuggestions={[
     { id: "description-1", field: "description", value: "新的摘要" },

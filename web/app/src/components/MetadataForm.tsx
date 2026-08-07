@@ -37,7 +37,22 @@ export function MetadataForm({ value, sourceChanged, identityReady = true, onSav
     });
   }, [value, externalSuggestion, externalSuggestions]);
   const update = <K extends keyof ArticleMetadata>(field: K, next: ArticleMetadata[K]) => setDraft((current) => ({ ...current, [field]: next }));
-  const keywords = (text: string) => update("keywords", text.split(/[,，]/).map((item) => item.trim()).filter(Boolean));
+  // Keywords 是逗号分隔的受控输入，必须保留原始文本（含正在键入的尾随逗号）才能正常输入。
+  // 直接把解析后的数组 join 回 input 会让键入中的逗号被 filter(Boolean) 吃掉。
+  const [keywordsText, setKeywordsText] = useState(() => draft.keywords.join(", "));
+  const keywordsEditing = useRef(false);
+  useEffect(() => {
+    if (!keywordsEditing.current) setKeywordsText(draft.keywords.join(", "));
+  }, [draft.keywords]);
+  const onKeywordsChange = (text: string) => {
+    keywordsEditing.current = true;
+    setKeywordsText(text);
+    update("keywords", text.split(/[,，]/).map((item) => item.trim()).filter(Boolean));
+  };
+  const onKeywordsBlur = () => {
+    keywordsEditing.current = false;
+    setKeywordsText(draft.keywords.join(", "));
+  };
   const changed = JSON.stringify(draft) !== JSON.stringify(value);
   const changes = (Object.keys(value) as (keyof ArticleMetadata)[]).filter((field) => JSON.stringify(value[field]) !== JSON.stringify(draft[field]));
   const save = async () => {
@@ -56,7 +71,7 @@ export function MetadataForm({ value, sourceChanged, identityReady = true, onSav
     <label>Description<textarea value={draft.description} onChange={(event) => update("description", event.target.value)} rows={3} /></label>
     <div className="field-pair"><SingleTaxonomyField label="Category" noun="类目" value={draft.category} options={categoryOptions} state={taxonomyState} emptyLabel="未分类" canCreate={canCreateTaxonomy} onChange={(next) => update("category", next)} onCreate={onCreateTaxonomy ? (select) => onCreateTaxonomy("category", select) : undefined} /><SingleTaxonomyField label="Series" noun="系列" value={draft.series} options={seriesOptions} state={taxonomyState} emptyLabel="无系列" canCreate={canCreateTaxonomy} onChange={(next) => update("series", next)} onCreate={onCreateTaxonomy ? (select) => onCreateTaxonomy("series", select) : undefined} /></div>
     <TagMultiSelect value={draft.tags} options={tagOptions} state={taxonomyState} onChange={(next) => update("tags", next)} />
-    <label>Keywords<input value={draft.keywords.join(", ")} onChange={(event) => keywords(event.target.value)} /></label>
+    <label>Keywords<input value={keywordsText} onChange={(event) => onKeywordsChange(event.target.value)} onBlur={onKeywordsBlur} /></label>
     <div className="field-pair"><label>Slug<input value={draft.slug} onChange={(event) => update("slug", event.target.value)} /></label><label>Cover<input value={draft.cover} onChange={(event) => update("cover", event.target.value)} /></label></div>
     {changes.length > 0 && <div className="change-summary"><b>本次将写入</b>{changes.map((field) => <p key={field}>{fieldLabel(field)}：{formatValue(value[field]) || "未填写"} → {formatValue(draft[field]) || "未填写"}</p>)}</div>}
     <button className="primary compact-button" type="button" disabled={saving || (!changed && identityReady) || sourceChanged} onClick={() => void save()}><Save size={15} />{saving ? "正在保存" : identityReady ? "保存到文章" : "保存并生成文章 ID"}</button>
