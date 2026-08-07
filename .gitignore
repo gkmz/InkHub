@@ -37,6 +37,7 @@ go.work.sum
 .cursor
 .antigravity
 .claude
+.worktrees/
 
 
 # Binary executables
