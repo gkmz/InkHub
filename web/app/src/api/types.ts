@@ -263,9 +263,11 @@ export interface XiaohongshuDraft {
   id: string;
   article_id: string;
   source_content_hash: string;
+  mode: XiaohongshuDraftMode;
   title: string;
   body_html: string;
   pages: XiaohongshuPage[];
+  script_pages: XiaohongshuScriptPage[];
   topics: string;
   source_note: string;
   comment_copy: string;
@@ -275,6 +277,14 @@ export interface XiaohongshuDraft {
   stale: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export type XiaohongshuDraftMode = "long_card" | "visual_script";
+
+export interface XiaohongshuScriptPage {
+  id: string;
+  title: string;
+  prompt: string;
 }
 
 export interface XiaohongshuKnowledgePoint {

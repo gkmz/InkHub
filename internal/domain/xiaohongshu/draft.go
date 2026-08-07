@@ -4,8 +4,18 @@ package xiaohongshu
 // DraftState 是小红书草稿的生命周期状态。
 type DraftState string
 
+// DraftMode 表示小红书草稿采用的内容生产方式。
+type DraftMode string
+
 // BlockKind 表示小红书卡片中的内容块类型。
 type BlockKind string
+
+const (
+	// DraftModeLongCard 保留主要正文并渲染为连续长文卡片。
+	DraftModeLongCard DraftMode = "long_card"
+	// DraftModeVisualScript 生成供外部生图使用的逐页分镜提示词。
+	DraftModeVisualScript DraftMode = "visual_script"
+)
 
 const (
 	BlockKindParagraph BlockKind = "paragraph"
@@ -31,6 +41,13 @@ type Page struct {
 	MeasuredHeight int     `json:"measured_height"`
 }
 
+// ScriptPage 是一页可独立复制和修改的生图分镜提示词。
+type ScriptPage struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Prompt string `json:"prompt"`
+}
+
 const (
 	// DraftStateDraft 表示草稿可编辑，尚未人工确认发布。
 	DraftStateDraft DraftState = "draft"
@@ -46,9 +63,11 @@ type Draft struct {
 	WorkspaceID       string
 	ArticleID         string
 	SourceContentHash string
+	Mode              DraftMode
 	Title             string
 	BodyHTML          string
 	Pages             []Page
+	ScriptPages       []ScriptPage
 	Topics            []string
 	SourceNote        string
 	CommentCopy       string

@@ -179,7 +179,7 @@ var columnComments = map[string]string{
 	"name": "可读名称", "version": "版本号", "checksum": "内容 SHA-256 校验摘要", "applied_at": "应用时间（UTC）",
 	"object_type": "注释对象类型", "object_name": "注释对象完整名称", "comment": "对象中文说明",
 	"created_at": "创建时间（UTC）", "updated_at": "最后更新时间（UTC）", "deleted_at": "软删除时间（UTC）",
-	"source_content_hash": "草稿生成时对应的文章内容版本", "body_html": "小红书正文 HTML", "pages_json": "小红书分页卡片和内容块 JSON", "topics_json": "小红书话题 JSON 数组",
+	"source_content_hash": "草稿生成时对应的文章内容版本", "mode": "小红书草稿内容模式", "body_html": "小红书正文 HTML 或分镜模式发布短文", "pages_json": "小红书长文分页卡片和内容块 JSON", "script_pages_json": "小红书逐页生图分镜提示词 JSON", "topics_json": "小红书话题 JSON 数组",
 	"source_note": "小红书来源说明", "comment_copy": "小红书评论区文案", "ai_model": "生成草稿使用的模型标识",
 	"prompt_version": "生成草稿使用的提示词版本", "draft_id": "关联小红书草稿标识", "render_id": "关联小红书渲染标识",
 	"template_id": "手机页面模板标识", "template_version": "手机页面模板版本", "viewport_width": "渲染视口宽度（像素）",

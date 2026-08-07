@@ -72,6 +72,8 @@ func decodeResponse(content []byte, task contracts.AITask) (decodedResponse, err
 		return decodeXiaohongshuOutlineResponse(response.Choices[0].Message.Content, response.Model)
 	case contracts.AITaskXiaohongshuRewrite:
 		return decodeXiaohongshuRewriteResponse(response.Choices[0].Message.Content, response.Model)
+	case contracts.AITaskXiaohongshuStoryboard:
+		return decodeXiaohongshuStoryboardResponse(response.Choices[0].Message.Content, response.Model)
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(response.Choices[0].Message.Content), &fields); err != nil {
@@ -118,6 +120,40 @@ func decodeResponse(content []byte, task contracts.AITask) (decodedResponse, err
 		suggestions = append(suggestions, contracts.Suggestion{Field: "keywords", Value: mustJSON(keywords), Rationale: metadata.Reasons["keywords"]})
 	}
 	return decodedResponse{Model: response.Model, Suggestions: suggestions}, nil
+}
+
+type xiaohongshuStoryboardPageResponse struct {
+	Title  string `json:"title"`
+	Prompt string `json:"prompt"`
+}
+
+// decodeXiaohongshuStoryboardResponse 校验逐页分镜和配套发布文案。
+func decodeXiaohongshuStoryboardResponse(content, model string) (decodedResponse, error) {
+	var output struct {
+		Title       string                              `json:"title"`
+		Body        string                              `json:"body"`
+		Topics      string                              `json:"topics"`
+		ScriptPages []xiaohongshuStoryboardPageResponse `json:"script_pages"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&output); err != nil {
+		return decodedResponse{}, invalidResponseError(err)
+	}
+	if strings.TrimSpace(output.Title) == "" || strings.TrimSpace(output.Body) == "" || len(output.ScriptPages) < 1 {
+		return decodedResponse{}, invalidResponseError(errors.New("小红书分镜标题、发布正文或页面不能为空"))
+	}
+	for _, page := range output.ScriptPages {
+		if strings.TrimSpace(page.Title) == "" || strings.TrimSpace(page.Prompt) == "" {
+			return decodedResponse{}, invalidResponseError(errors.New("小红书分镜页面标题或提示词不能为空"))
+		}
+	}
+	return decodedResponse{Model: model, Suggestions: []contracts.Suggestion{
+		{Field: "title", Value: mustJSON(strings.TrimSpace(output.Title))},
+		{Field: "body", Value: mustJSON(strings.TrimSpace(output.Body))},
+		{Field: "topics", Value: mustJSON(strings.TrimSpace(output.Topics))},
+		{Field: "script_pages", Value: mustJSON(output.ScriptPages)},
+	}}, nil
 }
 
 type xiaohongshuKnowledgePointResponse struct {

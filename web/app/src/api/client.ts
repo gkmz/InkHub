@@ -1,4 +1,5 @@
 import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, MermaidTheme, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, SuggestionHistoryResponse, SuggestionVersionView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft, XiaohongshuDraft, XiaohongshuRewriteOutline, XiaohongshuView } from "./types";
+import type { XiaohongshuDraftMode } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
@@ -168,8 +169,8 @@ export function markWeChatCopied(article: Pick<ArticleDetail, "id" | "content_ve
 }
 
 /** getXiaohongshu 读取小红书当前草稿和版本历史。 */
-export function getXiaohongshu(articleID: string, signal?: AbortSignal) {
-  return request<XiaohongshuView>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu`, { signal });
+export function getXiaohongshu(articleID: string, mode: XiaohongshuDraftMode = "long_card", signal?: AbortSignal) {
+  return request<XiaohongshuView>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu?mode=${encodeURIComponent(mode)}`, { signal });
 }
 
 /** generateXiaohongshuDraft 调用 AI 提炼并生成新的小红书草稿版本，不覆盖历史。 */
@@ -190,9 +191,14 @@ export function rewriteXiaohongshuDraft(articleID: string, outline: XiaohongshuR
   });
 }
 
+/** generateXiaohongshuStoryboard 生成逐页生图提示词和配套发布短文。 */
+export function generateXiaohongshuStoryboard(articleID: string) {
+  return request<XiaohongshuDraft>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/drafts/storyboard`, { method: "POST", body: "{}" });
+}
+
 /** saveXiaohongshuDraft 保存用户整体编辑后的小红书草稿。 */
-export function saveXiaohongshuDraft(articleID: string, draft: Pick<XiaohongshuDraft, "id" | "title" | "body_html" | "pages" | "topics" | "source_note" | "comment_copy">) {
-	return request<XiaohongshuDraft>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/drafts`, { method: "POST", body: JSON.stringify({ draft_id: draft.id, title: draft.title, body_html: draft.body_html, pages: draft.pages, topics: draft.topics, source_note: draft.source_note, comment_copy: draft.comment_copy }) });
+export function saveXiaohongshuDraft(articleID: string, draft: Pick<XiaohongshuDraft, "id" | "mode" | "title" | "body_html" | "pages" | "script_pages" | "topics" | "source_note" | "comment_copy">) {
+	return request<XiaohongshuDraft>(`/articles/${encodeURIComponent(articleID)}/xiaohongshu/drafts`, { method: "POST", body: JSON.stringify({ draft_id: draft.id, mode: draft.mode, title: draft.title, body_html: draft.body_html, pages: draft.pages, script_pages: draft.script_pages, topics: draft.topics, source_note: draft.source_note, comment_copy: draft.comment_copy }) });
 }
 
 /** saveXiaohongshuRender 记录浏览器完成的手机模板渲染版本。 */

@@ -24,11 +24,12 @@ type AIDescriptor struct {
 type AITask string
 
 const (
-	AITaskMetadata           AITask = "metadata"
-	AITaskSEO                AITask = "seo"
-	AITaskXiaohongshu        AITask = "xiaohongshu"
-	AITaskXiaohongshuOutline AITask = "xiaohongshu_outline"
-	AITaskXiaohongshuRewrite AITask = "xiaohongshu_rewrite"
+	AITaskMetadata              AITask = "metadata"
+	AITaskSEO                   AITask = "seo"
+	AITaskXiaohongshu           AITask = "xiaohongshu"
+	AITaskXiaohongshuOutline    AITask = "xiaohongshu_outline"
+	AITaskXiaohongshuRewrite    AITask = "xiaohongshu_rewrite"
+	AITaskXiaohongshuStoryboard AITask = "xiaohongshu_storyboard"
 )
 
 // AIRequest 是经过 Application 隐私裁剪后的结构化请求。

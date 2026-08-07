@@ -19,40 +19,45 @@ import (
 
 // XiaohongshuDraftView 是返回给前端的完整小红书草稿版本。
 type XiaohongshuDraftView struct {
-	ID                string             `json:"id"`
-	ArticleID         string             `json:"article_id"`
-	SourceContentHash string             `json:"source_content_hash"`
-	Title             string             `json:"title"`
-	BodyHTML          string             `json:"body_html"`
-	Pages             []xiaohongshu.Page `json:"pages"`
-	Topics            string             `json:"topics"`
-	SourceNote        string             `json:"source_note"`
-	CommentCopy       string             `json:"comment_copy"`
-	AIModel           string             `json:"ai_model"`
-	PromptVersion     string             `json:"prompt_version"`
-	State             string             `json:"state"`
-	Stale             bool               `json:"stale"`
-	CreatedAt         string             `json:"created_at"`
-	UpdatedAt         string             `json:"updated_at"`
+	ID                string                   `json:"id"`
+	ArticleID         string                   `json:"article_id"`
+	SourceContentHash string                   `json:"source_content_hash"`
+	Mode              string                   `json:"mode"`
+	Title             string                   `json:"title"`
+	BodyHTML          string                   `json:"body_html"`
+	Pages             []xiaohongshu.Page       `json:"pages"`
+	ScriptPages       []xiaohongshu.ScriptPage `json:"script_pages"`
+	Topics            string                   `json:"topics"`
+	SourceNote        string                   `json:"source_note"`
+	CommentCopy       string                   `json:"comment_copy"`
+	AIModel           string                   `json:"ai_model"`
+	PromptVersion     string                   `json:"prompt_version"`
+	State             string                   `json:"state"`
+	Stale             bool                     `json:"stale"`
+	CreatedAt         string                   `json:"created_at"`
+	UpdatedAt         string                   `json:"updated_at"`
 }
 
 // XiaohongshuView 汇总当前文章的小红书草稿和发布状态。
 type XiaohongshuView struct {
 	ArticleID          string                 `json:"article_id"`
 	CurrentContentHash string                 `json:"current_content_hash"`
+	Mode               string                 `json:"mode"`
 	State              string                 `json:"state"`
 	Latest             *XiaohongshuDraftView  `json:"latest"`
 	History            []XiaohongshuDraftView `json:"history"`
 }
 
 type xiaohongshuDraftInput struct {
-	DraftID     string             `json:"draft_id"`
-	Title       string             `json:"title"`
-	BodyHTML    string             `json:"body_html"`
-	Pages       []xiaohongshu.Page `json:"pages,omitempty"`
-	Topics      string             `json:"topics"`
-	SourceNote  string             `json:"source_note"`
-	CommentCopy string             `json:"comment_copy"`
+	DraftID     string                   `json:"draft_id"`
+	Mode        string                   `json:"mode"`
+	Title       string                   `json:"title"`
+	BodyHTML    string                   `json:"body_html"`
+	Pages       []xiaohongshu.Page       `json:"pages,omitempty"`
+	ScriptPages []xiaohongshu.ScriptPage `json:"script_pages,omitempty"`
+	Topics      string                   `json:"topics"`
+	SourceNote  string                   `json:"source_note"`
+	CommentCopy string                   `json:"comment_copy"`
 }
 
 type xiaohongshuRenderInput struct {
@@ -96,6 +101,8 @@ func (h *runtimeHandler) xiaohongshu(response http.ResponseWriter, request *http
 		h.xiaohongshuRewrite(response, request, articleID)
 	case request.Method == http.MethodPost && suffix == "drafts/generate":
 		h.xiaohongshuGenerate(response, request, articleID)
+	case request.Method == http.MethodPost && suffix == "drafts/storyboard":
+		h.xiaohongshuStoryboard(response, request, articleID)
 	case request.Method == http.MethodPost && suffix == "drafts":
 		h.xiaohongshuSave(response, request, articleID)
 	case request.Method == http.MethodPost && suffix == "renders":
@@ -127,7 +134,12 @@ func (h *runtimeHandler) xiaohongshuView(response http.ResponseWriter, request *
 		mapError(response, err)
 		return
 	}
-	drafts, err := repository.NewXiaohongshuRepository(h.db).ListDrafts(request.Context(), workspaceID, articleID, 50)
+	mode, err := requestedXiaohongshuMode(request)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, "xiaohongshu.mode_invalid", err.Error())
+		return
+	}
+	drafts, err := repository.NewXiaohongshuRepository(h.db).ListDraftsByMode(request.Context(), workspaceID, articleID, mode, 50)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -135,7 +147,9 @@ func (h *runtimeHandler) xiaohongshuView(response http.ResponseWriter, request *
 	history := make([]XiaohongshuDraftView, 0, len(drafts))
 	for _, draft := range drafts {
 		// 本地图片地址使用进程级签名，读取历史草稿时必须替换为当前有效地址。
-		draft = refreshXiaohongshuDraftAssets(draft, rendered)
+		if draft.Mode == xiaohongshu.DraftModeLongCard {
+			draft = refreshXiaohongshuDraftAssets(draft, rendered)
+		}
 		history = append(history, xiaohongshuDraftView(draft, contentHash))
 	}
 	var latest *XiaohongshuDraftView
@@ -146,7 +160,18 @@ func (h *runtimeHandler) xiaohongshuView(response http.ResponseWriter, request *
 	if latest != nil {
 		state = xiaohongshuState(*latest)
 	}
-	writeJSON(response, http.StatusOK, XiaohongshuView{ArticleID: articleID, CurrentContentHash: contentHash, State: state, Latest: latest, History: history})
+	writeJSON(response, http.StatusOK, XiaohongshuView{ArticleID: articleID, CurrentContentHash: contentHash, Mode: string(mode), State: state, Latest: latest, History: history})
+}
+
+func requestedXiaohongshuMode(request *http.Request) (xiaohongshu.DraftMode, error) {
+	mode := xiaohongshu.DraftMode(strings.TrimSpace(request.URL.Query().Get("mode")))
+	if mode == "" {
+		return xiaohongshu.DraftModeLongCard, nil
+	}
+	if mode != xiaohongshu.DraftModeLongCard && mode != xiaohongshu.DraftModeVisualScript {
+		return "", errors.New("小红书内容模式不可用")
+	}
+	return mode, nil
 }
 
 func (h *runtimeHandler) xiaohongshuGenerate(response http.ResponseWriter, request *http.Request, articleID string) {
@@ -240,9 +265,20 @@ func (h *runtimeHandler) xiaohongshuSave(response http.ResponseWriter, request *
 		writeError(response, http.StatusConflict, "content.stale", "文章内容已变化，请基于最新版本重新生成")
 		return
 	}
+	if input.Mode != "" && xiaohongshu.DraftMode(input.Mode) != draft.Mode {
+		writeError(response, http.StatusConflict, "xiaohongshu.mode_conflict", "草稿内容模式不匹配")
+		return
+	}
+	if draft.Mode == xiaohongshu.DraftModeVisualScript && len(input.ScriptPages) == 0 {
+		writeError(response, http.StatusBadRequest, "request.invalid", "分镜草稿至少需要一页提示词")
+		return
+	}
 	draft.Title, draft.BodyHTML, draft.Topics, draft.SourceNote, draft.CommentCopy = strings.TrimSpace(input.Title), input.BodyHTML, parseXiaohongshuTopics(input.Topics), input.SourceNote, input.CommentCopy
 	if input.Pages != nil {
 		draft.Pages = input.Pages
+	}
+	if input.ScriptPages != nil {
+		draft.ScriptPages = input.ScriptPages
 	}
 	if err := repo.SaveDraft(request.Context(), draft); err != nil {
 		mapError(response, err)
@@ -344,7 +380,7 @@ func (h *runtimeHandler) xiaohongshuArticle(ctx context.Context, articleID strin
 }
 
 func xiaohongshuDraftView(draft xiaohongshu.Draft, currentHash string) XiaohongshuDraftView {
-	return XiaohongshuDraftView{ID: draft.ID, ArticleID: draft.ArticleID, SourceContentHash: draft.SourceContentHash, Title: draft.Title, BodyHTML: draft.BodyHTML, Pages: draft.Pages, Topics: formatXiaohongshuTopics(draft.Topics), SourceNote: draft.SourceNote, CommentCopy: draft.CommentCopy, AIModel: draft.AIModel, PromptVersion: draft.PromptVersion, State: string(draft.State), Stale: draft.SourceContentHash != currentHash, CreatedAt: draft.CreatedAt, UpdatedAt: draft.UpdatedAt}
+	return XiaohongshuDraftView{ID: draft.ID, ArticleID: draft.ArticleID, SourceContentHash: draft.SourceContentHash, Mode: string(draft.Mode), Title: draft.Title, BodyHTML: draft.BodyHTML, Pages: draft.Pages, ScriptPages: draft.ScriptPages, Topics: formatXiaohongshuTopics(draft.Topics), SourceNote: draft.SourceNote, CommentCopy: draft.CommentCopy, AIModel: draft.AIModel, PromptVersion: draft.PromptVersion, State: string(draft.State), Stale: draft.SourceContentHash != currentHash, CreatedAt: draft.CreatedAt, UpdatedAt: draft.UpdatedAt}
 }
 
 // parseXiaohongshuTopics 将用户或 AI 输出的单行话题文本转换为内部话题数组。

@@ -79,6 +79,22 @@ func TestProviderGeneratesXiaohongshuStructuredContent(t *testing.T) {
 	}
 }
 
+func TestProviderGeneratesXiaohongshuStoryboard(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(response, `{"model":"story-model","choices":[{"message":{"content":"{\"title\":\"向量数据库入门\",\"body\":\"补充正文\",\"topics\":\"#AI #知识库\",\"script_pages\":[{\"title\":\"封面\",\"prompt\":\"生成封面\"}]}"}}]}`)
+	}))
+	defer server.Close()
+	provider := buildTestProvider(t, server.URL, 1024*1024, 2*time.Second)
+	result, err := provider.Generate(context.Background(), contracts.AIRequest{Task: contracts.AITaskXiaohongshuStoryboard, Article: contracts.ArticleInput{Title: "原文", Body: "正文"}, AllowBody: true, InputContentHash: "hash-story", OutputSchema: `{"type":"object"}`})
+	if err != nil {
+		t.Fatalf("生成小红书分镜: %v", err)
+	}
+	if result.Model != "story-model" || !hasSuggestion(result.Suggestions, "script_pages", false) || !hasSuggestion(result.Suggestions, "body", false) {
+		t.Fatalf("小红书分镜结构化响应错误: %+v", result)
+	}
+}
+
 func TestProviderMapsRateLimitToRetryableError(t *testing.T) {
 	t.Parallel()
 

@@ -219,6 +219,10 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .xiaohongshu-content-summary { min-width: 0; display: grid; gap: 3px; }
 .xiaohongshu-content-summary strong { font-size: 12px; }
 .xiaohongshu-content-summary span { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.xiaohongshu-mode-switch { display: inline-flex; width: fit-content; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: #f4f7f5; }
+.xiaohongshu-mode-switch button { min-height: 28px; border: 0; border-right: 1px solid var(--line); border-radius: 0; padding: 0 10px; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
+.xiaohongshu-mode-switch button:last-child { border-right: 0; }
+.xiaohongshu-mode-switch button[aria-pressed="true"] { background: var(--surface); color: var(--action); font-weight: 700; box-shadow: inset 0 -2px var(--action); }
 .xiaohongshu-content-toolbar .xiaohongshu-history { top: calc(100% + 8px); right: 18px; }
 .xiaohongshu-layout { min-width: 0; display: grid; grid-template-columns: minmax(280px, .9fr) minmax(360px, 1.1fr); gap: 28px; padding: 28px; }
 .xiaohongshu-layout { grid-template-columns: minmax(0, 1fr); padding-top: 0; }
@@ -236,6 +240,13 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .xiaohongshu-card-page { flex: 0 0 min(375px, calc(100vw - 92px)); aspect-ratio: 375 / 667; min-height: 0; display: flex; flex-direction: column; scroll-snap-align: center; overflow: hidden; padding: 28px 22px 22px; border: 1px solid #c9d4cc; border-radius: 6px; background: #f3f6f1; box-shadow: inset 0 4px #245b4d, 0 12px 26px rgb(31 55 46 / 13%); color: #26332f; }
 .xiaohongshu-card-page-label { flex: 0 0 auto; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #c9d4cc; color: #9a5642; font: 600 10px/1.2 "PingFang SC", "Microsoft YaHei", sans-serif; text-align: right; }
 .xiaohongshu-card-title { flex: 0 0 auto; margin: 0 0 18px; color: #183f35; font: 750 25px/1.34 "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+.xiaohongshu-storyboard-page { gap: 12px; }
+.xiaohongshu-storyboard-page label { min-width: 0; display: grid; gap: 6px; color: #68766f; font-size: 11px; font-weight: 700; }
+.xiaohongshu-storyboard-page input, .xiaohongshu-storyboard-page textarea { box-sizing: border-box; width: 100%; border: 1px solid #c9d4cc; border-radius: 4px; padding: 9px 10px; background: #fbfcfa; color: #26332f; font: 12px/1.65 "PingFang SC", "Microsoft YaHei", sans-serif; resize: none; }
+.xiaohongshu-storyboard-page input:focus, .xiaohongshu-storyboard-page textarea:focus { border-color: #245b4d; outline: 2px solid rgb(36 91 77 / 12%); outline-offset: 0; }
+.xiaohongshu-storyboard-prompt { min-height: 0; flex: 1 1 auto; grid-template-rows: auto minmax(0, 1fr); align-content: stretch; }
+.xiaohongshu-storyboard-prompt textarea { min-height: 0; height: 100%; resize: none; }
+.xiaohongshu-storyboard-copy { align-self: flex-end; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; font-size: 11px; }
 .xiaohongshu-card-content-frame { min-width: 0; min-height: 0; flex: 1 1 auto; overflow: hidden; display: flex; align-items: flex-start; justify-content: flex-start; }
 .xiaohongshu-card-content { min-width: 0; width: 100%; flex: 0 0 auto; overflow: visible; outline: none; font: 15.5px/1.85 "Songti SC", STSong, "Noto Serif CJK SC", "Source Han Serif SC", serif; overflow-wrap: anywhere; transform-origin: top left; }
 .xiaohongshu-card-content:focus { box-shadow: inset 0 0 0 2px rgb(36 91 77 / 16%); }
@@ -264,6 +275,7 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .xiaohongshu-settings label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .xiaohongshu-settings input, .xiaohongshu-settings textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 4px; padding: 8px 9px; background: white; color: var(--ink); font: inherit; font-size: 12px; resize: vertical; }
 .xiaohongshu-settings textarea { min-height: 56px; line-height: 1.5; }
+.xiaohongshu-settings textarea.xiaohongshu-publish-body { min-height: 110px; }
 .xiaohongshu-settings .wide { grid-column: 1 / -1; }
 .xiaohongshu-settings-actions { grid-column: 1 / -1; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .xiaohongshu-editor label { display: grid; gap: 6px; margin-bottom: 14px; color: var(--muted); font-size: 11px; font-weight: 700; }

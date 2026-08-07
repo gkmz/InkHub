@@ -23,6 +23,12 @@ func (r *XiaohongshuRepository) SaveDraft(ctx context.Context, draft domain.Draf
 	if r == nil || r.db == nil || draft.ID == "" || draft.ArticleID == "" || draft.WorkspaceID == "" || draft.SourceContentHash == "" {
 		return fmt.Errorf("小红书草稿身份字段不完整")
 	}
+	if draft.Mode == "" {
+		draft.Mode = domain.DraftModeLongCard
+	}
+	if draft.Mode != domain.DraftModeLongCard && draft.Mode != domain.DraftModeVisualScript {
+		return fmt.Errorf("小红书草稿模式无效")
+	}
 	topics, err := json.Marshal(draft.Topics)
 	if err != nil {
 		return fmt.Errorf("序列化小红书话题: %w", err)
@@ -31,14 +37,18 @@ func (r *XiaohongshuRepository) SaveDraft(ctx context.Context, draft domain.Draf
 	if err != nil {
 		return fmt.Errorf("序列化小红书页面: %w", err)
 	}
+	scriptPages, err := json.Marshal(draft.ScriptPages)
+	if err != nil {
+		return fmt.Errorf("序列化小红书分镜页面: %w", err)
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err = r.db.ExecContext(ctx, `INSERT INTO xiaohongshu_drafts(
-id,article_id,workspace_id,source_content_hash,title,body_html,pages_json,topics_json,source_note,comment_copy,ai_model,prompt_version,state,created_at,updated_at)
-VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-ON CONFLICT(id) DO UPDATE SET title=excluded.title,body_html=excluded.body_html,pages_json=excluded.pages_json,topics_json=excluded.topics_json,
+id,article_id,workspace_id,source_content_hash,mode,title,body_html,pages_json,script_pages_json,topics_json,source_note,comment_copy,ai_model,prompt_version,state,created_at,updated_at)
+VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(id) DO UPDATE SET title=excluded.title,body_html=excluded.body_html,pages_json=excluded.pages_json,script_pages_json=excluded.script_pages_json,topics_json=excluded.topics_json,
 source_note=excluded.source_note,comment_copy=excluded.comment_copy,state=excluded.state,updated_at=excluded.updated_at
-WHERE xiaohongshu_drafts.article_id=excluded.article_id AND xiaohongshu_drafts.workspace_id=excluded.workspace_id`,
-		draft.ID, draft.ArticleID, draft.WorkspaceID, draft.SourceContentHash, draft.Title, draft.BodyHTML, string(pages), string(topics), draft.SourceNote, draft.CommentCopy, draft.AIModel, draft.PromptVersion, draft.State, now, now)
+WHERE xiaohongshu_drafts.article_id=excluded.article_id AND xiaohongshu_drafts.workspace_id=excluded.workspace_id AND xiaohongshu_drafts.mode=excluded.mode`,
+		draft.ID, draft.ArticleID, draft.WorkspaceID, draft.SourceContentHash, draft.Mode, draft.Title, draft.BodyHTML, string(pages), string(scriptPages), string(topics), draft.SourceNote, draft.CommentCopy, draft.AIModel, draft.PromptVersion, draft.State, now, now)
 	if err != nil {
 		return fmt.Errorf("保存小红书草稿: %w", err)
 	}
@@ -47,7 +57,7 @@ WHERE xiaohongshu_drafts.article_id=excluded.article_id AND xiaohongshu_drafts.w
 
 // FindDraft 在文章和工作区边界内读取一个草稿版本。
 func (r *XiaohongshuRepository) FindDraft(ctx context.Context, workspaceID, articleID, id string) (domain.Draft, error) {
-	return scanDraft(r.db.QueryRowContext(ctx, `SELECT id,article_id,workspace_id,source_content_hash,title,body_html,pages_json,topics_json,source_note,comment_copy,ai_model,prompt_version,state,created_at,updated_at FROM xiaohongshu_drafts WHERE workspace_id=? AND article_id=? AND id=?`, workspaceID, articleID, id))
+	return scanDraft(r.db.QueryRowContext(ctx, `SELECT id,article_id,workspace_id,source_content_hash,mode,title,body_html,pages_json,script_pages_json,topics_json,source_note,comment_copy,ai_model,prompt_version,state,created_at,updated_at FROM xiaohongshu_drafts WHERE workspace_id=? AND article_id=? AND id=?`, workspaceID, articleID, id))
 }
 
 // ListDrafts 返回文章草稿历史，按生成时间倒序排列。
@@ -58,7 +68,7 @@ func (r *XiaohongshuRepository) ListDrafts(ctx context.Context, workspaceID, art
 	if limit > 100 {
 		limit = 100
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id,article_id,workspace_id,source_content_hash,title,body_html,pages_json,topics_json,source_note,comment_copy,ai_model,prompt_version,state,created_at,updated_at FROM xiaohongshu_drafts WHERE workspace_id=? AND article_id=? ORDER BY created_at DESC,id DESC LIMIT ?`, workspaceID, articleID, limit)
+	rows, err := r.db.QueryContext(ctx, `SELECT id,article_id,workspace_id,source_content_hash,mode,title,body_html,pages_json,script_pages_json,topics_json,source_note,comment_copy,ai_model,prompt_version,state,created_at,updated_at FROM xiaohongshu_drafts WHERE workspace_id=? AND article_id=? ORDER BY created_at DESC,id DESC LIMIT ?`, workspaceID, articleID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("查询小红书草稿历史: %w", err)
 	}
@@ -74,9 +84,36 @@ func (r *XiaohongshuRepository) ListDrafts(ctx context.Context, workspaceID, art
 	return items, rows.Err()
 }
 
+// ListDraftsByMode 返回文章指定内容模式的草稿历史。
+func (r *XiaohongshuRepository) ListDraftsByMode(ctx context.Context, workspaceID, articleID string, mode domain.DraftMode, limit int) ([]domain.Draft, error) {
+	if mode != domain.DraftModeLongCard && mode != domain.DraftModeVisualScript {
+		return nil, fmt.Errorf("小红书草稿模式无效")
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT id,article_id,workspace_id,source_content_hash,mode,title,body_html,pages_json,script_pages_json,topics_json,source_note,comment_copy,ai_model,prompt_version,state,created_at,updated_at FROM xiaohongshu_drafts WHERE workspace_id=? AND article_id=? AND mode=? ORDER BY created_at DESC,id DESC LIMIT ?`, workspaceID, articleID, mode, limit)
+	if err != nil {
+		return nil, fmt.Errorf("查询小红书分模式草稿历史: %w", err)
+	}
+	defer rows.Close()
+	items := make([]domain.Draft, 0, limit)
+	for rows.Next() {
+		item, scanErr := scanDraft(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 // FindLatestDraft 返回文章最新草稿。
 func (r *XiaohongshuRepository) FindLatestDraft(ctx context.Context, workspaceID, articleID string) (domain.Draft, bool, error) {
-	item, err := scanDraft(r.db.QueryRowContext(ctx, `SELECT id,article_id,workspace_id,source_content_hash,title,body_html,pages_json,topics_json,source_note,comment_copy,ai_model,prompt_version,state,created_at,updated_at FROM xiaohongshu_drafts WHERE workspace_id=? AND article_id=? ORDER BY created_at DESC,id DESC LIMIT 1`, workspaceID, articleID))
+	item, err := scanDraft(r.db.QueryRowContext(ctx, `SELECT id,article_id,workspace_id,source_content_hash,mode,title,body_html,pages_json,script_pages_json,topics_json,source_note,comment_copy,ai_model,prompt_version,state,created_at,updated_at FROM xiaohongshu_drafts WHERE workspace_id=? AND article_id=? ORDER BY created_at DESC,id DESC LIMIT 1`, workspaceID, articleID))
 	if err == sql.ErrNoRows {
 		return domain.Draft{}, false, nil
 	}
@@ -121,8 +158,9 @@ func (r *XiaohongshuRepository) SaveEvent(ctx context.Context, event domain.Even
 func scanDraft(row rowScanner) (domain.Draft, error) {
 	var item domain.Draft
 	var pagesJSON string
+	var scriptPagesJSON string
 	var topicsJSON string
-	if err := row.Scan(&item.ID, &item.ArticleID, &item.WorkspaceID, &item.SourceContentHash, &item.Title, &item.BodyHTML, &pagesJSON, &topicsJSON, &item.SourceNote, &item.CommentCopy, &item.AIModel, &item.PromptVersion, &item.State, &item.CreatedAt, &item.UpdatedAt); err != nil {
+	if err := row.Scan(&item.ID, &item.ArticleID, &item.WorkspaceID, &item.SourceContentHash, &item.Mode, &item.Title, &item.BodyHTML, &pagesJSON, &scriptPagesJSON, &topicsJSON, &item.SourceNote, &item.CommentCopy, &item.AIModel, &item.PromptVersion, &item.State, &item.CreatedAt, &item.UpdatedAt); err != nil {
 		return domain.Draft{}, fmt.Errorf("查询小红书草稿: %w", err)
 	}
 	if pagesJSON != "" && pagesJSON != "null" {
@@ -132,6 +170,14 @@ func scanDraft(row rowScanner) (domain.Draft, error) {
 	}
 	if item.Pages == nil {
 		item.Pages = []domain.Page{}
+	}
+	if scriptPagesJSON != "" && scriptPagesJSON != "null" {
+		if err := json.Unmarshal([]byte(scriptPagesJSON), &item.ScriptPages); err != nil {
+			return domain.Draft{}, fmt.Errorf("解析小红书分镜页面: %w", err)
+		}
+	}
+	if item.ScriptPages == nil {
+		item.ScriptPages = []domain.ScriptPage{}
 	}
 	if err := json.Unmarshal([]byte(topicsJSON), &item.Topics); err != nil {
 		return domain.Draft{}, fmt.Errorf("解析小红书话题: %w", err)

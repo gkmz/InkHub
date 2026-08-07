@@ -63,3 +63,24 @@ func TestXiaohongshuRepositoryRoundTripsPagesAndBlocks(t *testing.T) {
 		t.Fatalf("页面模型往返错误: %+v", got.Pages)
 	}
 }
+
+func TestXiaohongshuRepositorySeparatesDraftModes(t *testing.T) {
+	t.Parallel()
+	db := openRepositoryTestDB(t)
+	seedWorkspace(t, db)
+	if _, err := db.Exec(`INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,content_hash,indexed_at,created_at,updated_at) VALUES('a-modes','w1','s1','modes','modes.md','hash-modes','2026-01-01','2026-01-01','2026-01-01')`); err != nil {
+		t.Fatal(err)
+	}
+	r := NewXiaohongshuRepository(db)
+	longDraft := domain.Draft{ID: "draft-long", ArticleID: "a-modes", WorkspaceID: "w1", SourceContentHash: "hash-modes", Mode: domain.DraftModeLongCard, Title: "长文", BodyHTML: "<p>正文</p>", State: domain.DraftStateDraft}
+	scriptDraft := domain.Draft{ID: "draft-script", ArticleID: "a-modes", WorkspaceID: "w1", SourceContentHash: "hash-modes", Mode: domain.DraftModeVisualScript, Title: "分镜", BodyHTML: "发布正文", ScriptPages: []domain.ScriptPage{{ID: "page-1", Title: "封面", Prompt: "生成封面"}}, State: domain.DraftStateDraft}
+	for _, draft := range []domain.Draft{longDraft, scriptDraft} {
+		if err := r.SaveDraft(context.Background(), draft); err != nil {
+			t.Fatal(err)
+		}
+	}
+	items, err := r.ListDraftsByMode(context.Background(), "w1", "a-modes", domain.DraftModeVisualScript, 20)
+	if err != nil || len(items) != 1 || items[0].Mode != domain.DraftModeVisualScript || len(items[0].ScriptPages) != 1 {
+		t.Fatalf("分镜草稿过滤或往返错误: %+v err=%v", items, err)
+	}
+}
