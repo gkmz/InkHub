@@ -339,29 +339,6 @@ func (h *runtimeHandler) writeMetadata(response http.ResponseWriter, request *ht
 	h.articleDetail(response, request)
 }
 
-func (h *runtimeHandler) wechatContent(response http.ResponseWriter, request *http.Request) {
-	articleID := strings.TrimPrefix(request.URL.Path, "/api/v1/wechat/content/")
-	var resultJSON string
-	err := h.db.QueryRowContext(request.Context(), `SELECT jobs.result_json FROM jobs WHERE jobs.kind='wechat_prepare' AND jobs.state='succeeded' AND json_extract(jobs.payload_json,'$.article_id')=? ORDER BY jobs.finished_at DESC LIMIT 1`, articleID).Scan(&resultJSON)
-	if err != nil {
-		mapError(response, ErrNotFound)
-		return
-	}
-	var result struct {
-		Location string `json:"location"`
-	}
-	if json.Unmarshal([]byte(resultJSON), &result) != nil || result.Location == "" {
-		mapError(response, ErrNotFound)
-		return
-	}
-	content, err := os.ReadFile(result.Location)
-	if err != nil {
-		mapError(response, ErrNotFound)
-		return
-	}
-	writeJSON(response, http.StatusOK, map[string]string{"html": string(content)})
-}
-
 func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *http.Request) {
 	id := strings.TrimPrefix(request.URL.Path, "/api/v1/articles/")
 	var workspaceID, sourceID, stableID, relative, title, description, category, series, tagsJSON, keywordsJSON, slug, cover, contentHash, modified, contentStage, contentStageIssue string
