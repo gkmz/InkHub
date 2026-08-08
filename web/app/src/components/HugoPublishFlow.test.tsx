@@ -47,15 +47,17 @@ test("选择 Hugo Section 后预览同一 Artifact 并确认交付", async () =>
 
 test("刷新后直接恢复 Ready Hugo 预览", async () => {
   const requests: string[] = [];
+  const renderChanged = vi.fn();
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     requests.push(url);
-    if (url.endsWith("/articles/a1/publication-workflow")) return Response.json({ article_id: "a1", hugo: { state: "ready", progress: 100, stage: "预览已准备", error: "", preview: { preview_id: "preview_ready", section: "posts", target_path: "content/posts/restored", change: "updated", files: [{ relative_path: "index.md", media_type: "text/markdown", size: 88 }], diagnostics: [], state: "ready" } } });
+    if (url.endsWith("/articles/a1/publication-workflow")) return Response.json({ article_id: "a1", hugo: { state: "ready", progress: 100, stage: "预览已准备", error: "", preview: { preview_id: "preview_ready", section: "posts", target_path: "content/posts/restored", change: "updated", files: [{ relative_path: "index.md", media_type: "text/markdown", size: 88 }], diagnostics: [], render_url: "/api/v1/hugo-previews/preview_ready/render/posts/restored/", state: "ready" } } });
     throw new Error(`未处理请求: ${url}`);
   });
 
-  render(<ToastProvider><HugoPublishFlow articleID="a1" contentHash="hash" onPublished={vi.fn()} /></ToastProvider>);
+  render(<ToastProvider><HugoPublishFlow articleID="a1" contentHash="hash" onRenderPreviewChange={renderChanged} onPublished={vi.fn()} /></ToastProvider>);
   expect(await screen.findByText("content/posts/restored")).toBeInTheDocument();
+  await waitFor(() => expect(renderChanged).toHaveBeenLastCalledWith({ url: "/api/v1/hugo-previews/preview_ready/render/posts/restored/", expired: false }));
   expect(screen.getByRole("button", { name: "确认同步到 Hugo" })).toBeInTheDocument();
   expect(requests.some((url) => url.endsWith("/hugo-sections"))).toBe(false);
 });

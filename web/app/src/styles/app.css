@@ -477,6 +477,12 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
 .hugo-published-state { display: flex; align-items: center; gap: 7px; color: var(--action) !important; }
 .hugo-published-target { display: block; overflow-wrap: anywhere; padding: 8px; border: 1px solid var(--line); background: #f8faf8; color: var(--ink); }
 .hugo-artifact-summary { min-width: 0; display: grid; gap: 10px; }
+.hugo-document.hugo-render-mode { padding: 0; }
+.hugo-render-document { min-width: 0; display: grid; grid-template-rows: auto minmax(680px, 76vh); }
+.hugo-render-document > header { min-height: 70px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.hugo-render-document h2 { margin: 2px 0 0; font-size: 16px; }
+.hugo-render-document > header > span { padding: 3px 7px; border: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+.hugo-render-document iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 .hugo-artifact-summary > div { min-width: 0; display: grid; gap: 5px; }
 .hugo-artifact-summary > div span { width: fit-content; padding: 2px 5px; border: 1px solid #bdd5cf; border-radius: 3px; color: var(--action); font-size: 9px; }
 .hugo-artifact-summary code { overflow-wrap: anywhere; color: var(--ink); font-size: 10px; }
@@ -788,6 +794,8 @@ nav a[aria-current="page"] { border-color: var(--action); background: #e3eeeb; c
   .publication-toolbar-tools .wechat-actions { flex-wrap: wrap; justify-content: flex-end; }
   .hugo-page-layout { display: block; }
   .hugo-document { margin-top: 18px; padding: 34px 22px 60px; }
+  .hugo-document.hugo-render-mode { padding: 0; }
+  .hugo-render-document { grid-template-rows: auto minmax(520px, 74vh); }
   .xiaohongshu-page { margin: 0; }
   .xiaohongshu-toolbar { align-items: flex-start; flex-wrap: wrap; padding: 12px; }
   .xiaohongshu-heading { order: -1; width: 100%; }

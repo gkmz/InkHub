@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,6 +66,23 @@ func TestHugoPreviewJobPreparesThenDeliverJobPublishesSameArtifact(t *testing.T)
 	var result publication.HugoPreviewResult
 	if err := json.Unmarshal([]byte(preview.ResultJSON), &result); err != nil || result.Artifact.OperationID != previewID {
 		t.Fatalf("预览 Artifact 无效: %+v err=%v", result, err)
+	}
+	if result.Artifact.PreviewPath != "posts/ai/hugo-preview/index.html" {
+		t.Fatalf("预览未记录当前文章渲染路径: %q", result.Artifact.PreviewPath)
+	}
+	previewAPI := newHugoPreviewAPI(db, runtime)
+	rendered, err := previewAPI.ResolveRenderFile(ctx, previewID, "")
+	if err != nil {
+		t.Fatalf("解析当前文章渲染文件: %v", err)
+	}
+	renderedContent, err := os.ReadFile(rendered.AbsolutePath)
+	if err != nil || !strings.Contains(string(renderedContent), "正文") {
+		t.Fatalf("当前文章渲染内容错误: content=%s err=%v", renderedContent, err)
+	}
+	for _, requestPath := range []string{"index.html", "../artifact.json"} {
+		if _, err := previewAPI.ResolveRenderFile(ctx, previewID, requestPath); !errors.Is(err, publication.ErrPreviewRenderNotFound) {
+			t.Fatalf("不安全预览路径 %q 未被拒绝: %v", requestPath, err)
+		}
 	}
 
 	deliveryID := "delivery_0123456789abcdef01234567"

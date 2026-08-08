@@ -4,6 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"mime"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gkmz/InkHub/internal/app/publication"
@@ -104,6 +109,94 @@ func (api *hugoPreviewAPI) Find(ctx context.Context, previewID string) (publicat
 		return publication.PreviewView{}, err
 	}
 	return api.service.Find(ctx, previewID)
+}
+
+// ResolveRenderFile 校验当前文章版本和 Artifact 后解析单篇预览文件。
+func (api *hugoPreviewAPI) ResolveRenderFile(ctx context.Context, previewID, resourcePath string) (publication.PreviewRenderFile, error) {
+	if err := api.requireCurrentWorkspacePreview(ctx, previewID); err != nil {
+		return publication.PreviewRenderFile{}, err
+	}
+	result, err := api.service.FindResult(ctx, previewID)
+	if err != nil {
+		return publication.PreviewRenderFile{}, err
+	}
+	current, err := api.ResolvePreviewArticle(ctx, result.ArticleID)
+	if err != nil {
+		return publication.PreviewRenderFile{}, err
+	}
+	if current.WorkspaceID != result.WorkspaceID || current.ProviderID != result.ProviderID || current.ContentHash != result.Artifact.ContentHash {
+		return publication.PreviewRenderFile{}, publication.ErrPreviewStale
+	}
+	if result.Artifact.PreviewPath == "" {
+		return publication.PreviewRenderFile{}, publication.ErrPreviewRenderNotFound
+	}
+	if err := api.ValidatePreviewArtifact(ctx, result); err != nil {
+		return publication.PreviewRenderFile{}, err
+	}
+	publicRoot, err := previewPublicRoot(result.Artifact)
+	if err != nil {
+		return publication.PreviewRenderFile{}, err
+	}
+	requested, err := normalizePreviewResourcePath(resourcePath, result.Artifact.PreviewPath)
+	if err != nil {
+		return publication.PreviewRenderFile{}, err
+	}
+	// 预览端点只暴露当前文章 HTML；样式、图片和字体可以从同一构建输出加载。
+	if strings.EqualFold(path.Ext(requested), ".html") && requested != result.Artifact.PreviewPath {
+		return publication.PreviewRenderFile{}, publication.ErrPreviewRenderNotFound
+	}
+	absolute := filepath.Join(publicRoot, filepath.FromSlash(requested))
+	if !withinPreviewRoot(absolute, publicRoot) {
+		return publication.PreviewRenderFile{}, publication.ErrPreviewRenderNotFound
+	}
+	info, err := os.Lstat(absolute)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return publication.PreviewRenderFile{}, publication.ErrPreviewRenderNotFound
+	}
+	mediaType := mime.TypeByExtension(filepath.Ext(absolute))
+	if mediaType == "" {
+		mediaType = "application/octet-stream"
+	}
+	return publication.PreviewRenderFile{AbsolutePath: absolute, MediaType: mediaType}, nil
+}
+
+func previewPublicRoot(artifact contracts.PreparedArtifact) (string, error) {
+	relativeTarget := filepath.Clean(filepath.FromSlash(artifact.TargetRelativePath))
+	if relativeTarget == "." || filepath.IsAbs(relativeTarget) || strings.HasPrefix(relativeTarget, "..") {
+		return "", publication.ErrPreviewInvalid
+	}
+	stagedSite := filepath.Clean(artifact.Location)
+	for range strings.Split(filepath.ToSlash(relativeTarget), "/") {
+		stagedSite = filepath.Dir(stagedSite)
+	}
+	if filepath.Join(stagedSite, relativeTarget) != filepath.Clean(artifact.Location) {
+		return "", publication.ErrPreviewInvalid
+	}
+	return filepath.Join(stagedSite, "public"), nil
+}
+
+func normalizePreviewResourcePath(resourcePath, previewPath string) (string, error) {
+	value := strings.TrimSpace(strings.ReplaceAll(resourcePath, `\`, "/"))
+	for _, segment := range strings.Split(value, "/") {
+		if segment == ".." {
+			return "", publication.ErrPreviewRenderNotFound
+		}
+	}
+	if value == "" {
+		value = previewPath
+	} else if strings.HasSuffix(value, "/") {
+		value += "index.html"
+	}
+	cleaned := strings.TrimPrefix(path.Clean("/"+value), "/")
+	if cleaned == "" || cleaned == "." || strings.HasPrefix(cleaned, "../") {
+		return "", publication.ErrPreviewRenderNotFound
+	}
+	return cleaned, nil
+}
+
+func withinPreviewRoot(candidate, root string) bool {
+	relative, err := filepath.Rel(root, candidate)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
 }
 
 // Confirm 校验 Artifact 后创建确定性交付任务。

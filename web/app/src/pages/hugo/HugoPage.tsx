@@ -4,6 +4,7 @@ import { getArticle } from "../../api/client";
 import { previewHasHeading } from "../../api/safeHTML";
 import type { ArticleDetail } from "../../api/types";
 import { HugoPublishFlow } from "../../components/HugoPublishFlow";
+import type { HugoRenderPreview } from "../../components/HugoPublishFlow";
 import { MarkdownPreview } from "../../components/MarkdownPreview";
 import { PublicationPageFrame } from "../../components/PublicationPageFrame";
 import { PublicationHistory } from "../../components/PublicationHistory";
@@ -12,6 +13,7 @@ import { PublicationHistory } from "../../components/PublicationHistory";
 export function HugoPage({ articleID, onNavigate }: { articleID: string; onNavigate: (path: string) => void }) {
   const [article, setArticle] = useState<ArticleDetail | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [renderPreview, setRenderPreview] = useState<HugoRenderPreview | null>(null);
   const load = useCallback(() => getArticle(articleID).then(setArticle), [articleID]);
   useEffect(() => { void load(); }, [load]);
 
@@ -25,14 +27,11 @@ export function HugoPage({ articleID, onNavigate }: { articleID: string; onNavig
         <div className="hugo-page-layout">
           <aside className="hugo-page-sidebar" aria-label="Hugo 发布操作">
             <section className="hugo-page-intro"><CloudUpload size={20} /><div><p className="eyebrow">独立渠道</p><h2>同步到 Hugo</h2><p>选择发布目录，生成预览并确认写入博客。这个操作不会影响微信和小红书。</p></div></section>
-            {!available ? <section className="channel-locked" role="status"><strong>审核通过后才能同步到 Hugo</strong><p>请先返回审核中心完善元数据并完成审核。</p><button className="secondary" type="button" onClick={() => onNavigate(`/articles/${articleID}`)}>返回审核中心</button></section> : <HugoPublishFlow articleID={article.id} contentHash={article.content_version} manualPublished={manualPublished} onPublished={async () => { setRefreshKey((value) => value + 1); await load(); }} />}
+            {!available ? <section className="channel-locked" role="status"><strong>审核通过后才能同步到 Hugo</strong><p>请先返回审核中心完善元数据并完成审核。</p><button className="secondary" type="button" onClick={() => onNavigate(`/articles/${articleID}`)}>返回审核中心</button></section> : <HugoPublishFlow articleID={article.id} contentHash={article.content_version} manualPublished={manualPublished} onRenderPreviewChange={setRenderPreview} onPublished={async () => { setRefreshKey((value) => value + 1); await load(); }} />}
             <PublicationHistory articleID={articleID} refreshKey={refreshKey} />
           </aside>
-          <article className="hugo-document" aria-label="Hugo 发布内容">
-            <p className="eyebrow">Hugo 页面预览</p>
-            {showMetadataTitle && <h1>{article.metadata.title}</h1>}
-            <p className="hugo-description">{article.metadata.description}</p>
-            <MarkdownPreview html={article.preview_html} className="prose" />
+          <article className={`hugo-document${renderPreview ? " hugo-render-mode" : ""}`} aria-label="Hugo 发布内容">
+            {renderPreview ? <div className="hugo-render-document"><header><div><p className="eyebrow">Hugo staging</p><h2>当前文章渲染结果</h2></div><span>{renderPreview.expired ? "已过期" : "待确认"}</span></header><iframe title="Hugo 当前文章渲染预览" src={renderPreview.url} loading="lazy" sandbox="" referrerPolicy="no-referrer" /></div> : <><p className="eyebrow">Hugo 页面预览</p>{showMetadataTitle && <h1>{article.metadata.title}</h1>}<p className="hugo-description">{article.metadata.description}</p><MarkdownPreview html={article.preview_html} className="prose" /></>}
           </article>
         </div>
       </main>

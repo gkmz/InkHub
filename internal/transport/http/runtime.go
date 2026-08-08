@@ -120,6 +120,8 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.createHugoPreview(response, request)
 		}
+	case request.Method == http.MethodGet && isHugoPreviewRenderPath(request.URL.Path):
+		h.hugoPreviewRender(response, request)
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/hugo-previews/"):
 		h.hugoPreview(response, request)
 	case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/confirm") && strings.HasPrefix(request.URL.Path, "/api/v1/hugo-previews/"):

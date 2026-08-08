@@ -106,6 +106,7 @@ export interface HugoPreviewView {
   files: Array<{ relative_path: string; media_type: string; size: number }>;
   diagnostics: Array<{ code: string; level: string; message: string }>;
   preview_url?: string;
+  render_url?: string;
   expires_at?: string;
   state: "preparing" | "ready" | "expired" | "failed";
   job_id: string;
@@ -129,6 +130,7 @@ export interface RecoveredHugoPreviewView {
   files: Array<{ relative_path: string; media_type: string; size: number }>;
   diagnostics: Array<{ code: string; level: string; message: string }>;
   preview_url?: string;
+  render_url?: string;
   expires_at?: string;
   state: "preparing" | "ready" | "expired" | "failed";
   error?: string;

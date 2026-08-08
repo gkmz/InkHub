@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -66,8 +68,36 @@ func TestSafeHugoPreviewViewIncludesActionableFailure(t *testing.T) {
 	}
 }
 
+func TestHugoPreviewRenderServesOnlyScopedCurrentArticle(t *testing.T) {
+	root := t.TempDir()
+	page := filepath.Join(root, "index.html")
+	html := `<!doctype html><html><head><link rel="stylesheet" href="/css/site.css"></head><body><img src="https://blog.example.com/images/cover.png"><script>alert(1)</script></body></html>`
+	if err := os.WriteFile(page, []byte(html), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	api := &fakeHugoPreviewAPI{
+		view:       publication.PreviewView{ID: "preview_1", State: "ready", PreviewURL: "https://blog.example.com/posts/demo/", RenderPath: "posts/demo/index.html"},
+		renderFile: publication.PreviewRenderFile{AbsolutePath: page, MediaType: "text/html; charset=utf-8"},
+	}
+	handler := NewRuntimeHandler(nil, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{HugoPreviews: api})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/hugo-previews/preview_1/render/posts/demo/", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("读取 Hugo 渲染预览: code=%d body=%s", response.Code, response.Body.String())
+	}
+	rootPath := "/api/v1/hugo-previews/preview_1/render"
+	if !strings.Contains(response.Body.String(), `href="`+rootPath+`/css/site.css"`) || !strings.Contains(response.Body.String(), `src="`+rootPath+`/images/cover.png"`) {
+		t.Fatalf("预览资源链接未隔离改写: %s", response.Body.String())
+	}
+	if !strings.Contains(response.Header().Get("Content-Security-Policy"), "script-src 'none'") || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("预览安全响应头不完整: %+v", response.Header())
+	}
+}
+
 type fakeHugoPreviewAPI struct {
 	view         publication.PreviewView
+	renderFile   publication.PreviewRenderFile
 	confirmCalls int
 	queued       publication.PreviewRequest
 }
@@ -83,6 +113,10 @@ func (f *fakeHugoPreviewAPI) Queue(_ context.Context, request publication.Previe
 
 func (f *fakeHugoPreviewAPI) Find(context.Context, string) (publication.PreviewView, error) {
 	return f.view, nil
+}
+
+func (f *fakeHugoPreviewAPI) ResolveRenderFile(context.Context, string, string) (publication.PreviewRenderFile, error) {
+	return f.renderFile, nil
 }
 
 func (f *fakeHugoPreviewAPI) Confirm(context.Context, publication.ConfirmPreviewRequest) (domainjob.Job, error) {

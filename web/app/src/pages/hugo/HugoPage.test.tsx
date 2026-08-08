@@ -35,3 +35,20 @@ test("Hugo 独立页面显示渠道导航和同步流程", async () => {
   await userEvent.click(screen.getByRole("button", { name: /发布到微信/ }));
   expect(navigate).toHaveBeenCalledWith("/articles/a1/wechat");
 });
+
+test("Ready 预览在正文区域显示真实 Hugo 渲染页面", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/articles/a1/publication-workflow")) return Response.json({ article_id: "a1", hugo: { state: "ready", progress: 100, stage: "预览已准备", preview: { preview_id: "preview_ready", section: "posts", target_path: "content/posts/demo", change: "updated", files: [], diagnostics: [], render_url: "/api/v1/hugo-previews/preview_ready/render/posts/demo/", state: "ready" } } });
+    if (url.endsWith("/articles/a1")) return Response.json(article);
+    throw new Error(`未处理请求: ${url}`);
+  });
+
+  render(<ToastProvider><HugoPage articleID="a1" onNavigate={vi.fn()} /></ToastProvider>);
+
+  const rendered = await screen.findByTitle("Hugo 当前文章渲染预览");
+  expect(rendered).toHaveAttribute("src", "/api/v1/hugo-previews/preview_ready/render/posts/demo/");
+  expect(rendered).toHaveAttribute("sandbox", "");
+  expect(screen.getByRole("article", { name: "Hugo 发布内容" })).not.toHaveTextContent("正文");
+  expect(screen.getByText("待确认")).toBeInTheDocument();
+});

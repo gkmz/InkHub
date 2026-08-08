@@ -27,7 +27,7 @@ func TestCLIBuilderBuildsPreparedAndDeliveredSite(t *testing.T) {
 		t.Fatalf("创建 Hugo Provider: %v", err)
 	}
 	input := contracts.PublishInput{
-		OperationID: "integration_1", ContentHash: "hash-integration", TargetSection: "posts", Body: "这是真实 Hugo 构建正文。",
+		OperationID: "integration_1", ContentHash: "hash-integration", TargetSection: "posts", Body: "这是真实 Hugo 构建正文。", PreviewOnly: true,
 		Article: article.Article{
 			StableID: "article_INTEGRATION", RelativePath: "集成.md", Title: "集成测试",
 			Category: "AI应用开发", Tags: []string{"go"}, Slug: "integration-test",
@@ -37,10 +37,17 @@ func TestCLIBuilderBuildsPreparedAndDeliveredSite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("真实 Hugo Prepare: %v", err)
 	}
+	if artifact.PreviewPath != "posts/integration-test/index.html" {
+		t.Fatalf("当前文章渲染路径错误: %q", artifact.PreviewPath)
+	}
 	stagedHTML := filepath.Join(staging, input.OperationID, "site", "public", "posts", "integration-test", "index.html")
 	content, err := os.ReadFile(stagedHTML)
 	if err != nil || !strings.Contains(string(content), "真实 Hugo 构建正文") {
 		t.Fatalf("staging HTML 不正确: content=%s err=%v", content, err)
+	}
+	stagedMarkdown, err := os.ReadFile(filepath.Join(artifact.Location, "index.md"))
+	if err != nil || strings.Contains(string(stagedMarkdown), "inkhub-preview:") {
+		t.Fatalf("预览定位标记不应进入待交付 Markdown: content=%s err=%v", stagedMarkdown, err)
 	}
 	if _, err := provider.Deliver(context.Background(), artifact); err != nil {
 		t.Fatalf("真实 Hugo Deliver: %v", err)

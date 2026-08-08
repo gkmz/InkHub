@@ -84,7 +84,7 @@ func safeWorkflowView(view publication.WorkflowView) map[string]any {
 		for _, diagnostic := range preview.Diagnostics {
 			diagnostics = append(diagnostics, map[string]string{"code": diagnostic.Code, "level": diagnostic.Level, "message": diagnostic.Message})
 		}
-		previewView := map[string]any{"preview_id": preview.ID, "section": preview.Section, "target_path": preview.TargetPath, "change": preview.Change, "files": files, "diagnostics": diagnostics, "preview_url": preview.PreviewURL, "expires_at": preview.ExpiresAt, "state": preview.State, "error": preview.Error}
+		previewView := map[string]any{"preview_id": preview.ID, "section": preview.Section, "target_path": preview.TargetPath, "change": preview.Change, "files": files, "diagnostics": diagnostics, "preview_url": preview.PreviewURL, "render_url": hugoPreviewRenderURL(preview.ID, preview.RenderPath), "expires_at": preview.ExpiresAt, "state": preview.State, "error": preview.Error}
 		if preview.Failure != nil {
 			previewView["failure"] = safePublicationFailure(preview.Failure)
 		}

@@ -118,18 +118,25 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 			return contracts.PreparedArtifact{}, providerError("hugo.resource_copy_failed", "复制 Hugo 资源失败", contracts.ErrorInternal, false, err)
 		}
 	}
-	files, err := artifactFiles(stagedBundle)
-	if err != nil {
-		return contracts.PreparedArtifact{}, providerError("hugo.artifact_invalid", "生成 Hugo 文件清单失败", contracts.ErrorInternal, false, err)
-	}
 	revision, err := p.builder.Build(ctx, stagedSite)
 	if err != nil {
 		return contracts.PreparedArtifact{}, providerError("hugo.build_failed", "Hugo staging 构建失败", contracts.ErrorPermanent, false, err)
 	}
+	previewPath := ""
+	if input.PreviewOnly {
+		previewPath, err = findPreviewRenderPath(filepath.Join(stagedSite, "public"), previewRenderCandidates(input, section, directory, filepath.Base(target)))
+		if err != nil {
+			return contracts.PreparedArtifact{}, providerError("hugo.preview_output_missing", "无法定位当前文章的 Hugo 渲染结果", contracts.ErrorValidation, false, err)
+		}
+	}
+	files, err := artifactFiles(stagedBundle)
+	if err != nil {
+		return contracts.PreparedArtifact{}, providerError("hugo.artifact_invalid", "生成 Hugo 文件清单失败", contracts.ErrorInternal, false, err)
+	}
 	expiresAt := time.Now().UTC().Add(p.config.ArtifactTTL)
 	artifact := contracts.PreparedArtifact{
 		OperationID: input.OperationID, ProviderRevision: revision, ContentHash: input.ContentHash,
-		Location: stagedBundle, TargetPath: target, PreviewURL: p.previewURL(section, directory, filepath.Base(target)), ExpiresAt: &expiresAt,
+		Location: stagedBundle, TargetPath: target, PreviewURL: p.previewURL(section, directory, filepath.Base(target)), PreviewPath: previewPath, ExpiresAt: &expiresAt,
 		TargetRelativePath: filepath.ToSlash(relativeTarget), Change: change, Files: files,
 	}
 	manifest, _ := json.Marshal(artifactManifest{Artifact: artifact})

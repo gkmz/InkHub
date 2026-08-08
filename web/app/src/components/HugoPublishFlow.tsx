@@ -10,13 +10,20 @@ interface HugoPublishFlowProps {
   contentHash: string;
   manualPublished?: boolean;
   onPublished: () => void | Promise<void>;
+  onRenderPreviewChange?: (preview: HugoRenderPreview | null) => void;
+}
+
+export interface HugoRenderPreview {
+  url: string;
+  expired: boolean;
 }
 
 /** HugoPublishFlow 管理 Section 选择、Artifact 预览和确认交付闭环。 */
-export function HugoPublishFlow({ articleID, contentHash, manualPublished = false, onPublished }: HugoPublishFlowProps) {
+export function HugoPublishFlow({ articleID, contentHash, manualPublished = false, onPublished, onRenderPreviewChange }: HugoPublishFlowProps) {
   const toast = useToast();
   const mounted = useRef(true);
   const onPublishedRef = useRef(onPublished);
+  const onRenderPreviewChangeRef = useRef(onRenderPreviewChange);
   const timer = useRef<number | null>(null);
   const controller = useRef<AbortController | null>(null);
   const [discovery, setDiscovery] = useState<HugoSectionView | null>(null);
@@ -31,6 +38,16 @@ export function HugoPublishFlow({ articleID, contentHash, manualPublished = fals
   const [publishedTarget, setPublishedTarget] = useState("");
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   onPublishedRef.current = onPublished;
+  onRenderPreviewChangeRef.current = onRenderPreviewChange;
+
+  useEffect(() => {
+    const renderPreview = preview?.render_url && (preview.state === "ready" || preview.state === "expired")
+      ? { url: preview.render_url, expired: preview.state === "expired" }
+      : null;
+    onRenderPreviewChangeRef.current?.(renderPreview);
+  }, [preview?.render_url, preview?.state]);
+
+  useEffect(() => () => onRenderPreviewChangeRef.current?.(null), []);
 
   const showError = useCallback((reason: unknown) => {
     // 页面切换或开发模式重挂载会主动取消旧请求，这不是发布失败。
@@ -231,7 +248,7 @@ export function HugoPublishFlow({ articleID, contentHash, manualPublished = fals
 }
 
 function recoveredPreview(value: RecoveredHugoPreviewView): HugoPreviewView {
-  return { id: value.preview_id, content_hash: "", section: value.section, target_path: value.target_path, change: value.change, files: value.files, diagnostics: value.diagnostics, preview_url: value.preview_url, expires_at: value.expires_at, state: value.state, job_id: "", error: value.error, failure: value.failure };
+  return { id: value.preview_id, content_hash: "", section: value.section, target_path: value.target_path, change: value.change, files: value.files, diagnostics: value.diagnostics, preview_url: value.preview_url, render_url: value.render_url, expires_at: value.expires_at, state: value.state, job_id: "", error: value.error, failure: value.failure };
 }
 
 function PublicationFailure({ failure }: { failure: PublicationFailureView }) {

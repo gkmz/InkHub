@@ -24,6 +24,8 @@ var (
 	ErrPreviewNotReady = errors.New("Hugo 发布预览尚未准备完成")
 	// ErrPreviewInvalid 表示持久化的预览身份或产物信息不可信。
 	ErrPreviewInvalid = errors.New("Hugo 发布预览数据无效")
+	// ErrPreviewRenderNotFound 表示当前预览没有对应的渲染文件或请求了非当前文章页面。
+	ErrPreviewRenderNotFound = errors.New("Hugo 预览渲染文件不存在")
 	// ErrReviewRequired 表示文章当前版本尚未审核通过。
 	ErrReviewRequired = errors.New("文章需要重新审核")
 )
@@ -87,9 +89,16 @@ type PreviewView struct {
 	Files                                                   []PreviewFile
 	Diagnostics                                             []PreviewDiagnostic
 	PreviewURL                                              string
+	RenderPath                                              string
 	ExpiresAt                                               *time.Time
 	State, JobID, Error                                     string
 	Failure                                                 *PublicationFailure
+}
+
+// PreviewRenderFile 是 HTTP 层可安全读取的 staging 构建文件。
+type PreviewRenderFile struct {
+	AbsolutePath string
+	MediaType    string
 }
 
 // HugoPreviewJobStore 是预览服务所需的最小持久化任务接口。
@@ -174,7 +183,7 @@ func (s *HugoPreviewService) Find(ctx context.Context, id string) (PreviewView, 
 		return PreviewView{}, err
 	}
 	view.ArticleID, view.ContentHash, view.Section = result.ArticleID, result.Artifact.ContentHash, result.Section
-	view.TargetPath, view.Change, view.PreviewURL, view.ExpiresAt = result.Artifact.TargetRelativePath, result.Artifact.Change, result.Artifact.PreviewURL, result.Artifact.ExpiresAt
+	view.TargetPath, view.Change, view.PreviewURL, view.RenderPath, view.ExpiresAt = result.Artifact.TargetRelativePath, result.Artifact.Change, result.Artifact.PreviewURL, result.Artifact.PreviewPath, result.Artifact.ExpiresAt
 	for _, file := range result.Artifact.Files {
 		view.Files = append(view.Files, PreviewFile{RelativePath: file.RelativePath, MediaType: file.MediaType, Size: file.Size})
 	}
@@ -189,6 +198,21 @@ func (s *HugoPreviewService) Find(ctx context.Context, id string) (PreviewView, 
 		view.State = "expired"
 	}
 	return view, nil
+}
+
+// FindResult 返回已成功任务的完整服务端预览结果，供受信任适配层继续执行 Artifact 校验。
+func (s *HugoPreviewService) FindResult(ctx context.Context, id string) (HugoPreviewResult, error) {
+	if s == nil || s.jobs == nil || id == "" {
+		return HugoPreviewResult{}, ErrPreviewInvalid
+	}
+	job, err := s.jobs.FindByID(ctx, id)
+	if err != nil {
+		return HugoPreviewResult{}, err
+	}
+	if job.State != domainjob.StateSucceeded {
+		return HugoPreviewResult{}, ErrPreviewNotReady
+	}
+	return decodePreviewResult(job.ResultJSON, job.ID)
 }
 
 // NewPublicationFailure 将持久化任务错误转换为可恢复、可执行的安全失败说明。

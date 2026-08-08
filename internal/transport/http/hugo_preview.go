@@ -16,6 +16,7 @@ type HugoPreviewAPI interface {
 	DiscoverSections(ctx context.Context, articleID string) (contracts.SectionDiscovery, error)
 	Queue(ctx context.Context, request publication.PreviewRequest) (domainjob.Job, error)
 	Find(ctx context.Context, previewID string) (publication.PreviewView, error)
+	ResolveRenderFile(ctx context.Context, previewID, resourcePath string) (publication.PreviewRenderFile, error)
 	Confirm(ctx context.Context, request publication.ConfirmPreviewRequest) (domainjob.Job, error)
 }
 
@@ -79,6 +80,29 @@ func (h *runtimeHandler) hugoPreview(response http.ResponseWriter, request *http
 	writeJSON(response, http.StatusOK, safeHugoPreviewView(view))
 }
 
+func (h *runtimeHandler) hugoPreviewRender(response http.ResponseWriter, request *http.Request) {
+	if h.hugoPreviews == nil {
+		writeError(response, http.StatusServiceUnavailable, "hugo.preview_unavailable", "Hugo 发布预览暂不可用")
+		return
+	}
+	previewID, resourcePath, ok := parseHugoPreviewRenderPath(request.URL.Path)
+	if !ok {
+		writeHugoPreviewError(response, publication.ErrPreviewRenderNotFound)
+		return
+	}
+	file, err := h.hugoPreviews.ResolveRenderFile(request.Context(), previewID, resourcePath)
+	if err != nil {
+		writeHugoPreviewError(response, err)
+		return
+	}
+	view, err := h.hugoPreviews.Find(request.Context(), previewID)
+	if err != nil {
+		writeHugoPreviewError(response, err)
+		return
+	}
+	serveHugoPreviewFile(response, request, file, hugoPreviewRenderRoot(previewID), view.PreviewURL)
+}
+
 func (h *runtimeHandler) confirmHugoPreview(response http.ResponseWriter, request *http.Request) {
 	if h.hugoPreviews == nil {
 		writeError(response, http.StatusServiceUnavailable, "hugo.preview_unavailable", "Hugo 发布预览暂不可用")
@@ -102,7 +126,7 @@ func safeHugoPreviewView(view publication.PreviewView) map[string]any {
 	for _, diagnostic := range view.Diagnostics {
 		diagnostics = append(diagnostics, map[string]string{"code": diagnostic.Code, "level": diagnostic.Level, "message": diagnostic.Message})
 	}
-	result := map[string]any{"id": view.ID, "article_id": view.ArticleID, "content_hash": view.ContentHash, "section": view.Section, "target_path": view.TargetPath, "change": view.Change, "files": files, "diagnostics": diagnostics, "preview_url": view.PreviewURL, "expires_at": view.ExpiresAt, "state": view.State, "job_id": view.JobID, "error": view.Error}
+	result := map[string]any{"id": view.ID, "article_id": view.ArticleID, "content_hash": view.ContentHash, "section": view.Section, "target_path": view.TargetPath, "change": view.Change, "files": files, "diagnostics": diagnostics, "preview_url": view.PreviewURL, "render_url": hugoPreviewRenderURL(view.ID, view.RenderPath), "expires_at": view.ExpiresAt, "state": view.State, "job_id": view.JobID, "error": view.Error}
 	if view.Failure != nil {
 		result["failure"] = safePublicationFailure(view.Failure)
 	}
@@ -124,6 +148,8 @@ func writeHugoPreviewError(response http.ResponseWriter, err error) {
 		status, code, message = http.StatusConflict, "hugo.preview_not_ready", "Hugo 发布预览尚未准备完成"
 	case errors.Is(err, publication.ErrPreviewInvalid):
 		code, message = "hugo.preview_invalid", "Hugo 发布预览数据无效"
+	case errors.Is(err, publication.ErrPreviewRenderNotFound):
+		status, code, message = http.StatusNotFound, "hugo.preview_render_not_found", "Hugo 渲染预览不存在"
 	case errors.Is(err, publication.ErrArticleNotReady):
 		code, message = "article.not_ready", "文章尚未标记为已就绪"
 	case errors.Is(err, publication.ErrReviewRequired):

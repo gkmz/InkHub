@@ -82,6 +82,8 @@ type PreparedArtifact struct {
 	// PreviousTargetPath 是命名规则升级时需要在新目标交付成功后清理的旧 Bundle 路径。
 	PreviousTargetPath string `json:"previous_target_path,omitempty"`
 	PreviewURL         string
+	// PreviewPath 是当前文章在 Provider 构建输出中的相对 HTML 路径，不包含本机目录。
+	PreviewPath        string `json:"preview_path,omitempty"`
 	ExpiresAt          *time.Time
 	TargetRelativePath string
 	Change             string
