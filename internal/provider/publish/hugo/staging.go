@@ -61,12 +61,24 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 		return contracts.PreparedArtifact{}, providerError("hugo.bundle_invalid", "定位 Hugo bundle 失败", contracts.ErrorValidation, false, err)
 	}
 	target, section, directory, change := discovery.ExistingTarget, discovery.ExistingSection, discovery.ExistingDirectory, "updated"
+	previousTarget := ""
 	if discovery.SelectionLocked {
 		if input.TargetSection != "" && input.TargetSection != section {
 			return contracts.PreparedArtifact{}, providerError("hugo.section_locked", "文章必须继续更新原 Hugo Section", contracts.ErrorConflict, false, nil)
 		}
 		if input.TargetDirectory != "" && input.TargetDirectory != directory {
 			return contracts.PreparedArtifact{}, providerError("hugo.directory_locked", "文章必须继续更新原 Hugo 分类目录", contracts.ErrorConflict, false, nil)
+		}
+		// 已发布文章显式提供 URL 或发布日期时，按当前命名规则迁移 Bundle；缺少这些字段的历史文章继续复用原路径。
+		desiredTarget := filepath.Join(p.config.Root, "content", section, filepath.FromSlash(directory), bundleSegment(input))
+		if (strings.TrimSpace(input.Article.URL) != "" || strings.TrimSpace(input.Article.PublishDate) != "") && filepath.Clean(desiredTarget) != filepath.Clean(discovery.ExistingTarget) {
+			if _, statErr := os.Stat(desiredTarget); statErr == nil {
+				return contracts.PreparedArtifact{}, providerError("hugo.bundle_conflict", "新的 Hugo bundle 路径已被其他文章占用", contracts.ErrorConflict, false, nil)
+			} else if !os.IsNotExist(statErr) {
+				return contracts.PreparedArtifact{}, providerError("hugo.bundle_invalid", "检查新的 Hugo bundle 目标失败", contracts.ErrorInternal, false, statErr)
+			}
+			previousTarget = discovery.ExistingTarget
+			target = desiredTarget
 		}
 	} else {
 		section = input.TargetSection
@@ -94,6 +106,16 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 		return contracts.PreparedArtifact{}, providerError("hugo.target_invalid", "Hugo bundle 目标越界", contracts.ErrorUnauthorizedResource, false, err)
 	}
 	stagedBundle := filepath.Join(stagedSite, relativeTarget)
+	if previousTarget != "" {
+		previousRelative, relativeErr := filepath.Rel(p.config.Root, previousTarget)
+		if relativeErr != nil || strings.HasPrefix(previousRelative, "..") {
+			return contracts.PreparedArtifact{}, providerError("hugo.target_invalid", "Hugo 旧 Bundle 目标越界", contracts.ErrorUnauthorizedResource, false, relativeErr)
+		}
+		// Staging 只保留迁移后的文章，避免 Hugo 同时构建新旧两个 Bundle。
+		if err := os.RemoveAll(filepath.Join(stagedSite, previousRelative)); err != nil {
+			return contracts.PreparedArtifact{}, fmt.Errorf("清理 staging 旧 Hugo bundle: %w", err)
+		}
+	}
 	if err := os.RemoveAll(stagedBundle); err != nil {
 		return contracts.PreparedArtifact{}, fmt.Errorf("清理 staging bundle: %w", err)
 	}
@@ -136,7 +158,7 @@ func (p *Provider) Prepare(ctx context.Context, input contracts.PublishInput) (c
 	expiresAt := time.Now().UTC().Add(p.config.ArtifactTTL)
 	artifact := contracts.PreparedArtifact{
 		OperationID: input.OperationID, ProviderRevision: revision, ContentHash: input.ContentHash,
-		Location: stagedBundle, TargetPath: target, PreviewURL: p.previewURL(section, directory, filepath.Base(target)), PreviewPath: previewPath, ExpiresAt: &expiresAt,
+		Location: stagedBundle, TargetPath: target, PreviousTargetPath: previousTarget, PreviewURL: p.previewURL(section, directory, filepath.Base(target)), PreviewPath: previewPath, ExpiresAt: &expiresAt,
 		TargetRelativePath: filepath.ToSlash(relativeTarget), Change: change, Files: files,
 	}
 	manifest, _ := json.Marshal(artifactManifest{Artifact: artifact})
