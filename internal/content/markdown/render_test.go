@@ -12,7 +12,7 @@ func TestRenderSupportsGFMTableAndCodeHighlighting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, fragment := range []string{"<table>", "<th>名称</th>", "<pre", "<span style=", "font-weight:bold"} {
+	for _, fragment := range []string{"<table>", "<th>名称</th>", `class="chroma"`, `class="kd"`, `class="nf"`} {
 		if !strings.Contains(html, fragment) {
 			t.Fatalf("Markdown HTML 缺少 %q: %s", fragment, html)
 		}
