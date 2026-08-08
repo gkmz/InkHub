@@ -1,6 +1,6 @@
 import { Activity, Bot, Check, Database, FolderOpen, Globe2, MessageCircle, NotebookPen, RefreshCw, Save, ScanSearch } from "lucide-react";
 import { useEffect, useState } from "react";
-import { confirmHugoTakeover, getSettings, pickDirectory, previewContentScope, previewHugoTakeover, saveAISettings, saveContentScope, saveHugoSettings, saveWeChatSettings, saveXiaohongshuSettings } from "../../api/client";
+import { APIError, confirmHugoTakeover, getSettings, pickDirectory, previewContentScope, previewHugoTakeover, saveAISettings, saveContentScope, saveHugoSettings, saveWeChatSettings, saveXiaohongshuSettings } from "../../api/client";
 import type { HugoTakeoverReport, SettingsView } from "../../api/types";
 import { ContentScopePicker } from "../../components/ContentScopePicker";
 import { SecretField } from "../../components/SecretField";
@@ -54,7 +54,7 @@ export function SettingsPage() {
       }
     });
     return () => controller.abort();
-  }, []);
+  }, [toast]);
   if (!settings) return <div className="page-state">正在读取设置…</div>;
   const updateScope = (content_roots: string[], ignored_folders: string[], ignored_file_names: string[]) => {
     setScopePreview(null);
@@ -79,12 +79,18 @@ export function SettingsPage() {
     setScopeResult("");
     try {
       const result = await saveContentScope(settings.content_roots, settings.ignored_folders, settings.ignored_file_names);
-      setScopeResult(`已索引 ${result.indexed} 篇，失败 ${result.failed} 篇`);
+      setScopeResult(`已索引 ${result.indexed} 篇，补充 ${result.assigned_ids} 个 Stable ID`);
       setScopePreview(null);
       toast.show({ kind: result.failed > 0 ? "info" : "success", message: "内容范围已保存并完成重扫" });
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : "保存失败";
-      setScopeResult(message);
+		const message = reason instanceof Error ? reason.message : "保存失败";
+		if (reason instanceof APIError && reason.details?.initialization && typeof reason.details.initialization === "object") {
+			const initialization = reason.details.initialization as { issues?: Array<{ article_path: string; message: string }> };
+			const issues = initialization.issues ?? [];
+			setScopeResult(issues.length > 0 ? `${message}：${issues.map((issue) => `${issue.article_path}（${issue.message}）`).join("；")}` : message);
+		} else {
+			setScopeResult(message);
+		}
       toast.show({ kind: "error", message });
     } finally {
       setSavingScope(false);
@@ -228,7 +234,7 @@ export function SettingsPage() {
         <SettingsGroup title="内容范围" description="控制哪些 Markdown 进入内容库，以及哪些子目录和文件被排除。">
           <ContentScopePicker directories={settings.directories} contentRoots={settings.content_roots} ignoredFolders={settings.ignored_folders} ignoredFileNames={settings.ignored_file_names} showHeading={false} onChange={updateScope} />
           <div className="settings-actions">{!scopePreview && <button className="secondary" disabled={savingScope || settings.content_roots.length === 0} onClick={inspectScopeChange}><Save size={15} />{savingScope ? "正在计算…" : "预览内容范围变更"}</button>}</div>
-          {scopePreview && <div className="scope-confirm"><p>将新增 {scopePreview.added} 篇，移出 {scopePreview.removed} 篇。源文件不会被修改。</p><button className="primary" disabled={savingScope} onClick={persistScope}>{savingScope ? "正在保存…" : "确认并重扫"}</button><button className="secondary" onClick={() => setScopePreview(null)}>取消</button></div>}
+          {scopePreview && <div className="scope-confirm"><p>将新增 {scopePreview.added} 篇，移出 {scopePreview.removed} 篇。新纳入且缺少身份的文章会补充 frontmatter 和 Stable ID。</p><button className="primary" disabled={savingScope} onClick={persistScope}>{savingScope ? "正在初始化…" : "确认并初始化"}</button><button className="secondary" onClick={() => setScopePreview(null)}>取消</button></div>}
           {scopeResult && <p className="inline-status" role="status">{scopeResult}</p>}
         </SettingsGroup>
         {settings.obsidian_settings && <SettingsGroup title="Obsidian 解析" description="InkHub 按这些 Vault 设置解析附件和内部链接。"><dl className="obsidian-settings-summary"><div><dt>附件位置</dt><dd>{settings.obsidian_settings.attachment_location}</dd></div><div><dt>链接类型</dt><dd>{settings.obsidian_settings.link_format}</dd></div><div><dt>图片语法</dt><dd>{settings.obsidian_settings.use_markdown_links ? "Markdown 图片" : "WikiLink"}</dd></div></dl></SettingsGroup>}

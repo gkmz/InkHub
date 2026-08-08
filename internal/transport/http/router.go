@@ -41,6 +41,7 @@ var (
 type ArticleSummary struct {
 	ID                string `json:"id"`
 	Title             string `json:"title"`
+	Filename          string `json:"filename"`
 	Directory         string `json:"directory"`
 	Category          string `json:"category"`
 	ModifiedAt        string `json:"modified_at"`
@@ -49,6 +50,7 @@ type ArticleSummary struct {
 	WeChatState       string `json:"wechat_state"`
 	XiaohongshuState  string `json:"xiaohongshu_state"`
 	ContentVersion    string `json:"content_version"`
+	BodyVersion       string `json:"-"`
 	Disposition       string `json:"disposition,omitempty"`
 	ContentStage      string `json:"content_stage"`
 	ContentStageIssue string `json:"content_stage_issue,omitempty"`

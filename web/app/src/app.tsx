@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { createWorkspace, getSession } from "./api/client";
+import { createWorkspace, getSession, retryWorkspaceInitialization } from "./api/client";
 import type { SessionResponse, WorkspaceDraft } from "./api/types";
 import { AppShell } from "./components/AppShell";
 import { LibraryPage } from "./pages/library/LibraryPage";
@@ -24,13 +24,13 @@ function AppContent() {
   const [path, setPath] = useState(window.location.pathname);
   const [error, setError] = useState("");
   const [scanJob, setScanJob] = useState(() => sessionStorage.getItem("inkhub.scan-job") ?? "");
-  useEffect(() => { getSession().then(setSession).catch((reason: Error) => setError(reason.message)); }, []);
+  useEffect(() => { getSession().then((value) => { setSession(value); if (value.initialization?.required && value.initialization.job_id) setScanJob(value.initialization.job_id); }).catch((reason: Error) => setError(reason.message)); }, []);
   useEffect(() => { const listener = () => setPath(window.location.pathname); window.addEventListener("popstate", listener); return () => window.removeEventListener("popstate", listener); }, []);
   const navigate = (target: string) => { window.history.pushState({}, "", target); setPath(target); };
   if (error) return <main className="fatal-state"><h1>无法连接 InkHub</h1><p>{error}</p><button onClick={() => window.location.reload()}>重新连接</button></main>;
   if (!session) return <main className="boot-state"><span className="brand-mark">I</span><p>正在打开 InkHub…</p></main>;
   if (!session.has_workspace) return <SetupPage onComplete={async (draft: WorkspaceDraft) => { const result = await createWorkspace(draft, crypto.randomUUID()); sessionStorage.removeItem("inkhub.setup"); sessionStorage.setItem("inkhub.scan-job", result.job_id); if (draft.hugo_path?.trim()) sessionStorage.setItem("inkhub.hugo-takeover-pending", "true"); setScanJob(result.job_id); setSession({ has_workspace: true, workspace: result.workspace }); navigate("/"); }} />;
-  if (scanJob && session.workspace) return <ScanPage workspace={session.workspace} jobID={scanJob} onDone={() => { sessionStorage.removeItem("inkhub.scan-job"); setScanJob(""); if (sessionStorage.getItem("inkhub.hugo-takeover-pending")) navigate("/settings"); }} />;
+  if (scanJob && session.workspace) return <ScanPage workspace={session.workspace} jobID={scanJob} onDone={() => { sessionStorage.removeItem("inkhub.scan-job"); setScanJob(""); setSession((current) => current ? { ...current, initialization: { required: false, job_id: scanJob, state: "succeeded" } } : current); }} onRetry={async () => { const result = await retryWorkspaceInitialization(); sessionStorage.setItem("inkhub.scan-job", result.job_id); setScanJob(result.job_id); }} />;
   const articleMatch = path.match(/^\/articles\/([^/]+)(\/hugo|\/wechat|\/xiaohongshu)?$/);
   const channelPage = articleMatch?.[2] === "/hugo" ? <HugoPage articleID={articleMatch[1]} onNavigate={navigate} />
     : articleMatch?.[2] === "/wechat" ? <WeChatPreviewPage articleID={articleMatch[1]} onNavigate={navigate} />

@@ -174,7 +174,7 @@ func mappingValue(mapping *yaml.Node, key string) *yaml.Node {
 
 func scalarValue(mapping *yaml.Node, key string) string {
 	value := mappingValue(mapping, key)
-	if value == nil || value.Kind != yaml.ScalarNode {
+	if value == nil || value.Kind != yaml.ScalarNode || value.Tag == "!!null" {
 		return ""
 	}
 	return value.Value

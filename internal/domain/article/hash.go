@@ -65,6 +65,11 @@ func NormalizeAndHash(input HashInput) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+// BodyContentHash 只计算正文内容，用于区分正文变化和 frontmatter 变化。
+func BodyContentHash(body string) (string, error) {
+	return NormalizeAndHash(HashInput{Body: body})
+}
+
 func normalizeBody(body string) string {
 	body = strings.TrimPrefix(body, "\ufeff")
 	body = strings.ReplaceAll(body, "\r\n", "\n")

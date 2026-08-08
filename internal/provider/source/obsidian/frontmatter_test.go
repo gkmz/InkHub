@@ -11,3 +11,13 @@ func TestParseDocumentReadsURLAndDateFromFrontmatter(t *testing.T) {
 		t.Fatalf("未读取 URL/date: %+v", document.Article)
 	}
 }
+
+func TestParseDocumentTreatsNullScalarsAsMissing(t *testing.T) {
+	document, err := parseDocument([]byte("---\nid: null\ntitle:\ndescription: ~\n---\n正文"))
+	if err != nil {
+		t.Fatalf("解析可空 frontmatter: %v", err)
+	}
+	if document.Article.StableID != "" || document.Article.Title != "" || document.Article.Description != "" {
+		t.Fatalf("YAML null 不应成为字符串值: %+v", document.Article)
+	}
+}

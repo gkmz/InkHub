@@ -20,11 +20,13 @@ export interface WorkspaceSummary {
 export interface SessionResponse {
   has_workspace: boolean;
   workspace: WorkspaceSummary | null;
+  initialization?: { required: boolean; job_id: string; state: "running" | "succeeded" | "failed" };
 }
 
 export interface ArticleSummary {
   id: string;
   title: string;
+  filename?: string;
   directory: string;
   category: string;
   modified_at: string;
@@ -82,12 +84,28 @@ export interface DirectoryCandidate {
   markdown_count: number;
 }
 
+export interface HugoSiteInspection {
+  root: string;
+  content_dir: string;
+  sections: Array<{ name: string; markdown_count: number }>;
+}
+
 export interface JobStatus {
   id: string;
   state: "queued" | "running" | "succeeded" | "failed";
   progress: number;
   indexed?: number;
+  assigned_ids?: number;
   failed?: number;
+  issues?: Array<{ article_path: string; code: string; message: string }>;
+  error_message?: string;
+}
+
+export interface WorkspaceInitializationResult {
+  indexed: number;
+  assigned_ids: number;
+  failed: number;
+  issues: Array<{ article_path: string; code: string; message: string }>;
 }
 
 export interface HugoSectionView {

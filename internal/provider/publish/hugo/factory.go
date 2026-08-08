@@ -17,6 +17,7 @@ const hugoConfigSchema = `{
   "properties":{
     "root":{"type":"string","minLength":1},
     "staging_root":{"type":"string","minLength":1},
+    "content_dir":{"type":"string"},
     "section":{"type":"string"},
     "base_url":{"type":"string"},
     "artifact_ttl_seconds":{"type":"integer","minimum":1}
@@ -54,6 +55,7 @@ func (f *Factory) Build(_ context.Context, ref contracts.ProviderRef, view contr
 	var raw struct {
 		Root               string `json:"root"`
 		StagingRoot        string `json:"staging_root"`
+		ContentDir         string `json:"content_dir,omitempty"`
 		Section            string `json:"section,omitempty"`
 		BaseURL            string `json:"base_url,omitempty"`
 		ArtifactTTLSeconds int64  `json:"artifact_ttl_seconds,omitempty"`
@@ -75,7 +77,7 @@ func (f *Factory) Build(_ context.Context, ref contracts.ProviderRef, view contr
 		return nil, providerError("hugo.path_unauthorized", "Hugo 路径不在授权范围内", contracts.ErrorUnauthorizedResource, false, nil)
 	}
 	provider, err := New(Config{
-		Root: root, StagingRoot: staging, Section: raw.Section, BaseURL: raw.BaseURL,
+		Root: root, StagingRoot: staging, ContentDir: raw.ContentDir, Section: raw.Section, BaseURL: raw.BaseURL,
 		ArtifactTTL: time.Duration(raw.ArtifactTTLSeconds) * time.Second,
 	}, f.builder)
 	if err != nil {

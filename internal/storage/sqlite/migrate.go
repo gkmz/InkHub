@@ -186,7 +186,7 @@ var columnComments = map[string]string{
 	"page_height": "渲染页面高度（像素）", "html_hash": "渲染 HTML 内容摘要", "page_count": "渲染图片页数",
 	"event_type": "审计事件类型",
 	"cleared_at": "文章恢复管理的时间（UTC）", "kind": "记录的业务类型",
-	"state": "当前状态", "content_hash": "实际使用的文章内容版本", "frontmatter_hash": "标准元数据版本",
+	"state": "当前状态", "content_hash": "实际使用的文章发布版本", "body_hash": "排除 frontmatter 后的正文内容版本", "frontmatter_hash": "标准元数据版本", "approved_body_hash": "审核时确认的正文内容版本",
 	"config_json": "经过 schema 校验的非敏感配置", "capabilities_json": "Provider 能力快照", "payload_json": "结构化任务或事件输入",
 	"result_json": "结构化任务结果", "error_code": "稳定错误码", "error_message": "脱敏错误摘要",
 	"external_key": "Provider 内稳定 taxonomy term 标识", "metadata_json": "Provider term 元数据 JSON",

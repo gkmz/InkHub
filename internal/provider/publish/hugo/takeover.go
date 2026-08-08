@@ -26,18 +26,23 @@ type TakeoverBundle struct {
 
 // ScanTakeoverBundles 扫描 Hugo content 下的 Page Bundle，不读取正文内容。
 func ScanTakeoverBundles(root string) ([]TakeoverBundle, error) {
-	absolute, err := filepath.Abs(strings.TrimSpace(root))
-	if err != nil || !hasHugoConfig(absolute) {
-		return nil, fmt.Errorf("目录不是有效 Hugo 站点: %s", root)
+	site, err := InspectSite(root)
+	if err != nil {
+		return nil, err
 	}
-	contentRoot := filepath.Join(absolute, "content")
+	return ScanTakeoverBundlesAt(site.Root, site.ContentDir)
+}
+
+// ScanTakeoverBundlesAt 按已解析的 contentDir 扫描 Page Bundle。
+func ScanTakeoverBundlesAt(root, contentDir string) ([]TakeoverBundle, error) {
+	contentRoot := contentRoot(root, contentDir)
 	if _, err := os.Stat(contentRoot); os.IsNotExist(err) {
 		return []TakeoverBundle{}, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("读取 Hugo content: %w", err)
 	}
 	result := make([]TakeoverBundle, 0)
-	err = filepath.WalkDir(contentRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(contentRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}

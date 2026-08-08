@@ -176,6 +176,39 @@ func (p *Provider) WriteMetadata(ctx context.Context, command contracts.Metadata
 	return p.Read(ctx, command.Ref)
 }
 
+// WriteInitializationIdentity 为首次纳入管理的文章补齐 frontmatter 身份，不覆盖已有业务字段。
+func (p *Provider) WriteInitializationIdentity(ctx context.Context, command contracts.MetadataWriteCommand) (contracts.SourceDocument, error) {
+	if command.Patch.StableID == nil || strings.TrimSpace(*command.Patch.StableID) == "" {
+		return contracts.SourceDocument{}, fmt.Errorf("初始化文章缺少稳定 ID")
+	}
+	current, err := p.Read(ctx, command.Ref)
+	if err != nil {
+		return contracts.SourceDocument{}, err
+	}
+	if current.Fingerprint != command.ExpectedFingerprint {
+		return contracts.SourceDocument{}, &contracts.ProviderError{Code: "obsidian.source_changed", Category: contracts.ErrorConflict, Message: "源文章已在外部修改", Cause: ErrSourceChanged}
+	}
+	content, err := applyMetadataPatch(current.RawFrontmatter, current.Body, contracts.MetadataPatch{StableID: command.Patch.StableID})
+	if err != nil {
+		return contracts.SourceDocument{}, err
+	}
+	path, err := p.resolve(command.Ref.RelativePath)
+	if err != nil {
+		return contracts.SourceDocument{}, err
+	}
+	if err := filesystem.AtomicWrite(path, content, func(temp string) error {
+		candidate, readErr := os.ReadFile(temp)
+		if readErr != nil {
+			return readErr
+		}
+		_, parseErr := parseDocument(candidate)
+		return parseErr
+	}); err != nil {
+		return contracts.SourceDocument{}, err
+	}
+	return p.Read(ctx, contracts.SourceRef{SourceID: command.Ref.SourceID, RelativePath: command.Ref.RelativePath})
+}
+
 // WriteTakeoverIdentity 为一次性知识库接管补齐身份，并规范化已知的旧标量类型。
 func (p *Provider) WriteTakeoverIdentity(ctx context.Context, command contracts.MetadataWriteCommand) (contracts.SourceDocument, error) {
 	if command.Patch.StableID == nil || strings.TrimSpace(*command.Patch.StableID) == "" {

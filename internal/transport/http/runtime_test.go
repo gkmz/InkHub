@@ -37,7 +37,8 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	if err := os.WriteFile(filepath.Join(vault, "Areas", "文章.md"), []byte(article), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(vault, "Areas", "index.md"), []byte(article), 0o600); err != nil {
+	indexArticle := strings.Replace(article, "article_01JTEST", "article_INDEX", 1)
+	if err := os.WriteFile(filepath.Join(vault, "Areas", "index.md"), []byte(indexArticle), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	refreshCalls := 0
@@ -106,6 +107,126 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	var sourceConfig string
 	if err := db.QueryRow(`SELECT config_json FROM sources LIMIT 1`).Scan(&sourceConfig); scopeResponse.Code != http.StatusOK || err != nil || !strings.Contains(sourceConfig, `"ignored_file_names":["toc.md"]`) {
 		t.Fatalf("忽略文件名未持久化: code=%d config=%s err=%v", scopeResponse.Code, sourceConfig, err)
+	}
+}
+
+func TestRuntimeWorkspaceInitializationCompletesFrontmatterAndStableIDs(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	vault := t.TempDir()
+	for _, directory := range []string{".obsidian", "Areas"} {
+		if err := os.MkdirAll(filepath.Join(vault, directory), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plainPath := filepath.Join(vault, "Areas", "无属性.md")
+	existingPath := filepath.Join(vault, "Areas", "已有属性.md")
+	if err := os.WriteFile(plainPath, []byte("正文保持不变\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(existingPath, []byte("---\nid: null\ntitle: 已有标题\ncustom_field: 保留值\n---\n已有正文\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{ProviderRuntime: testProviderRuntime(t)})
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/workspaces", strings.NewReader(`{"name":"初始化测试","vault_path":"`+filepath.ToSlash(vault)+`","content_roots":["Areas"],"ignored_folders":[]}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://localhost")
+	request.Header.Set("Idempotency-Key", "initialize-frontmatter")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("创建工作区失败: code=%d body=%s", response.Code, response.Body.String())
+	}
+
+	stablePattern := regexp.MustCompile(`(?m)^id: article_[A-Za-z0-9]+$`)
+	for _, check := range []struct {
+		path string
+		want string
+	}{{plainPath, "正文保持不变"}, {existingPath, "custom_field: 保留值"}} {
+		content, readErr := os.ReadFile(check.path)
+		if readErr != nil || !stablePattern.Match(content) || !strings.Contains(string(content), check.want) {
+			t.Fatalf("初始化未兼容写回 %s: content=%s err=%v", check.path, content, readErr)
+		}
+		if strings.Count(string(content), "\nid:") != 1 {
+			t.Fatalf("初始化产生重复 Stable ID 字段: path=%s content=%s", check.path, content)
+		}
+	}
+	var articleCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM articles WHERE stable_id<>'' AND deleted_at IS NULL`).Scan(&articleCount); err != nil || articleCount != 2 {
+		t.Fatalf("稳定文章索引数量错误: count=%d err=%v", articleCount, err)
+	}
+	job := httptest.NewRecorder()
+	var jobID string
+	if err := db.QueryRow(`SELECT id FROM jobs WHERE kind='workspace.initialize'`).Scan(&jobID); err != nil {
+		t.Fatal(err)
+	}
+	handler.ServeHTTP(job, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/jobs/"+jobID, nil))
+	if job.Code != http.StatusOK || !strings.Contains(job.Body.String(), `"assigned_ids":2`) || !strings.Contains(job.Body.String(), `"state":"succeeded"`) {
+		t.Fatalf("初始化任务结果错误: code=%d body=%s", job.Code, job.Body.String())
+	}
+	session := httptest.NewRecorder()
+	handler.ServeHTTP(session, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/session", nil))
+	if !strings.Contains(session.Body.String(), `"required":false`) {
+		t.Fatalf("初始化成功后会话仍被阻断: %s", session.Body.String())
+	}
+}
+
+func TestRuntimeWorkspaceInitializationBlocksDuplicateStableIDs(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	vault := t.TempDir()
+	for _, directory := range []string{".obsidian", "Areas"} {
+		if err := os.MkdirAll(filepath.Join(vault, directory), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	duplicate := []byte("---\nid: article_DUPLICATE\n---\n正文\n")
+	secondPath := filepath.Join(vault, "Areas", "二.md")
+	for _, name := range []string{"一.md", "二.md"} {
+		if err := os.WriteFile(filepath.Join(vault, "Areas", name), duplicate, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{ProviderRuntime: testProviderRuntime(t)})
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/workspaces", strings.NewReader(`{"name":"冲突测试","vault_path":"`+filepath.ToSlash(vault)+`","content_roots":["Areas"],"ignored_folders":[]}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "http://localhost")
+	request.Header.Set("Idempotency-Key", "initialize-duplicate")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("工作区基础记录创建失败: code=%d body=%s", response.Code, response.Body.String())
+	}
+	session := httptest.NewRecorder()
+	handler.ServeHTTP(session, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/session", nil))
+	if !strings.Contains(session.Body.String(), `"required":true`) || !strings.Contains(session.Body.String(), `"state":"failed"`) {
+		t.Fatalf("重复 Stable ID 未阻断主界面: %s", session.Body.String())
+	}
+	var result string
+	if err := db.QueryRow(`SELECT result_json FROM jobs WHERE kind='workspace.initialize'`).Scan(&result); err != nil || !strings.Contains(result, "obsidian.duplicate_stable_id") {
+		t.Fatalf("初始化冲突未保留文件诊断: result=%s err=%v", result, err)
+	}
+	if err := os.WriteFile(secondPath, []byte("---\nid: article_UNIQUE\n---\n正文\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	retry := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/workspace/initialize", strings.NewReader("{}"))
+	retry.Header.Set("Content-Type", "application/json")
+	retry.Header.Set("Origin", "http://localhost")
+	retryResponse := httptest.NewRecorder()
+	handler.ServeHTTP(retryResponse, retry)
+	if retryResponse.Code != http.StatusOK || !strings.Contains(retryResponse.Body.String(), `"state":"succeeded"`) {
+		t.Fatalf("修复冲突后无法重试初始化: code=%d body=%s", retryResponse.Code, retryResponse.Body.String())
+	}
+	session = httptest.NewRecorder()
+	handler.ServeHTTP(session, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/session", nil))
+	if !strings.Contains(session.Body.String(), `"required":false`) {
+		t.Fatalf("重试成功后初始化门禁未解除: %s", session.Body.String())
 	}
 }
 
@@ -232,7 +353,7 @@ func TestRuntimeReviewGeneratesStableIDWithoutChangingArticleID(t *testing.T) {
 		t.Fatal(err)
 	}
 	articlePath := filepath.Join(vault, "Areas", "article.md")
-	if err := os.WriteFile(articlePath, []byte("---\ntitle: 已有标题\npublish:\n  status: ready\n---\n正文\n"), 0o600); err != nil {
+	if err := os.WriteFile(articlePath, []byte("---\ntitle: 已有标题\ndescription: 用于审核的摘要\nkeywords:\n  - review\npublish:\n  status: ready\n  slug: review-test\n---\n正文\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{ProviderRuntime: testProviderRuntime(t)})

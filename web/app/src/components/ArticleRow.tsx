@@ -14,7 +14,7 @@ export function ArticleRow({ article, dashboard = false, onOpen, selected = fals
       {onSelectedChange && <input className="row-select" type="checkbox" aria-label={`选择文章 ${article.title || "未命名文章"}`} checked={selected} onChange={(event) => onSelectedChange(article.id, event.currentTarget.checked)} />}
       <div className="article-primary">
         <div className="article-title-line">{article.state === "blocked" && <CircleAlert size={16} aria-hidden="true" />}<h3>{article.title || "未命名文章"}</h3></div>
-        <p>{article.directory || "根目录"} · {article.category || "未分类"}{article.content_stage_issue && <span className="stage-warning"> · {article.content_stage_issue}</span>}</p>
+        <p><b className="article-filename" title={article.filename}>{article.filename || "未命名文章"}</b> · {article.directory || "根目录"} · {article.category || "未分类"}{article.content_stage_issue && <span className="stage-warning"> · {article.content_stage_issue}</span>}</p>
       </div>
       <time dateTime={article.modified_at}>{new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(article.modified_at))}</time>
       <span className="status-label">{statusText}</span>

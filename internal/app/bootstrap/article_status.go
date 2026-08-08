@@ -7,7 +7,9 @@ type articleWorkflowInput struct {
 	ContentIssue      string
 	ReviewState       string
 	ApprovedHash      string
+	ApprovedBodyHash  string
 	ContentHash       string
+	BodyHash          string
 	Disposition       string
 	DispositionHash   string
 	HugoState         string
@@ -54,7 +56,12 @@ func deriveArticleWorkflow(input articleWorkflowInput) articleWorkflowResult {
 		result.State, result.NextAction, result.Bucket = "pending_review", "review", "needs_review"
 		return result
 	}
-	if input.ReviewState == "approved" && input.ApprovedHash == input.ContentHash {
+	approvedCurrent := input.ApprovedBodyHash != "" && input.ApprovedBodyHash == input.BodyHash
+	if input.ApprovedBodyHash == "" {
+		// 兼容旧审核记录，直到该文章下一次审核写入独立正文版本。
+		approvedCurrent = input.ApprovedHash == input.ContentHash
+	}
+	if input.ReviewState == "approved" && approvedCurrent {
 		result.State, result.NextAction = "approved", "publish"
 		if input.Disposition == "published" {
 			result.NextAction, result.Bucket = "view", "recently_handled"
@@ -96,7 +103,7 @@ func publicationMatchesString(state, hash, wantState, currentHash string) bool {
 }
 
 func currentWorkflowChanged(input articleWorkflowInput) bool {
-	if input.ReviewState == "changed" || (input.ApprovedHash != "" && input.ApprovedHash != input.ContentHash) {
+	if input.ReviewState == "changed" || (input.ApprovedBodyHash != "" && input.ApprovedBodyHash != input.BodyHash) {
 		return true
 	}
 	if input.Disposition == "published" && input.DispositionHash != input.ContentHash {

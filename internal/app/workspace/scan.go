@@ -71,6 +71,11 @@ func ScanWorkspace(ctx context.Context, source Source, store ArticleStore, optio
 			report.Failed++
 			continue
 		}
+		document.Article.BodyHash, err = article.BodyContentHash(document.Body)
+		if err != nil {
+			report.Failed++
+			continue
+		}
 		document.Article.FrontmatterHash, err = article.NormalizeAndHash(article.HashInput{
 			Title: document.Article.Title, Description: document.Article.Description, Tags: document.Article.Tags,
 			Keywords: document.Article.Keywords, Category: document.Article.Category, Series: document.Article.Series,

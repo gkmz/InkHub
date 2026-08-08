@@ -15,10 +15,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gkmz/InkHub/internal/app/editorial"
 	workspaceapp "github.com/gkmz/InkHub/internal/app/workspace"
 	"github.com/gkmz/InkHub/internal/domain/article"
 	"github.com/gkmz/InkHub/internal/platform/dialog"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
+	"github.com/gkmz/InkHub/internal/provider/publish/hugo"
 	"github.com/gkmz/InkHub/internal/provider/source/folder"
 	"github.com/gkmz/InkHub/internal/storage/sqlite/repository"
 )
@@ -100,6 +102,10 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 		if validateWriteRequest(response, request) {
 			h.refreshWorkspace(response, request)
 		}
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/workspace/initialize":
+		if validateWriteRequest(response, request) {
+			h.retryWorkspaceInitialization(response, request)
+		}
 	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/directories/pick":
 		if validateWriteRequest(response, request) {
 			h.pickDirectory(response, request)
@@ -107,6 +113,10 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/directories/inspect":
 		if validateWriteRequest(response, request) {
 			h.inspectDirectories(response, request)
+		}
+	case request.Method == http.MethodPost && request.URL.Path == "/api/v1/directories/inspect-hugo":
+		if validateWriteRequest(response, request) {
+			h.inspectHugoDirectory(response, request)
 		}
 	case request.Method == http.MethodGet && strings.HasPrefix(request.URL.Path, "/api/v1/jobs/"):
 		h.job(response, request)
@@ -341,8 +351,8 @@ func (h *runtimeHandler) writeMetadata(response http.ResponseWriter, request *ht
 
 func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *http.Request) {
 	id := strings.TrimPrefix(request.URL.Path, "/api/v1/articles/")
-	var workspaceID, sourceID, stableID, relative, title, description, category, series, tagsJSON, keywordsJSON, slug, cover, contentHash, modified, contentStage, contentStageIssue string
-	err := h.db.QueryRowContext(request.Context(), `SELECT workspace_id,source_id,stable_id,relative_path,title,description,category,series,tags_json,keywords_json,slug,cover,content_hash,COALESCE(source_mtime,updated_at),content_stage,content_stage_issue FROM articles WHERE id=? AND deleted_at IS NULL`, id).Scan(&workspaceID, &sourceID, &stableID, &relative, &title, &description, &category, &series, &tagsJSON, &keywordsJSON, &slug, &cover, &contentHash, &modified, &contentStage, &contentStageIssue)
+	var workspaceID, sourceID, stableID, relative, title, description, category, series, tagsJSON, keywordsJSON, slug, cover, contentHash, sourceFingerprint, modified, contentStage, contentStageIssue string
+	err := h.db.QueryRowContext(request.Context(), `SELECT workspace_id,source_id,stable_id,relative_path,title,description,category,series,tags_json,keywords_json,slug,cover,content_hash,source_fingerprint,COALESCE(source_mtime,updated_at),content_stage,content_stage_issue FROM articles WHERE id=? AND deleted_at IS NULL`, id).Scan(&workspaceID, &sourceID, &stableID, &relative, &title, &description, &category, &series, &tagsJSON, &keywordsJSON, &slug, &cover, &contentHash, &sourceFingerprint, &modified, &contentStage, &contentStageIssue)
 	if err != nil {
 		mapError(response, ErrNotFound)
 		return
@@ -443,7 +453,8 @@ func (h *runtimeHandler) articleDetail(response http.ResponseWriter, request *ht
 			resourceDiagnostics = append(resourceDiagnostics, map[string]any{"code": diagnostic.Code, "message": diagnostic.Message, "blocking": diagnostic.Blocking})
 		}
 	}
-	result := map[string]any{"id": id, "stable_id": stableID, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": false, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "xiaohongshu_enabled": xiaohongshuSettings.Enabled, "xiaohongshu_state": xiaohongshuState, "resource_diagnostics": resourceDiagnostics, "checks": []map[string]string{{"id": "metadata", "level": "passed", "title": "元数据已读取", "detail": "文章来自当前 Vault 内容", "channel": "Hugo · 微信 · 小红书"}}, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_id": suggestionsID, "suggestions_generated_at": suggestionsGeneratedAt, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
+	checks := articleCheckViews(editorial.CheckArticle(document.Article, document.Body))
+	result := map[string]any{"id": id, "stable_id": stableID, "content_version": contentHash, "content_stage": contentStage, "content_stage_issue": contentStageIssue, "hugo_provider_id": providers["hugo"], "wechat_provider_id": providers["wechat"], "relative_path": relative, "modified_at": modified, "metadata": metadata, "preview_html": rendered, "source_changed": sourceFingerprint != document.Fingerprint, "review_state": reviewState, "hugo_state": hugoState, "wechat_state": wechatState, "xiaohongshu_enabled": xiaohongshuSettings.Enabled, "xiaohongshu_state": xiaohongshuState, "resource_diagnostics": resourceDiagnostics, "checks": checks, "ai_configured": providers["openai-compatible"] != "", "suggestions": suggestionItems, "suggestions_id": suggestionsID, "suggestions_generated_at": suggestionsGeneratedAt, "suggestions_stale": suggestionsStale, "wechat_copied": wechatCopied}
 	if disposition != nil {
 		result["disposition"] = disposition
 	}
@@ -531,9 +542,9 @@ func (h *runtimeHandler) reviewArticle(response http.ResponseWriter, request *ht
 	// 审核是文章首次进入发布流程的边界，在这里自动建立稳定身份。
 	h.metadataWriteMu.Lock()
 	defer h.metadataWriteMu.Unlock()
-	var stableID, contentHash, frontmatterHash, contentStage string
+	var stableID, contentHash, bodyHash, frontmatterHash, contentStage string
 	var workspaceID, sourceID, relativePath, fingerprint string
-	if err := h.db.QueryRowContext(request.Context(), `SELECT workspace_id,source_id,stable_id,relative_path,source_fingerprint,content_hash,frontmatter_hash,content_stage FROM articles WHERE id=?`, id).Scan(&workspaceID, &sourceID, &stableID, &relativePath, &fingerprint, &contentHash, &frontmatterHash, &contentStage); err != nil {
+	if err := h.db.QueryRowContext(request.Context(), `SELECT workspace_id,source_id,stable_id,relative_path,source_fingerprint,content_hash,body_hash,frontmatter_hash,content_stage FROM articles WHERE id=?`, id).Scan(&workspaceID, &sourceID, &stableID, &relativePath, &fingerprint, &contentHash, &bodyHash, &frontmatterHash, &contentStage); err != nil {
 		mapError(response, ErrNotFound)
 		return
 	}
@@ -541,16 +552,36 @@ func (h *runtimeHandler) reviewArticle(response http.ResponseWriter, request *ht
 		mapError(response, ErrArticleNotReady)
 		return
 	}
+	if stableID != "" {
+		if err := article.StableID(stableID).Validate(); err != nil {
+			writeError(response, http.StatusUnprocessableEntity, "article.identity_invalid", "文章稳定 ID 格式无效，请修复源文件后重试")
+			return
+		}
+	}
+	source, buildErr := h.buildSource(request.Context(), sourceID, nil)
+	if buildErr != nil {
+		mapError(response, buildErr)
+		return
+	}
+	document, readErr := source.Read(request.Context(), contracts.SourceRef{SourceID: sourceID, RelativePath: relativePath, StableID: stableID})
+	if readErr != nil {
+		mapError(response, readErr)
+		return
+	}
+	if document.Fingerprint != fingerprint {
+		mapError(response, ErrStaleContent)
+		return
+	}
+	checks := editorial.CheckArticle(document.Article, document.Body)
+	if hasBlockingCheck(checks) {
+		writeJSON(response, http.StatusUnprocessableEntity, map[string]any{"error": map[string]string{"code": "article.checks_blocking", "message": "文章存在必须修复的 SEO 或正文问题"}, "checks": articleCheckViews(checks)})
+		return
+	}
 	if stableID == "" {
 		var err error
 		stableID, err = newArticleStableID()
 		if err != nil {
 			mapError(response, err)
-			return
-		}
-		source, buildErr := h.buildSource(request.Context(), sourceID, nil)
-		if buildErr != nil {
-			mapError(response, buildErr)
 			return
 		}
 		_, writeErr := source.WriteMetadata(request.Context(), contracts.MetadataWriteCommand{
@@ -573,7 +604,7 @@ func (h *runtimeHandler) reviewArticle(response http.ResponseWriter, request *ht
 			mapError(response, scanErr)
 			return
 		}
-		if err := h.db.QueryRowContext(request.Context(), `SELECT stable_id,content_hash,frontmatter_hash,content_stage FROM articles WHERE id=? AND deleted_at IS NULL`, id).Scan(&stableID, &contentHash, &frontmatterHash, &contentStage); err != nil {
+		if err := h.db.QueryRowContext(request.Context(), `SELECT stable_id,content_hash,body_hash,frontmatter_hash,content_stage FROM articles WHERE id=? AND deleted_at IS NULL`, id).Scan(&stableID, &contentHash, &bodyHash, &frontmatterHash, &contentStage); err != nil {
 			writeError(response, http.StatusInternalServerError, "article.index_refresh_failed", "文章 ID 已写入，但索引刷新失败，请刷新工作区后重试")
 			return
 		}
@@ -583,12 +614,33 @@ func (h *runtimeHandler) reviewArticle(response http.ResponseWriter, request *ht
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	_, err := h.db.ExecContext(request.Context(), `INSERT INTO editorial_reviews(article_id,state,approved_content_hash,approved_frontmatter_hash,approved_at,approved_by,updated_at) VALUES(?,'approved',?,?,?,'user',?) ON CONFLICT(article_id) DO UPDATE SET state='approved',approved_content_hash=excluded.approved_content_hash,approved_frontmatter_hash=excluded.approved_frontmatter_hash,approved_at=excluded.approved_at,approved_by='user',updated_at=excluded.updated_at`, id, contentHash, frontmatterHash, now, now)
+	_, err := h.db.ExecContext(request.Context(), `INSERT INTO editorial_reviews(article_id,state,approved_content_hash,approved_body_hash,approved_frontmatter_hash,approved_at,approved_by,updated_at) VALUES(?,'approved',?,?,?,?,'user',?) ON CONFLICT(article_id) DO UPDATE SET state='approved',approved_content_hash=excluded.approved_content_hash,approved_body_hash=excluded.approved_body_hash,approved_frontmatter_hash=excluded.approved_frontmatter_hash,approved_at=excluded.approved_at,approved_by='user',updated_at=excluded.updated_at`, id, contentHash, bodyHash, frontmatterHash, now, now)
 	if err != nil {
 		mapError(response, err)
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]string{"state": "approved"})
+}
+
+// articleCheckViews 将领域检查转换为页面可直接展示的检查结果。
+func articleCheckViews(findings []editorial.Finding) []map[string]string {
+	result := make([]map[string]string, 0, len(findings))
+	for index, finding := range findings {
+		result = append(result, map[string]string{"id": fmt.Sprintf("check-%d-%s", index, finding.Code), "level": string(finding.Severity), "title": finding.Code, "detail": finding.Message, "channel": "SEO · 内容"})
+	}
+	if len(result) == 0 {
+		result = append(result, map[string]string{"id": "checks-passed", "level": "passed", "title": "SEO 检查通过", "detail": "未发现阻断发布的问题", "channel": "SEO · 内容"})
+	}
+	return result
+}
+
+func hasBlockingCheck(findings []editorial.Finding) bool {
+	for _, finding := range findings {
+		if finding.Severity == editorial.SeverityBlocking {
+			return true
+		}
+	}
+	return false
 }
 
 // adoptArticleStableID 在源文件写回后显式绑定内部文章记录，普通扫描不再猜测历史路径。
@@ -619,7 +671,17 @@ func (h *runtimeHandler) session(response http.ResponseWriter, request *http.Req
 		mapError(response, err)
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"has_workspace": true, "workspace": map[string]string{"id": id, "name": name}})
+	initialization := map[string]any{"required": false, "job_id": "", "state": "succeeded"}
+	var initializationJobID, initializationState string
+	err = h.db.QueryRowContext(request.Context(), `SELECT id,state FROM jobs WHERE workspace_id=? AND kind='workspace.initialize' ORDER BY created_at DESC LIMIT 1`, id).Scan(&initializationJobID, &initializationState)
+	if err != nil && err != sql.ErrNoRows {
+		mapError(response, err)
+		return
+	}
+	if err == nil {
+		initialization = map[string]any{"required": initializationState != "succeeded", "job_id": initializationJobID, "state": initializationState}
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"has_workspace": true, "workspace": map[string]string{"id": id, "name": name}, "initialization": initialization})
 }
 
 type createWorkspaceRequest struct {
@@ -658,6 +720,21 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 		writeError(response, http.StatusBadRequest, "workspace.scope_invalid", "内容目录规则无效")
 		return
 	}
+	var hugoSite hugo.SiteInfo
+	defaultSection := "posts"
+	if strings.TrimSpace(input.HugoPath) != "" {
+		hugoSite, err = hugo.InspectSite(input.HugoPath)
+		if err != nil {
+			writeError(response, http.StatusUnprocessableEntity, "hugo.site_invalid", err.Error())
+			return
+		}
+		sections, sectionErr := inspectHugoSections(hugoSite)
+		if sectionErr != nil {
+			writeError(response, http.StatusUnprocessableEntity, "hugo.content_unavailable", sectionErr.Error())
+			return
+		}
+		defaultSection = preferredHugoSection(sections)
+	}
 	workspaceID := stableRuntimeID("workspace", key)
 	sourceID := stableRuntimeID("source", key)
 	jobID := stableRuntimeID("job", key)
@@ -679,12 +756,12 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 		wechatConfig, _ := json.Marshal(map[string]string{"template": "default", "staging_root": filepath.Join(h.dataDir, "staging", "wechat", workspaceID)})
 		_, err = tx.ExecContext(request.Context(), `INSERT INTO provider_instances(id,workspace_id,provider_type,name,config_json,created_at,updated_at) VALUES(?,?,'wechat','微信公众号',?,?,?) ON CONFLICT(id) DO NOTHING`, wechatID, workspaceID, string(wechatConfig), now, now)
 	}
-	if err == nil && input.HugoPath != "" {
-		config, _ := json.Marshal(map[string]string{"root": input.HugoPath, "staging_root": filepath.Join(h.dataDir, "staging", "hugo", workspaceID), "section": "posts"})
+	if err == nil && hugoSite.Root != "" {
+		config, _ := json.Marshal(map[string]string{"root": hugoSite.Root, "staging_root": filepath.Join(h.dataDir, "staging", "hugo", workspaceID), "content_dir": hugoSite.ContentDir, "section": defaultSection})
 		_, err = tx.ExecContext(request.Context(), `INSERT INTO provider_instances(id,workspace_id,provider_type,name,config_json,created_at,updated_at) VALUES(?,?,'hugo','Hugo',?,?,?) ON CONFLICT(id) DO NOTHING`, hugoID, workspaceID, string(config), now, now)
 	}
 	if err == nil {
-		_, err = tx.ExecContext(request.Context(), `INSERT INTO jobs(id,workspace_id,kind,dedupe_key,state,progress,result_json,available_at,created_at,updated_at) VALUES(?,?,'workspace.scan',?,'running',5,'{}',?,?,?) ON CONFLICT(id) DO NOTHING`, jobID, workspaceID, "scan:"+workspaceID, now, now, now)
+		_, err = tx.ExecContext(request.Context(), `INSERT INTO jobs(id,workspace_id,kind,dedupe_key,state,progress,result_json,available_at,created_at,updated_at) VALUES(?,?,'workspace.initialize',?,'running',5,'{}',?,?,?) ON CONFLICT(id) DO NOTHING`, jobID, workspaceID, "initialize:"+workspaceID, now, now, now)
 	}
 	if err != nil {
 		mapError(response, err)
@@ -694,16 +771,16 @@ func (h *runtimeHandler) createWorkspace(response http.ResponseWriter, request *
 		mapError(response, err)
 		return
 	}
-	report, scanErr := h.scanWorkspace(request.Context(), sourceID, workspaceID, nil)
+	report, scanErr := h.initializeWorkspaceSource(request.Context(), sourceID, workspaceID, nil)
 	state := "succeeded"
 	progress := 100
 	if scanErr != nil {
 		state, progress = "failed", 5
 	}
-	result, _ := json.Marshal(map[string]int{"indexed": report.Indexed, "failed": report.Failed})
-	_, _ = h.db.ExecContext(request.Context(), `UPDATE jobs SET state=?,progress=?,result_json=?,error_code=?,error_message=?,finished_at=?,updated_at=? WHERE id=?`, state, progress, string(result), nullableText(scanErr, "workspace.scan_failed"), nullableError(scanErr), now, now, jobID)
+	result, _ := json.Marshal(report)
+	_, _ = h.db.ExecContext(request.Context(), `UPDATE jobs SET state=?,progress=?,result_json=?,error_code=?,error_message=?,finished_at=?,updated_at=? WHERE id=?`, state, progress, string(result), nullableText(scanErr, "workspace.initialize_failed"), nullableError(scanErr), now, now, jobID)
 	taxonomyState := "not_enabled"
-	if h.afterWorkspaceCreated != nil {
+	if scanErr == nil && h.afterWorkspaceCreated != nil {
 		var refreshErr error
 		taxonomyState, refreshErr = h.afterWorkspaceCreated(request.Context())
 		if refreshErr != nil {
@@ -743,6 +820,30 @@ func (h *runtimeHandler) scanWorkspace(ctx context.Context, sourceID, workspaceI
 	return workspaceapp.ScanWorkspace(ctx, source, repository.NewArticleRepository(h.db), workspaceapp.ScanOptions{WorkspaceID: workspaceID, SourceID: sourceID}, contracts.ScanCursor{})
 }
 
+// retryWorkspaceInitialization 重新执行最近工作区未完成的身份初始化任务。
+func (h *runtimeHandler) retryWorkspaceInitialization(response http.ResponseWriter, request *http.Request) {
+	var workspaceID, sourceID, jobID string
+	err := h.db.QueryRowContext(request.Context(), `SELECT workspaces.id,sources.id,jobs.id
+FROM workspaces
+JOIN sources ON sources.workspace_id=workspaces.id
+JOIN jobs ON jobs.workspace_id=workspaces.id AND jobs.kind='workspace.initialize'
+ORDER BY workspaces.last_used_at DESC,jobs.created_at DESC LIMIT 1`).Scan(&workspaceID, &sourceID, &jobID)
+	if err != nil {
+		mapError(response, ErrNotFound)
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, _ = h.db.ExecContext(request.Context(), `UPDATE jobs SET state='running',progress=5,result_json='{}',error_code=NULL,error_message=NULL,finished_at=NULL,updated_at=? WHERE id=?`, now, jobID)
+	report, initializationErr := h.initializeWorkspaceSource(request.Context(), sourceID, workspaceID, nil)
+	state, progress := "succeeded", 100
+	if initializationErr != nil {
+		state, progress = "failed", 5
+	}
+	result, _ := json.Marshal(report)
+	_, _ = h.db.ExecContext(request.Context(), `UPDATE jobs SET state=?,progress=?,result_json=?,error_code=?,error_message=?,finished_at=?,updated_at=? WHERE id=?`, state, progress, string(result), nullableText(initializationErr, "workspace.initialize_failed"), nullableError(initializationErr), now, now, jobID)
+	writeJSON(response, http.StatusOK, map[string]string{"job_id": jobID, "state": state})
+}
+
 func nullableText(err error, value string) any {
 	if err == nil {
 		return nil
@@ -760,14 +861,14 @@ func (h *runtimeHandler) job(response http.ResponseWriter, request *http.Request
 	id := strings.TrimPrefix(request.URL.Path, "/api/v1/jobs/")
 	var state string
 	var progress int
-	var result string
-	if err := h.db.QueryRowContext(request.Context(), `SELECT state,progress,result_json FROM jobs WHERE id=?`, id).Scan(&state, &progress, &result); err != nil {
+	var result, errorMessage string
+	if err := h.db.QueryRowContext(request.Context(), `SELECT state,progress,result_json,COALESCE(error_message,'') FROM jobs WHERE id=?`, id).Scan(&state, &progress, &result, &errorMessage); err != nil {
 		mapError(response, ErrNotFound)
 		return
 	}
-	counts := map[string]int{"indexed": 0, "failed": 0}
-	_ = json.Unmarshal([]byte(result), &counts)
-	writeJSON(response, http.StatusOK, map[string]any{"id": id, "state": state, "progress": progress, "indexed": counts["indexed"], "failed": counts["failed"]})
+	report := workspaceInitializationReport{Issues: []workspaceInitializationIssue{}}
+	_ = json.Unmarshal([]byte(result), &report)
+	writeJSON(response, http.StatusOK, map[string]any{"id": id, "state": state, "progress": progress, "indexed": report.Indexed, "assigned_ids": report.AssignedIDs, "failed": report.Failed, "issues": report.Issues, "error_message": errorMessage})
 }
 
 func stableRuntimeID(kind, key string) string {

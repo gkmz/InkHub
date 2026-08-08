@@ -36,7 +36,7 @@ func (p *Provider) Recover(ctx context.Context) error {
 			return providerError("hugo.artifact_conflict", "Hugo 恢复记录与 operation 目录不一致", contracts.ErrorConflict, false, nil)
 		}
 		target := manifest.Artifact.TargetPath
-		contentRoot := filepath.Join(p.config.Root, "content")
+		contentRoot := contentRoot(p.config.Root, p.config.ContentDir)
 		if !withinOrEqual(target, contentRoot) {
 			return providerError("hugo.artifact_unauthorized", "Hugo 恢复目标路径越界", contracts.ErrorUnauthorizedResource, false, nil)
 		}

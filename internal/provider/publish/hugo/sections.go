@@ -16,7 +16,7 @@ func (p *Provider) DiscoverSections(ctx context.Context, sourceID string) (contr
 	if err := ctx.Err(); err != nil {
 		return contracts.SectionDiscovery{}, err
 	}
-	contentRoot := filepath.Join(p.config.Root, "content")
+	contentRoot := contentRoot(p.config.Root, p.config.ContentDir)
 	entries, err := os.ReadDir(contentRoot)
 	if os.IsNotExist(err) {
 		return contracts.SectionDiscovery{Sections: []contracts.PublishSection{}}, nil
@@ -47,13 +47,13 @@ func (p *Provider) DiscoverSections(ctx context.Context, sourceID string) (contr
 	sort.Slice(sections, func(i, j int) bool { return sections[i].Name < sections[j].Name })
 	result := contracts.SectionDiscovery{Sections: sections}
 	if sourceID != "" {
-		target, section, found, findErr := FindBundleBySourceID(p.config.Root, sourceID)
+		target, section, found, findErr := findBundleBySourceID(contentRoot, sourceID)
 		if findErr != nil {
 			return contracts.SectionDiscovery{}, findErr
 		}
 		if found {
 			result.ExistingSection, result.ExistingTarget, result.SelectionLocked = section, target, true
-			result.ExistingDirectory = bundleDirectory(p.config.Root, section, target)
+			result.ExistingDirectory = bundleDirectory(contentRoot, section, target)
 		}
 	}
 	return result, nil
@@ -88,8 +88,8 @@ func discoverBundleDirectories(sectionRoot string) ([]contracts.PublishDirectory
 }
 
 // bundleDirectory 返回已有 Bundle 相对于 Section 的容器目录。
-func bundleDirectory(root, section, target string) string {
-	relative, err := filepath.Rel(filepath.Join(root, "content", section), target)
+func bundleDirectory(contentRoot, section, target string) string {
+	relative, err := filepath.Rel(filepath.Join(contentRoot, section), target)
 	if err != nil {
 		return ""
 	}

@@ -43,6 +43,7 @@ type Article struct {
 	SourceSize        int64
 	SourceFingerprint string
 	ContentHash       string
+	BodyHash          string
 	FrontmatterHash   string
 	IndexedAt         time.Time
 	DeletedAt         *time.Time

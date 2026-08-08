@@ -59,21 +59,28 @@ func (r *ArticleRepository) Upsert(ctx context.Context, value article.Article) e
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO articles(
 id,workspace_id,source_id,stable_id,relative_path,title,description,category,series,tags_json,keywords_json,
-slug,cover,source_mtime,source_size,source_fingerprint,content_hash,frontmatter_hash,indexed_at,deleted_at,created_at,updated_at,content_stage,content_stage_issue)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+slug,cover,source_mtime,source_size,source_fingerprint,content_hash,body_hash,frontmatter_hash,indexed_at,deleted_at,created_at,updated_at,content_stage,content_stage_issue)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET stable_id=excluded.stable_id,relative_path=excluded.relative_path,title=excluded.title,
 description=excluded.description,category=excluded.category,series=excluded.series,tags_json=excluded.tags_json,
 keywords_json=excluded.keywords_json,slug=excluded.slug,cover=excluded.cover,source_mtime=excluded.source_mtime,
-source_size=excluded.source_size,source_fingerprint=excluded.source_fingerprint,content_hash=excluded.content_hash,frontmatter_hash=excluded.frontmatter_hash,
+source_size=excluded.source_size,source_fingerprint=excluded.source_fingerprint,content_hash=excluded.content_hash,body_hash=excluded.body_hash,frontmatter_hash=excluded.frontmatter_hash,
 indexed_at=excluded.indexed_at,deleted_at=excluded.deleted_at,content_stage=excluded.content_stage,content_stage_issue=excluded.content_stage_issue,updated_at=excluded.updated_at`,
 		value.ID, value.WorkspaceID, value.SourceID, value.StableID, value.RelativePath, value.Title, value.Description,
 		value.Category, value.Series, string(tags), string(keywords), value.Slug, value.Cover, formatTime(value.SourceMTime),
-		value.SourceSize, value.SourceFingerprint, value.ContentHash, value.FrontmatterHash, indexedAt, formatTime(value.DeletedAt), now, now,
+		value.SourceSize, value.SourceFingerprint, value.ContentHash, value.BodyHash, value.FrontmatterHash, indexedAt, formatTime(value.DeletedAt), now, now,
 		contentStage, value.ContentStageIssue)
 	if err != nil {
 		return fmt.Errorf("保存文章索引: %w", err)
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE editorial_reviews SET state='changed',updated_at=? WHERE article_id=? AND state='approved' AND (approved_content_hash<>? OR ?)`, now, value.ID, value.ContentHash, identityInvalid); err != nil {
+	// 新记录按正文 hash 判断；旧记录或测试数据没有正文 hash 时回退到发布内容 hash。
+	approvalChanged := "((approved_body_hash<>? AND approved_body_hash<>'') OR (approved_body_hash='' AND approved_content_hash<>?))"
+	args := []any{now, value.ID, value.BodyHash, value.ContentHash, identityInvalid}
+	if value.BodyHash == "" {
+		approvalChanged = "approved_content_hash<>?"
+		args = []any{now, value.ID, value.ContentHash, identityInvalid}
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE editorial_reviews SET state='changed',updated_at=? WHERE article_id=? AND state='approved' AND (`+approvalChanged+` OR ?)`, args...); err != nil {
 		return fmt.Errorf("使旧审核失效: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -108,11 +115,11 @@ func (r *ArticleRepository) FindByStableID(ctx context.Context, workspaceID, sta
 	var indexedAt string
 	var sourceMTime, deletedAt sql.NullString
 	err := r.db.QueryRowContext(ctx, `SELECT id,workspace_id,source_id,stable_id,relative_path,title,description,
-category,series,tags_json,keywords_json,slug,cover,source_mtime,source_size,source_fingerprint,content_hash,frontmatter_hash,
+category,series,tags_json,keywords_json,slug,cover,source_mtime,source_size,source_fingerprint,content_hash,body_hash,frontmatter_hash,
 indexed_at,deleted_at,content_stage,content_stage_issue FROM articles WHERE workspace_id=? AND stable_id=?`, workspaceID, stableID).Scan(
 		&value.ID, &value.WorkspaceID, &value.SourceID, &value.StableID, &value.RelativePath, &value.Title,
 		&value.Description, &value.Category, &value.Series, &tags, &keywords, &value.Slug, &value.Cover,
-		&sourceMTime, &value.SourceSize, &value.SourceFingerprint, &value.ContentHash, &value.FrontmatterHash, &indexedAt, &deletedAt,
+		&sourceMTime, &value.SourceSize, &value.SourceFingerprint, &value.ContentHash, &value.BodyHash, &value.FrontmatterHash, &indexedAt, &deletedAt,
 		&value.ContentStage, &value.ContentStageIssue)
 	if err != nil {
 		return article.Article{}, fmt.Errorf("查询文章索引: %w", err)

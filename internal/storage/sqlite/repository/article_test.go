@@ -111,6 +111,32 @@ func TestArticleRepositoryMarksApprovedReviewChangedWithContentHash(t *testing.T
 	}
 }
 
+func TestArticleRepositoryIgnoresFrontmatterOnlyChangeAfterApproval(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	seedWorkspace(t, db)
+	repo := NewArticleRepository(db)
+	value := article.Article{
+		ID: "a-frontmatter", WorkspaceID: "w1", SourceID: "s1", StableID: "article_FRONTMATTER",
+		RelativePath: "frontmatter.md", Title: "标题", Tags: []string{}, Keywords: []string{},
+		ContentHash: "publish-v1", BodyHash: "body-v1", FrontmatterHash: "front-v1",
+	}
+	if err := repo.Upsert(context.Background(), value); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO editorial_reviews(article_id,state,approved_content_hash,approved_body_hash,approved_frontmatter_hash,updated_at) VALUES('a-frontmatter','approved','publish-v1','body-v1','front-v1','2026-01-01')`); err != nil {
+		t.Fatal(err)
+	}
+	value.ContentHash = "publish-v2"
+	value.FrontmatterHash = "front-v2"
+	if err := repo.Upsert(context.Background(), value); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	if err := db.QueryRow(`SELECT state FROM editorial_reviews WHERE article_id='a-frontmatter'`).Scan(&state); err != nil || state != "approved" {
+		t.Fatalf("仅 frontmatter 变化不应使审核失效: state=%s err=%v", state, err)
+	}
+}
+
 func TestArticleRepositoryInvalidatesLegacyApprovalWithoutValidStableID(t *testing.T) {
 	db := openRepositoryTestDB(t)
 	seedWorkspace(t, db)

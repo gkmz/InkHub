@@ -13,11 +13,11 @@ const dashboardQuery = `SELECT articles.id,articles.title,articles.relative_path
 	COALESCE(articles.source_mtime,articles.updated_at),articles.content_stage,articles.content_stage_issue,COALESCE(editorial_reviews.state,'pending_review'),
 CASE WHEN hugo_publication.id IS NULL THEN 'never' WHEN hugo_publication.content_hash<>articles.content_hash THEN 'outdated' ELSE hugo_publication.state END,
 CASE WHEN wechat_publication.id IS NULL THEN 'never' WHEN wechat_publication.content_hash<>articles.content_hash THEN 'outdated' ELSE wechat_publication.state END,
-articles.content_hash,
+articles.content_hash,articles.body_hash,
 CASE WHEN article_dispositions.cleared_at IS NULL
   AND (article_dispositions.kind='ignored' OR (article_dispositions.kind='published' AND article_dispositions.content_hash=articles.content_hash))
   THEN article_dispositions.kind ELSE '' END,
-editorial_reviews.approved_content_hash,editorial_reviews.updated_at,
+editorial_reviews.approved_content_hash,editorial_reviews.approved_body_hash,editorial_reviews.updated_at,
 article_dispositions.kind,article_dispositions.content_hash,article_dispositions.cleared_at,article_dispositions.updated_at,
 hugo_publication.state,hugo_publication.content_hash,wechat_publication.state,wechat_publication.content_hash
 FROM articles
@@ -31,21 +31,22 @@ WHERE articles.deleted_at IS NULL AND articles.content_stage='ready' AND article
 ORDER BY COALESCE(articles.source_mtime,articles.updated_at) DESC,articles.id DESC`
 
 type dashboardArticleRow struct {
-	summary            httptransport.ArticleSummary
-	contentStage       string
-	contentStageIssue  string
-	reviewState        string
-	reviewApprovedHash sql.NullString
-	reviewUpdatedAt    sql.NullString
-	dispositionKind    sql.NullString
-	dispositionHash    sql.NullString
-	dispositionCleared sql.NullString
-	dispositionUpdated sql.NullString
-	hugoState          sql.NullString
-	hugoHash           sql.NullString
-	wechatState        sql.NullString
-	wechatHash         sql.NullString
-	bucket             string
+	summary                httptransport.ArticleSummary
+	contentStage           string
+	contentStageIssue      string
+	reviewState            string
+	reviewApprovedHash     sql.NullString
+	reviewApprovedBodyHash sql.NullString
+	reviewUpdatedAt        sql.NullString
+	dispositionKind        sql.NullString
+	dispositionHash        sql.NullString
+	dispositionCleared     sql.NullString
+	dispositionUpdated     sql.NullString
+	hugoState              sql.NullString
+	hugoHash               sql.NullString
+	wechatState            sql.NullString
+	wechatHash             sql.NullString
+	bucket                 string
 }
 
 type handledArticle struct {
@@ -124,8 +125,8 @@ func scanDashboardArticle(rows interface{ Scan(...any) error }, channels []strin
 	err := rows.Scan(
 		&row.summary.ID, &row.summary.Title, &relative, &row.summary.Category,
 		&row.summary.ModifiedAt, &row.contentStage, &row.contentStageIssue, &row.reviewState, &hugoDisplayState, &wechatDisplayState,
-		&row.summary.ContentVersion, &row.summary.Disposition,
-		&row.reviewApprovedHash, &row.reviewUpdatedAt,
+		&row.summary.ContentVersion, &row.summary.BodyVersion, &row.summary.Disposition,
+		&row.reviewApprovedHash, &row.reviewApprovedBodyHash, &row.reviewUpdatedAt,
 		&row.dispositionKind, &row.dispositionHash, &row.dispositionCleared, &row.dispositionUpdated,
 		&row.hugoState, &row.hugoHash, &row.wechatState, &row.wechatHash,
 	)
@@ -134,7 +135,7 @@ func scanDashboardArticle(rows interface{ Scan(...any) error }, channels []strin
 	}
 	row.summary.ContentStage = row.contentStage
 	row.summary.ContentStageIssue = row.contentStageIssue
-	workflow := deriveArticleWorkflow(articleWorkflowInput{ContentStage: article.ContentStage(row.contentStage), ContentIssue: row.contentStageIssue, ReviewState: row.reviewState, ApprovedHash: row.reviewApprovedHash.String, ContentHash: row.summary.ContentVersion, Disposition: row.dispositionKind.String, DispositionHash: row.dispositionHash.String, HugoState: row.hugoState.String, HugoHash: row.hugoHash.String, WeChatState: row.wechatState.String, WeChatHash: row.wechatHash.String, AvailableChannels: channels})
+	workflow := deriveArticleWorkflow(articleWorkflowInput{ContentStage: article.ContentStage(row.contentStage), ContentIssue: row.contentStageIssue, ReviewState: row.reviewState, ApprovedHash: row.reviewApprovedHash.String, ApprovedBodyHash: row.reviewApprovedBodyHash.String, ContentHash: row.summary.ContentVersion, BodyHash: row.summary.BodyVersion, Disposition: row.dispositionKind.String, DispositionHash: row.dispositionHash.String, HugoState: row.hugoState.String, HugoHash: row.hugoHash.String, WeChatState: row.wechatState.String, WeChatHash: row.wechatHash.String, AvailableChannels: channels})
 	row.bucket = workflow.Bucket
 	row.summary = finalizeArticleSummary(row.summary, relative, workflow)
 	return row, nil

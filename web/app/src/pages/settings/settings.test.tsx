@@ -15,7 +15,7 @@ test("已有工作区可以配置内容目录并触发重扫", async () => {
     if (url.includes("/settings/content-scope")) {
       expect(init?.method).toBe("PUT");
       expect(init?.body).toBe(JSON.stringify({ content_roots: ["Areas"], ignored_folders: [], ignored_file_names: ["index.md", "_index.md"] }));
-      return Response.json({ indexed: 12, failed: 0 });
+      return Response.json({ indexed: 12, assigned_ids: 7, failed: 0, issues: [] });
     }
     return Response.json({
       workspace_name: "极客老墨",
@@ -39,10 +39,10 @@ test("已有工作区可以配置内容目录并触发重扫", async () => {
   expect(await screen.findByText("极客老墨")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("checkbox", { name: "Areas（12 篇）" }));
   await userEvent.click(screen.getByRole("button", { name: "预览内容范围变更" }));
-  expect(await screen.findByText("将新增 12 篇，移出 1 篇。源文件不会被修改。")).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "确认并重扫" }));
+  expect(await screen.findByText(/将新增 12 篇.*补充 frontmatter 和 Stable ID/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "确认并初始化" }));
 
-  expect(await screen.findByText("已索引 12 篇，失败 0 篇")).toBeInTheDocument();
+  expect(await screen.findByText("已索引 12 篇，补充 7 个 Stable ID")).toBeInTheDocument();
 });
 
 test("重新诊断会再次请求设置并刷新诊断结果", async () => {

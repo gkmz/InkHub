@@ -4,14 +4,15 @@ import { expect, test, vi } from "vitest";
 import { App } from "./app";
 
 const articles = [
-  { id: "a2", title: "内容已更新", directory: "notes", category: "工程", modified_at: "2026-07-14T09:00:00Z", state: "changed", hugo_state: "需要同步", wechat_state: "尚未准备" },
-  { id: "a1", title: "发布失败", directory: "drafts", category: "产品", modified_at: "2026-07-14T10:00:00Z", state: "blocked", hugo_state: "处理失败", wechat_state: "尚未准备" },
+  { id: "a2", title: "内容已更新", filename: "02-内容已更新.md", directory: "notes", category: "工程", modified_at: "2026-07-14T09:00:00Z", state: "changed", hugo_state: "需要同步", wechat_state: "尚未准备" },
+  { id: "a1", title: "发布失败", filename: "01-发布失败.md", directory: "drafts", category: "产品", modified_at: "2026-07-14T10:00:00Z", state: "blocked", hugo_state: "处理失败", wechat_state: "尚未准备" },
 ];
 
 function mockAPI(hasWorkspace = true) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url.includes("/session")) return Response.json({ has_workspace: hasWorkspace, workspace: hasWorkspace ? { id: "w1", name: "我的文章" } : null });
+    if (url.includes("/directories/inspect-hugo")) return Response.json({ root: "/Users/me/Blog", content_dir: "articles", sections: [{ name: "posts", markdown_count: 8 }] });
     if (url.includes("/directories/inspect")) return Response.json({ directories: [{ path: "Areas", markdown_count: 12 }, { path: "Areas/私人记录", markdown_count: 3 }] });
     if (url.includes("/dashboard")) return Response.json({ failed: [articles[1]], changed: [articles[0]], needs_review: [{ ...articles[0], id: "a3", title: "等待审核", state: "pending_review" }], ready_to_publish: [], latest_ready: [], recently_handled: [{ ...articles[0], id: "a4", title: "已发表文章", state: "approved", disposition: "published" }] });
     if (url.includes("/articles")) return Response.json({ items: articles, next_cursor: "" });
@@ -19,44 +20,60 @@ function mockAPI(hasWorkspace = true) {
   });
 }
 
-test("首次运行显示四步初始化并允许跳过可选渠道", async () => {
+test("首次运行按 Vault、管理范围、Hugo 和初始化四步完成引导", async () => {
   mockAPI(false);
   render(<App />);
-  expect(await screen.findByRole("heading", { name: "选择内容库" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "选择 Vault" })).toBeInTheDocument();
   expect(screen.getByText("1 / 4")).toBeInTheDocument();
   await userEvent.type(screen.getByLabelText("工作区名称"), "写作空间");
   await userEvent.type(screen.getByLabelText("Obsidian Vault 路径"), "/Users/me/Vault");
-  await userEvent.click(screen.getByRole("button", { name: "读取目录" }));
+  await userEvent.click(screen.getByRole("button", { name: "验证并读取目录" }));
+  await userEvent.click(screen.getByRole("button", { name: "继续" }));
+  expect(screen.getByRole("heading", { name: "管理范围" })).toBeInTheDocument();
   await userEvent.click(await screen.findByRole("checkbox", { name: "Areas（12 篇）" }));
   await userEvent.click(screen.getByRole("button", { name: "继续" }));
-  expect(screen.getByRole("heading", { name: "确认博客" })).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "暂不配置博客" }));
-  expect(screen.getByRole("heading", { name: "配置微信" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "连接 Hugo" })).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Hugo 根目录"), "/Users/me/Blog");
+  await userEvent.click(screen.getByRole("button", { name: "检测 Hugo 站点" }));
+  expect(await screen.findByText("内容目录：articles · 1 个 Section")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "继续" }));
+  expect(screen.getByRole("heading", { name: "初始化" })).toBeInTheDocument();
+  expect(screen.getByText(/缺少 Stable ID 的文章会补充/)).toBeInTheDocument();
 });
 
-test("初始化时可以通过原生选择器填写 Hugo 根目录", async () => {
+test("初始化时可以通过原生选择器验证 Obsidian Vault", async () => {
   sessionStorage.clear();
   mockAPI(false);
   vi.mocked(fetch).mockImplementation(async (input, init) => {
     const url = String(input);
     if (url.includes("/session")) return Response.json({ has_workspace: false, workspace: null });
     if (url.includes("/directories/pick")) {
-      expect(init?.body).toBe(JSON.stringify({ purpose: "hugo" }));
-      return Response.json({ path: "/Users/me/Sites/blog" });
+      expect(init?.body).toBe(JSON.stringify({ purpose: "vault" }));
+      return Response.json({ path: "/Users/me/Vault" });
     }
     if (url.includes("/directories/inspect")) return Response.json({ directories: [{ path: "Areas", markdown_count: 12 }] });
     return Response.json({ error: { code: "not_found", message: "接口不存在" } }, { status: 404 });
   });
   render(<App />);
   await userEvent.type(await screen.findByLabelText("工作区名称"), "写作空间");
-  await userEvent.type(screen.getByLabelText("Obsidian Vault 路径"), "/Users/me/Vault");
-  await userEvent.click(screen.getByRole("button", { name: "读取目录" }));
-  await userEvent.click(await screen.findByRole("checkbox", { name: "Areas（12 篇）" }));
+  await userEvent.click(screen.getByRole("button", { name: "选择目录" }));
+  expect(await screen.findByLabelText("Obsidian Vault 路径")).toHaveValue("/Users/me/Vault");
   await userEvent.click(screen.getByRole("button", { name: "继续" }));
+  expect(screen.getByRole("heading", { name: "管理范围" })).toBeInTheDocument();
+});
 
-  await userEvent.click(screen.getByRole("button", { name: "选择 Hugo 目录" }));
-
-  expect(await screen.findByLabelText("Hugo 根目录")).toHaveValue("/Users/me/Sites/blog");
+test("应用重启后仍从会话恢复未完成的初始化门禁", async () => {
+  sessionStorage.clear();
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.includes("/session")) return Response.json({ has_workspace: true, workspace: { id: "w1", name: "待初始化" }, initialization: { required: true, job_id: "job-init", state: "failed" } });
+    if (url.includes("/jobs/job-init")) return Response.json({ id: "job-init", state: "failed", progress: 5, indexed: 0, assigned_ids: 0, failed: 1, error_message: "有 1 篇文章无法完成初始化", issues: [{ article_path: "Areas/冲突.md", code: "obsidian.duplicate_stable_id", message: "稳定文章 ID 重复" }] });
+    return Response.json({ error: { code: "not_found", message: "接口不存在" } }, { status: 404 });
+  });
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "初始化未能完成" })).toBeInTheDocument();
+  expect(screen.getByText("Areas/冲突.md")).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "工作台" })).not.toBeInTheDocument();
 });
 
 test("工作台渲染后端给出的四个互斥区段", async () => {
@@ -66,6 +83,8 @@ test("工作台渲染后端给出的四个互斥区段", async () => {
   expect(screen.getByRole("heading", { name: "内容已更新", level: 2 })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "需要审核", level: 2 })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "最近处理", level: 2 })).toBeInTheDocument();
+  expect(screen.getByText("01-发布失败.md")).toBeInTheDocument();
+  expect(screen.getByText(/drafts · 产品/)).toBeInTheDocument();
   expect(screen.getAllByTestId("dashboard-row")).toHaveLength(4);
   expect(screen.getByText("已发表")).toBeInTheDocument();
 });

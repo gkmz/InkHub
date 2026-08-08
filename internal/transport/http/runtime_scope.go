@@ -26,6 +26,11 @@ type directoryCandidate struct {
 	MarkdownCount int    `json:"markdown_count"`
 }
 
+type hugoSectionCandidate struct {
+	Name          string `json:"name"`
+	MarkdownCount int    `json:"markdown_count"`
+}
+
 // inspectDirectories 只汇总目录级 Markdown 数量，不读取或返回文章内容。
 func (h *runtimeHandler) inspectDirectories(response http.ResponseWriter, request *http.Request) {
 	var input directoryInspectRequest
@@ -81,6 +86,75 @@ func inspectVaultDirectories(root string) ([]directoryCandidate, error) {
 	}
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].Path < candidates[j].Path })
 	return candidates, nil
+}
+
+// inspectHugoDirectory 校验站点根目录并返回配置决定的内容目录和现有 section。
+func (h *runtimeHandler) inspectHugoDirectory(response http.ResponseWriter, request *http.Request) {
+	var input struct {
+		HugoPath string `json:"hugo_path"`
+	}
+	if decodeJSON(request, &input) != nil || strings.TrimSpace(input.HugoPath) == "" {
+		writeError(response, http.StatusBadRequest, "request.invalid", "Hugo 目录检查请求无效")
+		return
+	}
+	site, err := hugo.InspectSite(input.HugoPath)
+	if err != nil {
+		writeError(response, http.StatusUnprocessableEntity, "hugo.site_invalid", err.Error())
+		return
+	}
+	sections, err := inspectHugoSections(site)
+	if err != nil {
+		writeError(response, http.StatusUnprocessableEntity, "hugo.content_unavailable", err.Error())
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"root": site.Root, "content_dir": site.ContentDir, "sections": sections})
+}
+
+func inspectHugoSections(site hugo.SiteInfo) ([]hugoSectionCandidate, error) {
+	root := filepath.Join(site.Root, filepath.FromSlash(site.ContentDir))
+	entries, err := os.ReadDir(root)
+	if os.IsNotExist(err) {
+		return []hugoSectionCandidate{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("无法读取 Hugo 内容目录: %w", err)
+	}
+	sections := make([]hugoSectionCandidate, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		count := 0
+		if walkErr := filepath.WalkDir(filepath.Join(root, entry.Name()), func(_ string, item fs.DirEntry, itemErr error) error {
+			if itemErr != nil {
+				return itemErr
+			}
+			if item.Type()&os.ModeSymlink != 0 && item.IsDir() {
+				return filepath.SkipDir
+			}
+			if !item.IsDir() && strings.EqualFold(filepath.Ext(item.Name()), ".md") {
+				count++
+			}
+			return nil
+		}); walkErr != nil {
+			return nil, walkErr
+		}
+		sections = append(sections, hugoSectionCandidate{Name: entry.Name(), MarkdownCount: count})
+	}
+	sort.Slice(sections, func(i, j int) bool { return sections[i].Name < sections[j].Name })
+	return sections, nil
+}
+
+func preferredHugoSection(sections []hugoSectionCandidate) string {
+	for _, section := range sections {
+		if section.Name == "posts" {
+			return section.Name
+		}
+	}
+	if len(sections) > 0 {
+		return sections[0].Name
+	}
+	return "posts"
 }
 
 type storedSourceScope struct {
@@ -173,6 +247,7 @@ func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Re
 	if _, hugoConfig, enabled, found := loadStoredHugoConfig(request.Context(), h.db, workspaceID); found {
 		settings["hugo_enabled"] = enabled
 		settings["hugo_path"] = hugoConfig.Root
+		settings["hugo_content_dir"] = hugoConfig.ContentDir
 		settings["hugo_base_url"] = hugoConfig.BaseURL
 		settings["hugo_valid"] = false
 		settings["hugo_bundle_count"] = 0
@@ -182,7 +257,7 @@ func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Re
 		diagnostics := settings["diagnostics"].([]map[string]string)
 		if !enabled {
 			diagnostics = append(diagnostics, map[string]string{"name": "Hugo", "state": "未启用", "message": "Hugo 发布渠道已关闭"})
-		} else if bundles, scanErr := hugo.ScanTakeoverBundles(hugoConfig.Root); scanErr != nil {
+		} else if bundles, scanErr := hugo.ScanTakeoverBundlesAt(hugoConfig.Root, hugoConfig.ContentDir); scanErr != nil {
 			diagnostics = append(diagnostics, map[string]string{"name": "Hugo", "state": "需要处理", "message": scanErr.Error()})
 		} else {
 			linked := 0
@@ -226,16 +301,21 @@ func (h *runtimeHandler) saveContentScope(response http.ResponseWriter, request 
 		return
 	}
 	configJSON, _ := json.Marshal(storedSourceScope{ContentRoots: scope.ContentRoots(), IgnoredFolders: scope.IgnoredFolders(), IgnoredFileNames: scope.IgnoredFileNames()})
+	// 先完成新范围预检和身份补齐，失败时保留原有管理范围。
+	report, err := h.initializeWorkspaceSource(request.Context(), sourceID, workspaceID, configJSON)
+	if err != nil {
+		if _, ok := err.(*workspaceInitializationError); ok {
+			writeJSON(response, http.StatusUnprocessableEntity, map[string]any{"error": map[string]string{"code": "workspace.initialize_failed", "message": err.Error()}, "initialization": report})
+			return
+		}
+		mapError(response, err)
+		return
+	}
 	if _, err := h.db.ExecContext(request.Context(), `UPDATE sources SET config_json=?,updated_at=? WHERE id=?`, string(configJSON), time.Now().UTC().Format(time.RFC3339Nano), sourceID); err != nil {
 		mapError(response, err)
 		return
 	}
-	report, err := h.scanWorkspace(request.Context(), sourceID, workspaceID, configJSON)
-	if err != nil {
-		mapError(response, err)
-		return
-	}
-	writeJSON(response, http.StatusOK, map[string]int{"indexed": report.Indexed, "failed": report.Failed})
+	writeJSON(response, http.StatusOK, report)
 }
 
 func (h *runtimeHandler) previewContentScope(response http.ResponseWriter, request *http.Request) {

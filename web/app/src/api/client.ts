@@ -1,10 +1,10 @@
-import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, JobStatus, MermaidTheme, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, SuggestionHistoryResponse, SuggestionVersionView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft, XiaohongshuDraft, XiaohongshuRewriteOutline, XiaohongshuView } from "./types";
+import type { ArticleDetail, ArticleMetadata, ArticlePage, BatchDispositionCommand, BatchDispositionResult, DashboardView, DirectoryCandidate, HugoPreviewView, HugoSectionView, HugoSiteInspection, JobStatus, MermaidTheme, PublicationHistoryPage, PublicationWorkflowView, SessionResponse, SettingsView, SuggestionHistoryResponse, SuggestionVersionView, TaxonomyChangePreview, TaxonomyOverview, TaxonomyTermCommand, WeChatPlanView, WorkspaceDraft, WorkspaceInitializationResult, XiaohongshuDraft, XiaohongshuRewriteOutline, XiaohongshuView } from "./types";
 import type { HugoTakeoverReport } from "./types";
 import type { XiaohongshuDraftMode } from "./types";
 
 /** APIError 保留服务端稳定错误码，页面只展示可理解的中文消息。 */
 export class APIError extends Error {
-  constructor(public readonly code: string, message: string, public readonly status: number) {
+	constructor(public readonly code: string, message: string, public readonly status: number, public readonly details?: Record<string, unknown>) {
     super(message);
   }
 }
@@ -14,10 +14,10 @@ async function request<T extends object>(path: string, init?: RequestInit): Prom
     ...init,
     headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
   });
-  const body = await response.json() as T | { error?: { code?: string; message?: string } };
+	const body = await response.json() as T | { error?: { code?: string; message?: string }; initialization?: unknown; checks?: unknown };
   if (!response.ok) {
     const error = "error" in body ? body.error : undefined;
-    throw new APIError(error?.code ?? "request.failed", error?.message ?? "请求失败", response.status);
+		throw new APIError(error?.code ?? "request.failed", error?.message ?? "请求失败", response.status, body as Record<string, unknown>);
   }
   return body as T;
 }
@@ -50,7 +50,7 @@ export function batchDisposition(command: BatchDispositionCommand) {
   });
 }
 
-/** createWorkspace 幂等创建工作区并返回扫描任务。 */
+/** createWorkspace 幂等创建工作区并返回初始化任务。 */
 export function createWorkspace(draft: WorkspaceDraft, idempotencyKey: string) {
   return request<{ workspace: { id: string; name: string }; job_id: string }>("/workspaces", {
     method: "POST",
@@ -69,9 +69,19 @@ export function inspectDirectories(vaultPath: string) {
   return request<{ directories: DirectoryCandidate[] }>("/directories/inspect", { method: "POST", body: JSON.stringify({ vault_path: vaultPath }) });
 }
 
+/** inspectHugoDirectory 校验 Hugo 根目录并读取配置决定的内容目录。 */
+export function inspectHugoDirectory(hugoPath: string) {
+  return request<HugoSiteInspection>("/directories/inspect-hugo", { method: "POST", body: JSON.stringify({ hugo_path: hugoPath }) });
+}
+
 /** getJob 恢复页面刷新前已经提交的扫描任务。 */
 export function getJob(jobID: string, signal?: AbortSignal) {
   return request<JobStatus>(`/jobs/${encodeURIComponent(jobID)}`, { signal });
+}
+
+/** retryWorkspaceInitialization 重试被源文件问题阻断的首次身份初始化。 */
+export function retryWorkspaceInitialization() {
+  return request<{ job_id: string; state: string }>("/workspace/initialize", { method: "POST", body: "{}" });
 }
 
 /** getArticle 读取文章详情和当前审核、渠道状态。 */
@@ -274,7 +284,7 @@ export function confirmHugoTakeover() {
 
 /** saveContentScope 保存当前 Source 的目录规则并返回重扫结果。 */
 export function saveContentScope(contentRoots: string[], ignoredFolders: string[], ignoredFileNames: string[]) {
-  return request<{ indexed: number; failed: number }>("/settings/content-scope", { method: "PUT", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders, ignored_file_names: ignoredFileNames }) });
+  return request<WorkspaceInitializationResult>("/settings/content-scope", { method: "PUT", body: JSON.stringify({ content_roots: contentRoots, ignored_folders: ignoredFolders, ignored_file_names: ignoredFileNames }) });
 }
 
 /** previewContentScope 计算保存目录规则将新增和移出的索引数量。 */

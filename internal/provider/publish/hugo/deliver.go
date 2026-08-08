@@ -128,7 +128,7 @@ func (p *Provider) validateArtifact(artifact contracts.PreparedArtifact) (contra
 		return contracts.PreparedArtifact{}, "", providerError("hugo.artifact_conflict", "Hugo artifact 与已准备记录不一致", contracts.ErrorConflict, false, nil)
 	}
 	stagedSite := filepath.Join(operationRoot, "site")
-	contentRoot := filepath.Join(p.config.Root, "content")
+	contentRoot := contentRoot(p.config.Root, p.config.ContentDir)
 	if !withinOrEqual(prepared.Location, stagedSite) || !withinOrEqual(prepared.TargetPath, contentRoot) ||
 		(prepared.PreviousTargetPath != "" && !withinOrEqual(prepared.PreviousTargetPath, contentRoot)) {
 		return contracts.PreparedArtifact{}, "", providerError("hugo.artifact_unauthorized", "Hugo artifact 路径越界", contracts.ErrorUnauthorizedResource, false, nil)

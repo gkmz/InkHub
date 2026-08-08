@@ -95,7 +95,7 @@ export function ArticlePage({ articleID, onNavigate }: { articleID: string; onNa
   const canCreateTaxonomy = Boolean(taxonomy && !taxonomy.readonly && taxonomy.provider_id && taxonomy.revision);
   const isDraft = article.content_stage === "draft";
   const showMetadataTitle = !previewHasHeading(article.preview_html);
-  const primary = isDraft || !article.stable_id || article.review_state === "已通过" ? null : { label: "审核通过", icon: Check, action: async () => { await reviewArticle(article.id); await load(); setNotice("审核已通过，可以选择发布渠道"); } };
+  const primary = isDraft || !article.stable_id || article.review_state === "已通过" ? null : { label: "审核通过", icon: Check, action: async () => { try { await reviewArticle(article.id); await load(); setNotice("审核已通过，可以选择发布渠道"); } catch (reason) { setNotice(reason instanceof Error ? reason.message : "审核失败，请稍后重试"); } } };
   const PrimaryIcon = primary?.icon;
   return <div className="article-page">
     <div className="article-toolbar"><button type="button" onClick={() => onNavigate("/library")}><ArrowLeft size={16} />返回内容库</button><span>{article.relative_path}</span></div>

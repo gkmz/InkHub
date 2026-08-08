@@ -60,7 +60,7 @@ func (api databaseAPI) ListArticles(ctx context.Context, input httptransport.Art
 func buildArticleListQuery(input httptransport.ArticleListQuery) (string, []any, error) {
 	query := `SELECT articles.id,articles.title,articles.relative_path,articles.category,
 COALESCE(articles.source_mtime,articles.updated_at),articles.content_stage,articles.content_stage_issue,
-COALESCE(editorial_reviews.state,'pending_review'),COALESCE(editorial_reviews.approved_content_hash,''),
+COALESCE(editorial_reviews.state,'pending_review'),COALESCE(editorial_reviews.approved_content_hash,''),COALESCE(editorial_reviews.approved_body_hash,''),
 COALESCE((SELECT publications.state
   FROM publications JOIN provider_instances ON provider_instances.id=publications.provider_instance_id
   WHERE publications.article_id=articles.id AND provider_instances.workspace_id=articles.workspace_id AND provider_instances.provider_type='hugo' LIMIT 1),'never'),
@@ -77,7 +77,7 @@ COALESCE((SELECT xiaohongshu_drafts.state FROM xiaohongshu_drafts
   WHERE xiaohongshu_drafts.article_id=articles.id ORDER BY xiaohongshu_drafts.created_at DESC,xiaohongshu_drafts.id DESC LIMIT 1),'never'),
 COALESCE((SELECT xiaohongshu_drafts.source_content_hash FROM xiaohongshu_drafts
   WHERE xiaohongshu_drafts.article_id=articles.id ORDER BY xiaohongshu_drafts.created_at DESC,xiaohongshu_drafts.id DESC LIMIT 1),''),
-articles.content_hash,
+	articles.content_hash,articles.body_hash,
 COALESCE(article_dispositions.kind,''),COALESCE(article_dispositions.content_hash,''),
 CASE WHEN article_dispositions.cleared_at IS NULL
   AND (article_dispositions.kind='ignored' OR (article_dispositions.kind='published' AND article_dispositions.content_hash=articles.content_hash))
@@ -138,18 +138,23 @@ AND NOT COALESCE(article_dispositions.kind='published' AND article_dispositions.
 
 func scanArticleSummary(rows interface{ Scan(...any) error }, channels []string) (httptransport.ArticleSummary, error) {
 	var item httptransport.ArticleSummary
-	var relative, stage, issue, reviewState, approvedHash, hugoState, hugoHash, wechatState, wechatHash, xiaohongshuState, xiaohongshuHash, dispositionKind, dispositionHash string
-	if err := rows.Scan(&item.ID, &item.Title, &relative, &item.Category, &item.ModifiedAt, &stage, &issue, &reviewState, &approvedHash, &hugoState, &hugoHash, &wechatState, &wechatHash, &xiaohongshuState, &xiaohongshuHash, &item.ContentVersion, &dispositionKind, &dispositionHash, &item.Disposition); err != nil {
+	var relative, stage, issue, reviewState, approvedHash, approvedBodyHash, hugoState, hugoHash, wechatState, wechatHash, xiaohongshuState, xiaohongshuHash, bodyVersion, dispositionKind, dispositionHash string
+	if err := rows.Scan(&item.ID, &item.Title, &relative, &item.Category, &item.ModifiedAt, &stage, &issue, &reviewState, &approvedHash, &approvedBodyHash, &hugoState, &hugoHash, &wechatState, &wechatHash, &xiaohongshuState, &xiaohongshuHash, &item.ContentVersion, &bodyVersion, &dispositionKind, &dispositionHash, &item.Disposition); err != nil {
 		return httptransport.ArticleSummary{}, err
 	}
 	item.ContentStage = stage
 	item.ContentStageIssue = issue
 	item.XiaohongshuState = xiaohongshuLabel(xiaohongshuState, xiaohongshuHash, item.ContentVersion)
-	workflow := deriveArticleWorkflow(articleWorkflowInput{ContentStage: article.ContentStage(stage), ContentIssue: issue, ReviewState: reviewState, ApprovedHash: approvedHash, ContentHash: item.ContentVersion, Disposition: dispositionKind, DispositionHash: dispositionHash, HugoState: hugoState, HugoHash: hugoHash, WeChatState: wechatState, WeChatHash: wechatHash, AvailableChannels: channels})
+	item.BodyVersion = bodyVersion
+	workflow := deriveArticleWorkflow(articleWorkflowInput{ContentStage: article.ContentStage(stage), ContentIssue: issue, ReviewState: reviewState, ApprovedHash: approvedHash, ApprovedBodyHash: approvedBodyHash, ContentHash: item.ContentVersion, BodyHash: bodyVersion, Disposition: dispositionKind, DispositionHash: dispositionHash, HugoState: hugoState, HugoHash: hugoHash, WeChatState: wechatState, WeChatHash: wechatHash, AvailableChannels: channels})
 	return finalizeArticleSummary(item, relative, workflow), nil
 }
 
 func finalizeArticleSummary(item httptransport.ArticleSummary, relative string, workflow articleWorkflowResult) httptransport.ArticleSummary {
+	item.Filename = filepath.Base(relative)
+	if item.Filename == "." || item.Filename == "" {
+		item.Filename = "未命名文章"
+	}
 	item.Directory = filepath.ToSlash(filepath.Dir(relative))
 	if item.Directory == "." {
 		item.Directory = ""

@@ -69,7 +69,11 @@ func TestRuntimeHandlerRendersAndServesReferencedVaultImages(t *testing.T) {
 	if asset.Code != http.StatusOK || asset.Header().Get("Content-Type") != "image/png" || asset.Header().Get("X-Content-Type-Options") != "nosniff" || !bytes.Equal(asset.Body.Bytes(), png) {
 		t.Fatalf("图片响应错误: code=%d headers=%v body=%x", asset.Code, asset.Header(), asset.Body.Bytes())
 	}
-	tamperedURL := assetURL[:len(assetURL)-1] + "A"
+	replacement := "A"
+	if strings.HasSuffix(assetURL, replacement) {
+		replacement = "B"
+	}
+	tamperedURL := assetURL[:len(assetURL)-1] + replacement
 	tampered := httptest.NewRecorder()
 	handler.ServeHTTP(tampered, httptest.NewRequest(http.MethodGet, "http://localhost"+tamperedURL, nil))
 	if tampered.Code != http.StatusNotFound {

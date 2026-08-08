@@ -17,7 +17,7 @@ go build -o ./bin/inkhub ./cmd/inkhub
 ./bin/inkhub
 ```
 
-默认访问地址为 `http://127.0.0.1:8080`。首次打开后依次选择 Obsidian Vault、可选 Hugo、微信模板和 AI 配置。服务默认只监听本机回环地址。
+默认访问地址为 `http://127.0.0.1:8080`。首次打开后依次选择 Obsidian Vault、选择管理与排除目录、连接 Hugo 博客、确认初始化。至少选择一个管理目录和一个有效 Hugo 根目录后才能继续；初始化会为缺少 frontmatter 的文章创建 frontmatter，并补充缺失的 Stable ID。InkHub 会从 Hugo 配置解析 `contentDir`，未配置时使用 Hugo 默认的 `content`。微信和 AI 在进入主界面后按需配置。服务默认只监听本机回环地址。
 
 常用启动参数：
 
@@ -51,6 +51,7 @@ INKHUB_LOG_CONSOLE=true
 - Secret 由平台 Secret Store 管理，不进入 SQLite、普通日志、API 响应或诊断包。
 - 前端、SQLite migration 和内置微信模板均嵌入最终二进制。
 - 写请求要求同源 JSON，HTTP 服务拒绝非本机 Host。
+- 首次初始化和后续扩大管理范围会原子写回文章身份；已有 Stable ID、未知 frontmatter 字段和正文不会被覆盖。解析失败或身份重复会阻断初始化并显示文件级诊断。
 
 ## 内容与渠道
 
@@ -61,7 +62,7 @@ publish:
   status: ready
 ```
 
-内容库始终保留全部文章，并可按“已就绪/草稿”筛选。工作台只显示已就绪文章的下一步行动；内容版本由内容哈希判断，文件修改时间只用于排序。微信公众号已经人工确认的草稿是终态，后续正文变化不会自动重复发布。
+内容库保留管理目录范围内的全部文章，并可按“已就绪/草稿”筛选。工作台只显示已就绪文章的下一步行动；内容版本由内容哈希判断，文件修改时间只用于排序。微信公众号已经人工确认的草稿是终态，后续正文变化不会自动重复发布。
 
 Hugo 使用 staging、真实构建和原子替换，同一文章会稳定更新同一 page bundle。新文章的 bundle 目录优先使用 `url`，有 `date` 时自动加上 `YYYYMMDD-` 前缀；`url` 已带八位日期前缀时不会重复添加，没有 `url` 才回退到 `publish.slug`。已有文章按 `source_id` 继续更新原目录。Taxonomy 以 Hugo 配置、文章 frontmatter 和 term 页面为权威来源，InkHub 在 SQLite 中保存最近成功快照。
 

@@ -21,6 +21,7 @@ import (
 type storedHugoConfig struct {
 	Root               string `json:"root"`
 	StagingRoot        string `json:"staging_root"`
+	ContentDir         string `json:"content_dir,omitempty"`
 	Section            string `json:"section"`
 	BaseURL            string `json:"base_url,omitempty"`
 	ArtifactTTLSeconds int64  `json:"artifact_ttl_seconds,omitempty"`
@@ -91,14 +92,16 @@ func (h *runtimeHandler) saveHugoSettings(response http.ResponseWriter, request 
 		return
 	}
 	root := strings.TrimSpace(input.Path)
+	var site hugo.SiteInfo
 	if input.Enabled {
-		absolute, pathErr := filepath.Abs(root)
-		if pathErr != nil {
-			writeError(response, http.StatusBadRequest, "hugo.path_invalid", "Hugo 根目录无效")
+		var inspectErr error
+		site, inspectErr = hugo.InspectSite(root)
+		if inspectErr != nil {
+			writeError(response, http.StatusUnprocessableEntity, "hugo.site_invalid", inspectErr.Error())
 			return
 		}
-		root = filepath.Clean(absolute)
-		if _, scanErr := hugo.ScanTakeoverBundles(root); scanErr != nil {
+		root = site.Root
+		if _, scanErr := hugo.ScanTakeoverBundlesAt(root, site.ContentDir); scanErr != nil {
 			writeError(response, http.StatusUnprocessableEntity, "hugo.site_invalid", scanErr.Error())
 			return
 		}
@@ -116,6 +119,9 @@ func (h *runtimeHandler) saveHugoSettings(response http.ResponseWriter, request 
 		existing.StagingRoot = filepath.Join(h.dataDir, "staging", "hugo", workspaceID)
 	}
 	existing.Root = root
+	if input.Enabled {
+		existing.ContentDir = site.ContentDir
+	}
 	existing.BaseURL = strings.TrimSpace(input.BaseURL)
 	encoded, _ := json.Marshal(existing)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -263,7 +269,7 @@ func (h *runtimeHandler) buildHugoTakeoverReport(ctx context.Context) (hugoTakeo
 	if !found || !enabled || strings.TrimSpace(config.Root) == "" {
 		return hugoTakeoverReport{}, fmt.Errorf("请先启用并保存 Hugo 根目录")
 	}
-	bundles, err := hugo.ScanTakeoverBundles(config.Root)
+	bundles, err := hugo.ScanTakeoverBundlesAt(config.Root, config.ContentDir)
 	if err != nil {
 		return hugoTakeoverReport{}, err
 	}

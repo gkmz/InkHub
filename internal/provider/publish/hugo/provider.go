@@ -20,6 +20,7 @@ var operationIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 type Config struct {
 	Root        string
 	StagingRoot string
+	ContentDir  string
 	Section     string
 	BaseURL     string
 	ArtifactTTL time.Duration
@@ -52,8 +53,15 @@ func New(config Config, builder Builder) (*Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("解析 Hugo staging 目录: %w", err)
 	}
-	if !hasHugoConfig(root) {
-		return nil, fmt.Errorf("目录不是有效 Hugo 站点: %s", root)
+	site, err := InspectSite(root)
+	if err != nil {
+		return nil, err
+	}
+	if config.ContentDir == "" {
+		config.ContentDir = site.ContentDir
+	}
+	if !safeRelativeDirectory(config.ContentDir) {
+		return nil, fmt.Errorf("Hugo contentDir 必须是站点内的相对目录")
 	}
 	if staging == root || isWithin(staging, root) || isWithin(root, staging) {
 		return nil, fmt.Errorf("Hugo 根目录与 staging 目录不能互相包含")
@@ -77,6 +85,7 @@ func New(config Config, builder Builder) (*Provider, error) {
 		return nil, fmt.Errorf("创建 Hugo staging 目录: %w", err)
 	}
 	config.Root = root
+	config.ContentDir = filepath.ToSlash(filepath.Clean(config.ContentDir))
 	config.StagingRoot = staging
 	return &Provider{config: config, builder: builder, replace: replaceBundle}, nil
 }
@@ -150,12 +159,7 @@ func hasBlocking(values []contracts.Diagnostic) bool {
 }
 
 func hasHugoConfig(root string) bool {
-	for _, name := range []string{"hugo.yaml", "hugo.yml", "hugo.toml", "hugo.json", "config.yaml", "config.yml", "config.toml", "config.json"} {
-		if info, err := os.Stat(filepath.Join(root, name)); err == nil && !info.IsDir() {
-			return true
-		}
-	}
-	return false
+	return hugoConfigPath(root) != ""
 }
 
 func safeSegment(value string) bool {
