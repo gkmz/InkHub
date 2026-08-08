@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	domaintemplate "github.com/gkmz/InkHub/internal/domain/template"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
 
@@ -27,13 +28,13 @@ func TestProviderRuntimeBuildsWeChatGitHubUploader(t *testing.T) {
 	}
 }
 
-func TestConfiguredTemplateSupportsClassicBuiltin(t *testing.T) {
+func TestConfiguredTemplateFallsBackToDefaultBuiltin(t *testing.T) {
 	t.Parallel()
 
 	config, _ := json.Marshal(map[string]string{"template": "classic"})
 	ref, err := configuredTemplate(config)
-	if err != nil || ref == nil || ref.ID != "inkhub-classic" {
-		t.Fatalf("原版模板未解析: ref=%+v err=%v", ref, err)
+	if err != nil || ref == nil || ref.ID != domaintemplate.BuiltinDefaultID {
+		t.Fatalf("旧模板配置未回退到默认模板: ref=%+v err=%v", ref, err)
 	}
 }
 

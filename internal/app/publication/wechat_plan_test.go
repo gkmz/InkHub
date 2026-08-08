@@ -19,15 +19,15 @@ func TestWeChatPlanIsReadOnlyAndConfirmEnqueuesBoundIntent(t *testing.T) {
 	resolver := staticWeChatPlanResolver{value: WeChatPlanArticle{
 		WorkspaceID: "w1", ArticleID: "a1", ProviderID: "wechat1", ContentHash: "hash1",
 		ContentStage: article.ContentStageReady,
-		TemplateID:   "default", TemplateRevision: "template1", Provider: provider,
+		TemplateID:   "default", TemplateRevision: "template1", MermaidTheme: "handdrawn", Provider: provider,
 	}}
 	queue := &capturingQueue{}
 	service, err := NewWeChatPlanService(resolver, queue, []byte("01234567890123456789012345678901"), func() time.Time { return now })
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := service.Plan(context.Background(), "a1", "default")
-	if err != nil || !plan.Ready || len(plan.Images) != 1 || plan.Token == "" {
+	plan, err := service.Plan(context.Background(), "a1", "default", "handdrawn")
+	if err != nil || !plan.Ready || len(plan.Images) != 1 || plan.Token == "" || plan.MermaidTheme != "handdrawn" {
 		t.Fatalf("生成微信计划: plan=%+v err=%v", plan, err)
 	}
 	if provider.uploadCalls != 0 {
@@ -38,7 +38,7 @@ func TestWeChatPlanIsReadOnlyAndConfirmEnqueuesBoundIntent(t *testing.T) {
 		t.Fatalf("opaque token 泄露内部身份: %s", decoded)
 	}
 	jobID, err := service.Confirm(context.Background(), "a1", plan.Token)
-	if err != nil || jobID == "" || queue.last.Kind != "wechat_prepare" || queue.last.ContentHash != "hash1" {
+	if err != nil || jobID == "" || queue.last.Kind != "wechat_prepare" || queue.last.ContentHash != "hash1" || queue.last.MermaidTheme != "handdrawn" {
 		t.Fatalf("确认计划未入队: id=%s intent=%+v err=%v", jobID, queue.last, err)
 	}
 }
@@ -48,12 +48,12 @@ func TestWeChatPlanRejectsTamperedToken(t *testing.T) {
 
 	service, err := NewWeChatPlanService(staticWeChatPlanResolver{value: WeChatPlanArticle{
 		WorkspaceID: "w1", ArticleID: "a1", ProviderID: "wechat1", ContentHash: "hash1", TemplateID: "default", TemplateRevision: "template1", Provider: &staticPlanningProvider{},
-		ContentStage: article.ContentStageReady,
+		ContentStage: article.ContentStageReady, MermaidTheme: "modern",
 	}}, &capturingQueue{}, []byte("01234567890123456789012345678901"), time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := service.Plan(context.Background(), "a1", "default")
+	plan, err := service.Plan(context.Background(), "a1", "default", "modern")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestWeChatPlanRejectsTamperedToken(t *testing.T) {
 
 type staticWeChatPlanResolver struct{ value WeChatPlanArticle }
 
-func (resolver staticWeChatPlanResolver) ResolveWeChatPlan(context.Context, string, string) (WeChatPlanArticle, error) {
+func (resolver staticWeChatPlanResolver) ResolveWeChatPlan(context.Context, string, string, string) (WeChatPlanArticle, error) {
 	return resolver.value, nil
 }
 

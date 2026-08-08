@@ -151,14 +151,21 @@ func TestMermaidInkRendererBuildsStableHTTPSURL(t *testing.T) {
 	t.Parallel()
 
 	renderer := NewMermaidInkRenderer()
-	value, err := renderer.Render(context.Background(), "graph TD; A-->B;", "digest-v1")
+	value, err := renderer.Render(context.Background(), "graph TD; A-->B;", "digest-v1", MermaidThemeHandDrawn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.HasPrefix(value, "https://mermaid.ink/img/") || !strings.HasSuffix(value, "?v=digest-v1") {
 		t.Fatalf("Mermaid URL 不符合预期: %s", value)
 	}
-	if _, err := renderer.Render(context.Background(), "", ""); err == nil {
+	modern, err := renderer.Render(context.Background(), "graph TD; A-->B;", "digest-v1", MermaidThemeModern)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if modern == value {
+		t.Fatal("不同 Mermaid 主题不应生成相同地址")
+	}
+	if _, err := renderer.Render(context.Background(), "", "", MermaidThemeHandDrawn); err == nil {
 		t.Fatal("空 Mermaid 源码应被拒绝")
 	}
 }
@@ -282,7 +289,7 @@ func (staticUploader) Upload(_ context.Context, request AssetUploadRequest) (Ass
 
 type staticMermaid struct{}
 
-func (staticMermaid) Render(_ context.Context, _ string, digest string) (string, error) {
+func (staticMermaid) Render(_ context.Context, _ string, digest, _ string) (string, error) {
 	return "https://cdn.example/mermaid-" + digest + ".png", nil
 }
 

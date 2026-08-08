@@ -7,7 +7,7 @@ import (
 	domaintemplate "github.com/gkmz/InkHub/internal/domain/template"
 )
 
-func TestRenderUsesSameSafePipelineForDifferentTemplates(t *testing.T) {
+func TestRenderUsesSafeDeterministicPipeline(t *testing.T) {
 	t.Parallel()
 
 	body := `# 标题
@@ -21,43 +21,19 @@ func TestRenderUsesSameSafePipelineForDifferentTemplates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	minimalTemplate, err := domaintemplate.Builtin(domaintemplate.BuiltinMinimalID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	classicTemplate, err := domaintemplate.Builtin(domaintemplate.BuiltinClassicID)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	defaultHTML, err := Render(defaultTemplate, body, nil)
 	if err != nil {
 		t.Fatalf("渲染 Default: %v", err)
 	}
-	minimalHTML, err := Render(minimalTemplate, body, nil)
-	if err != nil {
-		t.Fatalf("渲染 Minimal: %v", err)
-	}
-	classicHTML, err := Render(classicTemplate, body, nil)
-	if err != nil {
-		t.Fatalf("渲染 Classic: %v", err)
-	}
-	if defaultHTML == minimalHTML {
-		t.Fatal("不同模板不应产生相同 HTML")
-	}
-	if defaultHTML == classicHTML || minimalHTML == classicHTML {
-		t.Fatal("不同模板不应产生相同 HTML")
-	}
-	for _, output := range []string{defaultHTML, minimalHTML, classicHTML} {
-		lower := strings.ToLower(output)
-		for _, forbidden := range []string{"<style", "<script", "class=", "data-inkhub", "javascript:", "{{"} {
-			if strings.Contains(lower, forbidden) {
-				t.Fatalf("最终 HTML 包含禁止内容 %q:\n%s", forbidden, output)
-			}
+	lower := strings.ToLower(defaultHTML)
+	for _, forbidden := range []string{"<style", "<script", "class=", "data-inkhub", "javascript:", "{{"} {
+		if strings.Contains(lower, forbidden) {
+			t.Fatalf("最终 HTML 包含禁止内容 %q:\n%s", forbidden, defaultHTML)
 		}
-		if !strings.Contains(output, `style="`) || !strings.Contains(output, "标题") {
-			t.Fatalf("样式未内联或正文丢失:\n%s", output)
-		}
+	}
+	if !strings.Contains(defaultHTML, `style="`) || !strings.Contains(defaultHTML, "标题") || !strings.Contains(defaultHTML, "正文包含") {
+		t.Fatalf("样式未内联或正文丢失:\n%s", defaultHTML)
 	}
 	again, err := Render(defaultTemplate, body, nil)
 	if err != nil || again != defaultHTML {
@@ -97,12 +73,15 @@ func TestRenderResolvesTypedVariables(t *testing.T) {
 func TestRenderSupportsTableAndHighlightedCode(t *testing.T) {
 	t.Parallel()
 
-	validated := renderTemplate("rich", `.inkhub-root table { border-collapse: collapse; } .inkhub-root code { color: #111111; }`)
+	validated, err := domaintemplate.Builtin(domaintemplate.BuiltinDefaultID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	output, err := Render(validated, "| 字段 | 值 |\n| --- | --- |\n| 状态 | ready |\n\n```go\nfunc main() {}\n```", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, fragment := range []string{"<table", "<th", "<span", "font-weight:bold"} {
+	for _, fragment := range []string{"<table", "<th", "<span style=", "func", "main"} {
 		if !strings.Contains(output, fragment) {
 			t.Fatalf("微信 HTML 缺少 %q: %s", fragment, output)
 		}
