@@ -36,7 +36,7 @@ test("已有工作区可以配置内容目录并触发重扫", async () => {
   });
   renderSettings();
 
-  expect(await screen.findByDisplayValue("极客老墨")).toBeInTheDocument();
+  expect(await screen.findByText("极客老墨")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("checkbox", { name: "Areas（12 篇）" }));
   await userEvent.click(screen.getByRole("button", { name: "预览内容范围变更" }));
   expect(await screen.findByText("将新增 12 篇，移出 1 篇。源文件不会被修改。")).toBeInTheDocument();
@@ -70,6 +70,8 @@ test("重新诊断会再次请求设置并刷新诊断结果", async () => {
   });
   renderSettings();
 
+  await screen.findByText("极客老墨");
+  await userEvent.click(screen.getByRole("tab", { name: "诊断" }));
   expect(await screen.findByText("暂时无法读取")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "重新诊断" }));
 
@@ -102,6 +104,8 @@ test("重新诊断失败时显示错误且保留原诊断", async () => {
   });
   renderSettings();
 
+  await screen.findByText("极客老墨");
+  await userEvent.click(screen.getByRole("tab", { name: "诊断" }));
   expect(await screen.findByText("原诊断仍有效")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "重新诊断" }));
 
@@ -136,8 +140,9 @@ test("AI 设置保存到 Provider 且不要求重新输入已有 Secret", async 
   });
   renderSettings();
 
-  await screen.findByDisplayValue("极客老墨");
-  await userEvent.click(screen.getByRole("checkbox", { name: "启用 AI 建议" }));
+  await screen.findByText("极客老墨");
+  await userEvent.click(screen.getByRole("tab", { name: "AI" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: "启用 AI" }));
   await userEvent.click(screen.getByRole("button", { name: "保存 AI 设置" }));
   expect(await screen.findByRole("status")).toHaveTextContent("AI 设置已保存");
   expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -155,11 +160,12 @@ test("微信图片仓库保存到 Provider 且 Token 不留在表单", async () 
   });
   renderSettings();
 
-  await screen.findByDisplayValue("极客老墨");
+  await screen.findByText("极客老墨");
+  await userEvent.click(screen.getByRole("tab", { name: "微信" }));
   await userEvent.type(screen.getByRole("textbox", { name: "GitHub Owner" }), "gkmz");
   await userEvent.type(screen.getByRole("textbox", { name: "Repository" }), "images");
   await userEvent.type(screen.getByLabelText("GitHub Token"), "secret-token");
-  await userEvent.click(screen.getByRole("button", { name: "保存发布设置" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存微信设置" }));
   expect(await screen.findByRole("status")).toHaveTextContent("发布设置已保存");
   expect(screen.getByLabelText("GitHub Token")).toHaveValue("");
   expect(fetchMock).toHaveBeenCalledTimes(2);

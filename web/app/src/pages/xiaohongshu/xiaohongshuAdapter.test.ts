@@ -17,10 +17,12 @@ describe("adaptXiaohongshuHTML", () => {
     expect(result.html).toContain("<table");
   });
 
-  it("将测量后溢出的表格转换为结构化文本", () => {
+  it("将测量后溢出的表格转换为结构化卡片", () => {
     const result = adaptXiaohongshuHTML("<table><tr><td>这是一个很长很长很长很长很长很长的列</td><td>第二列</td></tr></table>", 120);
     expect(result.convertedTables).toBe(1);
-    expect(result.html).toContain("xiaohongshu-table-text");
-    expect(result.html).toContain("｜");
+    expect(result.html).toContain("xiaohongshu-table-card");
+    expect(result.html).toContain("xiaohongshu-table-field");
+    expect(result.html).toContain("这是一个很长很长很长很长很长很长的列");
+    expect(result.html).toContain("第二列");
   });
 });
