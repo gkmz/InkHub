@@ -57,7 +57,7 @@ test("已准备内容读取失败时不回退到原文，并支持重新读取",
     if (url.includes("/wechat/content/")) {
       reads += 1;
       if (reads === 1) return Response.json({ error: { message: "处理结果暂时不可用" } }, { status: 503 });
-      return Response.json({ html: "<p><strong>处理后的正文</strong></p>" });
+      return Response.json({ html: "<p><strong>处理后的正文</strong></p>", mermaid_theme: "modern" });
     }
     if (url.includes("/articles/article-1")) return Response.json({ ...article, preview_html: "<p>不应显示的原文</p>", wechat_state: "已准备" });
     return Response.json({});
@@ -68,5 +68,6 @@ test("已准备内容读取失败时不回退到原文，并支持重新读取",
   expect(screen.queryByText("不应显示的原文")).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "重新读取处理结果" }));
   expect(await screen.findByText("处理后的正文")).toBeVisible();
+  expect(screen.getByRole("button", { name: "现代" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.queryByText("不应显示的原文")).not.toBeInTheDocument();
 });

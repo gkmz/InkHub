@@ -25,8 +25,9 @@ type wechatContentManifest struct {
 // wechatContent 只返回当前工作区、文章版本和启用 Provider 对应的完整微信产物。
 func (h *runtimeHandler) wechatContent(response http.ResponseWriter, request *http.Request) {
 	articleID := strings.TrimPrefix(request.URL.Path, "/api/v1/wechat/content/")
-	var jobID, contentHash, providerConfig, resultJSON string
-	err := h.db.QueryRowContext(request.Context(), `SELECT jobs.id,articles.content_hash,provider_instances.config_json,jobs.result_json
+	var jobID, contentHash, providerConfig, resultJSON, mermaidTheme string
+	err := h.db.QueryRowContext(request.Context(), `SELECT jobs.id,articles.content_hash,provider_instances.config_json,jobs.result_json,
+COALESCE(json_extract(jobs.payload_json,'$.mermaid_theme'),'')
 FROM articles
 JOIN workspaces ON workspaces.id=articles.workspace_id
   AND workspaces.id=(SELECT id FROM workspaces ORDER BY last_used_at DESC LIMIT 1)
@@ -37,7 +38,7 @@ JOIN jobs ON jobs.workspace_id=articles.workspace_id AND jobs.kind='wechat_prepa
   AND json_extract(jobs.payload_json,'$.provider_instance_id')=provider_instances.id
   AND json_extract(jobs.payload_json,'$.content_hash')=articles.content_hash
 WHERE articles.id=? AND articles.deleted_at IS NULL
-ORDER BY jobs.finished_at DESC,jobs.id DESC LIMIT 1`, articleID).Scan(&jobID, &contentHash, &providerConfig, &resultJSON)
+ORDER BY jobs.finished_at DESC,jobs.id DESC LIMIT 1`, articleID).Scan(&jobID, &contentHash, &providerConfig, &resultJSON, &mermaidTheme)
 	if err != nil {
 		mapError(response, ErrNotFound)
 		return
@@ -47,7 +48,23 @@ ORDER BY jobs.finished_at DESC,jobs.id DESC LIMIT 1`, articleID).Scan(&jobID, &c
 		mapError(response, ErrNotFound)
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]string{"html": string(content)})
+	mermaidTheme, ok := normalizePreparedMermaidTheme(mermaidTheme)
+	if !ok {
+		mapError(response, ErrNotFound)
+		return
+	}
+	writeJSON(response, http.StatusOK, map[string]string{"html": string(content), "mermaid_theme": mermaidTheme})
+}
+
+func normalizePreparedMermaidTheme(value string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "handdrawn":
+		return "handdrawn", true
+	case "modern":
+		return "modern", true
+	default:
+		return "", false
+	}
 }
 
 func readVerifiedWeChatContent(jobID, contentHash, providerConfig, resultJSON string) ([]byte, error) {

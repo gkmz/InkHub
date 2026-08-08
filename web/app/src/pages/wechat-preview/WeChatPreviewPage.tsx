@@ -54,7 +54,10 @@ export function WeChatPreviewPage({ articleID, onNavigate }: { articleID: string
     try {
       const prepared = await getPreparedWeChatHTML(id);
       if (!prepared.html.trim()) throw new Error("微信处理结果为空，请重新读取");
-      if (mounted.current) setPreparedHTML(formatWeChatReferences(prepared.html));
+      if (mounted.current) {
+        setMermaidTheme(prepared.mermaid_theme ?? "handdrawn");
+        setPreparedHTML(formatWeChatReferences(prepared.html));
+      }
     } catch (reason) {
       if (mounted.current) setPreparedError(reason instanceof Error ? reason.message : "微信处理结果读取失败，请重试");
     } finally {

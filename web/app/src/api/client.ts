@@ -214,7 +214,7 @@ export function markXiaohongshuPublished(articleID: string, draftID: string) {
 
 /** getPreparedWeChatHTML 读取当前文章已经准备完成的安全模板 HTML。 */
 export function getPreparedWeChatHTML(articleID: string) {
-  return request<{ html: string }>(`/wechat/content/${encodeURIComponent(articleID)}`);
+  return request<{ html: string; mermaid_theme?: MermaidTheme }>(`/wechat/content/${encodeURIComponent(articleID)}`);
 }
 
 /** getTaxonomyOverview 读取权威 taxonomy 状态及待治理问题。 */

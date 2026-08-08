@@ -38,7 +38,7 @@ func TestWeChatContentReturnsOnlyCurrentVersionFromEnabledProvider(t *testing.T)
 		{`INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,content_hash,frontmatter_hash,indexed_at,created_at,updated_at) VALUES('a1','w1','s1','article_WECHAT','article.md','微信文章','hash-current','front',?,?,?)`, []any{now, now, now}},
 		{`INSERT INTO provider_instances(id,workspace_id,provider_type,name,enabled,config_json,created_at,updated_at) VALUES('wx1','w1','wechat','微信',1,?,?,?)`, []any{mustJSON(t, map[string]string{"staging_root": root}), now, now}},
 		{`INSERT INTO jobs(id,workspace_id,kind,state,progress,payload_json,result_json,available_at,finished_at,created_at,updated_at) VALUES(?, 'w1','wechat_prepare','succeeded',100,?,?,?,?,?,?)`, []any{staleJob, mustJSON(t, map[string]string{"article_id": "a1", "provider_instance_id": "wx1", "content_hash": "hash-old"}), mustJSON(t, map[string]string{"location": staleLocation}), now, "2026-08-08T02:00:00Z", now, now}},
-		{`INSERT INTO jobs(id,workspace_id,kind,state,progress,payload_json,result_json,available_at,finished_at,created_at,updated_at) VALUES(?, 'w1','wechat_prepare','succeeded',100,?,?,?,?,?,?)`, []any{currentJob, mustJSON(t, map[string]string{"article_id": "a1", "provider_instance_id": "wx1", "content_hash": "hash-current"}), mustJSON(t, map[string]string{"location": currentLocation}), now, "2026-08-08T01:00:00Z", now, now}},
+		{`INSERT INTO jobs(id,workspace_id,kind,state,progress,payload_json,result_json,available_at,finished_at,created_at,updated_at) VALUES(?, 'w1','wechat_prepare','succeeded',100,?,?,?,?,?,?)`, []any{currentJob, mustJSON(t, map[string]string{"article_id": "a1", "provider_instance_id": "wx1", "content_hash": "hash-current", "mermaid_theme": "modern"}), mustJSON(t, map[string]string{"location": currentLocation}), now, "2026-08-08T01:00:00Z", now, now}},
 	}
 	for _, item := range queries {
 		if _, err := db.Exec(item.query, item.args...); err != nil {
@@ -49,8 +49,20 @@ func TestWeChatContentReturnsOnlyCurrentVersionFromEnabledProvider(t *testing.T)
 	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}))
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/wechat/content/a1", nil))
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "当前版本") || strings.Contains(response.Body.String(), "旧版本") {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "当前版本") || strings.Contains(response.Body.String(), "旧版本") || !strings.Contains(response.Body.String(), `"mermaid_theme":"modern"`) {
 		t.Fatalf("微信接口未限定当前版本: code=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestNormalizePreparedMermaidThemeSupportsLegacyJobs(t *testing.T) {
+	if value, ok := normalizePreparedMermaidTheme(""); !ok || value != "handdrawn" {
+		t.Fatalf("旧任务未回退手绘样式: value=%q ok=%v", value, ok)
+	}
+	if value, ok := normalizePreparedMermaidTheme(" MODERN "); !ok || value != "modern" {
+		t.Fatalf("现代样式未归一化: value=%q ok=%v", value, ok)
+	}
+	if _, ok := normalizePreparedMermaidTheme("unknown"); ok {
+		t.Fatal("非法 Mermaid 样式不应被接受")
 	}
 }
 
