@@ -61,7 +61,7 @@ func TestRuntimeHandlerRendersAndServesReferencedVaultImages(t *testing.T) {
 		t.Fatal(err)
 	}
 	assetURL := regexp.MustCompile(`/api/v1/articles/[^" ]+/assets/[^" ]+`).FindString(detailBody.PreviewHTML)
-	if assetURL == "" || !strings.Contains(detailBody.PreviewHTML, "https://example.com/remote.png") || !strings.Contains(detailBody.PreviewHTML, "<table>") || !strings.Contains(detailBody.PreviewHTML, "<span style=") {
+	if assetURL == "" || !strings.Contains(detailBody.PreviewHTML, "https://example.com/remote.png") || !strings.Contains(detailBody.PreviewHTML, "<table>") || !strings.Contains(detailBody.PreviewHTML, `class="chroma"`) {
 		t.Fatalf("文章预览未改写图片: %s", detail.Body.String())
 	}
 	asset := httptest.NewRecorder()

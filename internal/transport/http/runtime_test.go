@@ -184,8 +184,8 @@ func TestRuntimeMetadataSaveGeneratesStableIDWithoutChangingArticleID(t *testing
 		t.Fatalf("生成的稳定 ID 无效: %q err=%v", stableID, err)
 	}
 	var reviewState string
-	if err := db.QueryRow(`SELECT state FROM editorial_reviews WHERE article_id=?`, articleID).Scan(&reviewState); err != nil || reviewState != "changed" {
-		t.Fatalf("补充稳定 ID 后旧审核未失效: state=%s err=%v", reviewState, err)
+	if err := db.QueryRow(`SELECT state FROM editorial_reviews WHERE article_id=?`, articleID).Scan(&reviewState); err != nil || reviewState != "approved" {
+		t.Fatalf("仅补充稳定 ID 后同版本审核状态改变: state=%s err=%v", reviewState, err)
 	}
 	written, err := os.ReadFile(articlePath)
 	if err != nil {
@@ -218,32 +218,55 @@ END`); err != nil {
 	}
 }
 
-func TestRuntimeReviewRejectsArticleWithoutStableID(t *testing.T) {
+func TestRuntimeReviewGeneratesStableIDWithoutChangingArticleID(t *testing.T) {
 	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	now := "2026-08-03T00:00:00Z"
-	_, err = db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','审核测试','/tmp',?,?,?);
-INSERT INTO sources(id,workspace_id,provider_type,root_path,created_at,updated_at) VALUES('s1','w1','obsidian','/tmp',?,?);
-INSERT INTO articles(id,workspace_id,source_id,stable_id,relative_path,title,content_hash,frontmatter_hash,indexed_at,created_at,updated_at,content_stage)
-VALUES('a1','w1','s1','','article.md','已有标题','content-hash','frontmatter-hash',?,?,?,'ready')`, now, now, now, now, now, now, now, now)
-	if err != nil {
+	vault := t.TempDir()
+	if err := os.Mkdir(filepath.Join(vault, ".obsidian"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}))
-	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/a1/review", nil)
+	if err := os.Mkdir(filepath.Join(vault, "Areas"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	articlePath := filepath.Join(vault, "Areas", "article.md")
+	if err := os.WriteFile(articlePath, []byte("---\ntitle: 已有标题\npublish:\n  status: ready\n---\n正文\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{ProviderRuntime: testProviderRuntime(t)})
+	create := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/workspaces", strings.NewReader(`{"name":"审核测试","vault_path":"`+filepath.ToSlash(vault)+`","content_roots":["Areas"],"ignored_folders":[],"wechat_template":"default","ai_enabled":false}`))
+	create.Header.Set("Content-Type", "application/json")
+	create.Header.Set("Origin", "http://localhost")
+	create.Header.Set("Idempotency-Key", "review-identity-test")
+	createResponse := httptest.NewRecorder()
+	handler.ServeHTTP(createResponse, create)
+	if createResponse.Code != http.StatusCreated {
+		t.Fatalf("创建审核测试工作区: code=%d body=%s", createResponse.Code, createResponse.Body.String())
+	}
+	var articleID string
+	if err := db.QueryRow(`SELECT id FROM articles WHERE relative_path='Areas/article.md'`).Scan(&articleID); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/articles/"+articleID+"/review", nil)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Origin", "http://localhost")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), `"code":"article.identity_missing"`) {
-		t.Fatalf("缺少稳定 ID 的文章仍可审核: code=%d body=%s", response.Code, response.Body.String())
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"state":"approved"`) {
+		t.Fatalf("审核未自动补充稳定 ID: code=%d body=%s", response.Code, response.Body.String())
 	}
-	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM editorial_reviews WHERE article_id='a1' AND state='approved'`).Scan(&count); err != nil || count != 0 {
-		t.Fatalf("缺少稳定 ID 时写入了审核通过状态: count=%d err=%v", count, err)
+	var storedArticleID, stableID, reviewState string
+	if err := db.QueryRow(`SELECT articles.id,articles.stable_id,editorial_reviews.state FROM articles JOIN editorial_reviews ON editorial_reviews.article_id=articles.id WHERE articles.relative_path='Areas/article.md'`).Scan(&storedArticleID, &stableID, &reviewState); err != nil {
+		t.Fatal(err)
+	}
+	if storedArticleID != articleID || article.StableID(stableID).Validate() != nil || reviewState != "approved" {
+		t.Fatalf("审核后的文章身份或状态错误: id=%s stable_id=%s state=%s", storedArticleID, stableID, reviewState)
+	}
+	written, err := os.ReadFile(articlePath)
+	if err != nil || !strings.Contains(string(written), "id: "+stableID) {
+		t.Fatalf("稳定 ID 未写入源文件: content=%s err=%v", written, err)
 	}
 }
 
