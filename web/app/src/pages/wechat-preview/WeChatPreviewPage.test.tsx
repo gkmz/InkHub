@@ -48,3 +48,25 @@ test("准备完成区域直接展示微信交付操作", async () => {
   expect(within(readyRegion as HTMLElement).getByRole("button", { name: "复制格式化内容" })).toBeVisible();
   expect(within(readyRegion as HTMLElement).getByRole("button", { name: "打开微信公众平台" })).toBeVisible();
 });
+
+test("已准备内容读取失败时不回退到原文，并支持重新读取", async () => {
+  let reads = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/settings")) return Response.json({ default_template: "default" });
+    if (url.includes("/wechat/content/")) {
+      reads += 1;
+      if (reads === 1) return Response.json({ error: { message: "处理结果暂时不可用" } }, { status: 503 });
+      return Response.json({ html: "<p><strong>处理后的正文</strong></p>" });
+    }
+    if (url.includes("/articles/article-1")) return Response.json({ ...article, preview_html: "<p>不应显示的原文</p>", wechat_state: "已准备" });
+    return Response.json({});
+  });
+
+  render(<ToastProvider><WeChatPreviewPage articleID="article-1" onNavigate={vi.fn()} /></ToastProvider>);
+  expect(await screen.findByText("处理结果暂时不可用")).toBeVisible();
+  expect(screen.queryByText("不应显示的原文")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "重新读取处理结果" }));
+  expect(await screen.findByText("处理后的正文")).toBeVisible();
+  expect(screen.queryByText("不应显示的原文")).not.toBeInTheDocument();
+});

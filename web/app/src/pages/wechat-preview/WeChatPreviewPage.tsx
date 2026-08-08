@@ -15,6 +15,8 @@ export function WeChatPreviewPage({ articleID, onNavigate }: { articleID: string
   const [article, setArticle] = useState<ArticleDetail | null>(null);
   const [mermaidTheme, setMermaidTheme] = useState<MermaidTheme>("handdrawn");
   const [preparedHTML, setPreparedHTML] = useState("");
+  const [preparedLoading, setPreparedLoading] = useState(false);
+  const [preparedError, setPreparedError] = useState("");
   const [preparing, setPreparing] = useState(false);
   const timer = useRef<number | null>(null);
   const mounted = useRef(true);
@@ -23,10 +25,7 @@ export function WeChatPreviewPage({ articleID, onNavigate }: { articleID: string
     void getArticle(articleID).then(async (current) => {
       if (!mounted.current) return;
       setArticle(current);
-      if (isPreparedState(current.wechat_state)) {
-        const prepared = await getPreparedWeChatHTML(current.id);
-        if (mounted.current) setPreparedHTML(formatWeChatReferences(prepared.html));
-      }
+      if (isPreparedState(current.wechat_state)) await loadPreparedHTML(current.id);
     });
   }, [articleID]);
   useEffect(() => {
@@ -41,14 +40,28 @@ export function WeChatPreviewPage({ articleID, onNavigate }: { articleID: string
     if (!mounted.current) return;
     setArticle(current);
     if (isPreparedState(current.wechat_state)) {
-      const prepared = await getPreparedWeChatHTML(current.id);
-      if (mounted.current) { setPreparedHTML(formatWeChatReferences(prepared.html)); setPreparing(false); }
+      await loadPreparedHTML(current.id);
+      if (mounted.current) setPreparing(false);
       return;
     }
     if (current.wechat_state.includes("失败")) { setPreparing(false); return; }
     timer.current = window.setTimeout(() => void pollPrepared(), 500);
   };
-  const settingsDisabled = preparing || preparedHTML !== "";
+  async function loadPreparedHTML(id: string) {
+    if (!mounted.current) return;
+    setPreparedLoading(true);
+    setPreparedError("");
+    try {
+      const prepared = await getPreparedWeChatHTML(id);
+      if (!prepared.html.trim()) throw new Error("微信处理结果为空，请重新读取");
+      if (mounted.current) setPreparedHTML(formatWeChatReferences(prepared.html));
+    } catch (reason) {
+      if (mounted.current) setPreparedError(reason instanceof Error ? reason.message : "微信处理结果读取失败，请重试");
+    } finally {
+      if (mounted.current) setPreparedLoading(false);
+    }
+  }
+  const settingsDisabled = preparing || preparedLoading || preparedHTML !== "";
   const deliveryActions = <WeChatActions
     html={preparedHTML}
     copied={article.wechat_copied}
@@ -73,9 +86,9 @@ export function WeChatPreviewPage({ articleID, onNavigate }: { articleID: string
           <label><span><LayoutTemplate size={15} />排版模板</span><select value="default" disabled aria-label="排版模板"><option value="default">InkHub 墨绿</option></select></label>
           <div className="wechat-mermaid-setting"><span><Palette size={15} />Mermaid 样式</span><div className="segmented-control" role="group" aria-label="Mermaid 样式">{(["handdrawn", "modern"] as MermaidTheme[]).map((theme) => <button key={theme} type="button" aria-pressed={mermaidTheme === theme} disabled={settingsDisabled} onClick={() => setMermaidTheme(theme)}>{theme === "handdrawn" ? "手绘" : "现代"}</button>)}</div></div>
         </section>
-        {preparing ? <p className="wechat-status"><Image size={16} />正在上传图片并生成微信内容…</p> : !preparedHTML ? <WeChatPlan articleID={articleID} templateID="default" mermaidTheme={mermaidTheme} onConfirmed={() => { setPreparing(true); void pollPrepared(); }} /> : <section className="wechat-ready"><h2>内容已准备</h2><p className="wechat-status"><Image size={16} />图片与模板处理完成</p>{deliveryActions}</section>}
+        {preparing ? <p className="wechat-status"><Image size={16} />正在上传图片并生成微信内容…</p> : preparedLoading ? <p className="wechat-status">正在读取已处理的微信内容…</p> : preparedError ? <section className="wechat-plan-error" role="alert"><p>{preparedError}</p><button className="secondary" type="button" onClick={() => void loadPreparedHTML(article.id)}>重新读取处理结果</button></section> : !preparedHTML ? <WeChatPlan articleID={articleID} templateID="default" mermaidTheme={mermaidTheme} onConfirmed={() => { setPreparing(true); void pollPrepared(); }} /> : <section className="wechat-ready"><h2>内容已准备</h2><p className="wechat-status"><Image size={16} />图片与模板处理完成</p>{deliveryActions}</section>}
       </aside>
-      <article className="wechat-document template-green">{showMetadataTitle && <h1>{article.metadata.title}</h1>}<p className="wechat-description">{article.metadata.description}</p><MarkdownPreview html={previewHTML} mermaidTheme={mermaidTheme} /></article>
+      <article className="wechat-document template-green">{showMetadataTitle && <h1>{article.metadata.title}</h1>}<p className="wechat-description">{article.metadata.description}</p>{isPreparedState(article.wechat_state) && !preparedHTML ? <div className="wechat-render-placeholder" role={preparedError ? "alert" : undefined}>{preparedError ? "处理后的微信内容暂时无法显示。" : "正在加载处理后的微信内容…"}</div> : <MarkdownPreview html={previewHTML} mermaidTheme={mermaidTheme} />}</article>
     </main>}
   </PublicationPageFrame></div>;
 }
