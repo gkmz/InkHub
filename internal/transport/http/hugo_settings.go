@@ -408,7 +408,8 @@ func matchTakeoverBundle(bundle hugo.TakeoverBundle, articles []takeoverArticle)
 	if bundle.SourceID != "" {
 		candidate := match("source_id", func(value takeoverArticle) bool { return value.StableID == bundle.SourceID })
 		if candidate.Status == "unmatched" {
-			candidate.Status, candidate.MatchReason = "conflict", "Hugo source_id 在内容库中不存在"
+			// Hugo 中可能保留当前管理范围之外的历史文章；这类 Bundle 保持原样，不阻断其他文章接管。
+			candidate.MatchReason = "Hugo source_id 未在当前内容库中找到，保持原样"
 		}
 		return candidate
 	}

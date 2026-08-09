@@ -33,6 +33,58 @@ func TestArticleRepositoryUpsertAndFindByStableID(t *testing.T) {
 	}
 }
 
+func TestArticleRepositoryReconcilesMovedPathOccupiedByAnotherArticle(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	seedWorkspace(t, db)
+	repo := NewArticleRepository(db)
+	ctx := context.Background()
+	for _, value := range []article.Article{
+		{ID: "a1", WorkspaceID: "w1", SourceID: "s1", StableID: "article_ONE", RelativePath: "old/one.md"},
+		{ID: "a2", WorkspaceID: "w1", SourceID: "s1", StableID: "article_TWO", RelativePath: "new/one.md"},
+	} {
+		if err := repo.Upsert(ctx, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// 文件移动链的目标路径可能仍被下一篇待移动文章占用，首次扫描必须能够完成让路。
+	if err := repo.Upsert(ctx, article.Article{ID: "scan-a1", WorkspaceID: "w1", SourceID: "s1", StableID: "article_ONE", RelativePath: "new/one.md"}); err != nil {
+		t.Fatalf("首次移动索引失败: %v", err)
+	}
+	if err := repo.Upsert(ctx, article.Article{ID: "scan-a2", WorkspaceID: "w1", SourceID: "s1", StableID: "article_TWO", RelativePath: "new/two.md"}); err != nil {
+		t.Fatalf("后续移动索引失败: %v", err)
+	}
+
+	for stableID, wantPath := range map[string]string{"article_ONE": "new/one.md", "article_TWO": "new/two.md"} {
+		var gotPath string
+		if err := db.QueryRow(`SELECT relative_path FROM articles WHERE stable_id=?`, stableID).Scan(&gotPath); err != nil || gotPath != wantPath {
+			t.Fatalf("%s 路径 = %q, err=%v，期望 %q", stableID, gotPath, err, wantPath)
+		}
+	}
+}
+
+func TestArticleRepositoryAdoptsStableIDOnExistingPath(t *testing.T) {
+	db := openRepositoryTestDB(t)
+	seedWorkspace(t, db)
+	repo := NewArticleRepository(db)
+	ctx := context.Background()
+	if err := repo.Upsert(ctx, article.Article{ID: "legacy-path-id", WorkspaceID: "w1", SourceID: "s1", RelativePath: "article.md"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.Upsert(ctx, article.Article{ID: "new-stable-id", WorkspaceID: "w1", SourceID: "s1", StableID: "article_ASSIGNED", RelativePath: "article.md"}); err != nil {
+		t.Fatalf("补齐 Stable ID 后首次索引失败: %v", err)
+	}
+
+	var id, stableID string
+	if err := db.QueryRow(`SELECT id,stable_id FROM articles WHERE relative_path='article.md'`).Scan(&id, &stableID); err != nil {
+		t.Fatal(err)
+	}
+	if id != "legacy-path-id" || stableID != "article_ASSIGNED" {
+		t.Fatalf("补齐身份后记录 = id %q, stable_id %q", id, stableID)
+	}
+}
+
 func TestArticleRepositoryPersistsContentStageAndIssue(t *testing.T) {
 	db := openRepositoryTestDB(t)
 	seedWorkspace(t, db)

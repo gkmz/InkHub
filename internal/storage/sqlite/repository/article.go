@@ -48,13 +48,31 @@ func (r *ArticleRepository) Upsert(ctx context.Context, value article.Article) e
 	defer tx.Rollback()
 	identityInvalid := value.StableID.Validate() != nil
 	if value.StableID != "" {
-		var existingID string
-		err := tx.QueryRowContext(ctx, `SELECT id FROM articles WHERE workspace_id=? AND source_id=? AND stable_id=?`, value.WorkspaceID, value.SourceID, value.StableID).Scan(&existingID)
+		var stableIDRecord string
+		err := tx.QueryRowContext(ctx, `SELECT id FROM articles WHERE workspace_id=? AND source_id=? AND stable_id=?`, value.WorkspaceID, value.SourceID, value.StableID).Scan(&stableIDRecord)
 		if err == nil {
 			// Stable ID 是重命名和移动后的唯一身份来源，内部主键继续保持不变。
-			value.ID = existingID
+			value.ID = stableIDRecord
 		} else if err != sql.ErrNoRows {
 			return fmt.Errorf("解析文章稳定身份: %w", err)
+		}
+		stableIDExists := err == nil
+		var pathRecordID, pathRecordStableID string
+		err = tx.QueryRowContext(ctx, `SELECT id,stable_id FROM articles WHERE source_id=? AND relative_path=?`, value.SourceID, value.RelativePath).Scan(&pathRecordID, &pathRecordStableID)
+		switch {
+		case err == sql.ErrNoRows || pathRecordID == value.ID:
+			// 目标路径未占用，或已经属于当前稳定身份。
+		case err != nil:
+			return fmt.Errorf("解析文章路径身份: %w", err)
+		case !stableIDExists && pathRecordStableID == "":
+			// 首次补齐 Stable ID 时沿用按路径建立的内部记录，保留审核和发布历史。
+			value.ID = pathRecordID
+		default:
+			// 移动链可能暂时占用目标路径；先将旧身份移出有效路径，后续同轮 Upsert 会按 Stable ID 恢复它。
+			temporaryPath := ".inkhub-reconcile/" + pathRecordID
+			if _, err := tx.ExecContext(ctx, `UPDATE articles SET relative_path=?,deleted_at=?,updated_at=? WHERE id=?`, temporaryPath, now, now, pathRecordID); err != nil {
+				return fmt.Errorf("迁移文章路径占位: %w", err)
+			}
 		}
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO articles(
