@@ -47,3 +47,8 @@ markdown-preview
 web/dist
 web/dist
 logs
+staging/
+inkhub.db
+inkhub.db-shm
+inkhub.db-wal
+inkhub.lock

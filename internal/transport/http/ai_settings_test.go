@@ -44,6 +44,27 @@ func TestAISettingsSavesProviderWithoutExposingSecret(t *testing.T) {
 	if !strings.Contains(view.Body.String(), `"ai_enabled":true`) || !strings.Contains(view.Body.String(), `"ai_secret_saved":true`) || strings.Contains(view.Body.String(), "secret-value") {
 		t.Fatalf("AI 设置视图错误: %s", view.Body.String())
 	}
+	if !strings.Contains(view.Body.String(), `"name":"AI","state":"正常","message":"模型 model-1 已配置"`) || strings.Contains(view.Body.String(), `"name":"AI","state":"未启用"`) {
+		t.Fatalf("AI 诊断未反映已启用配置: %s", view.Body.String())
+	}
+}
+
+func TestAISettingsDiagnosticsReportsDisabledWhenProviderIsMissing(t *testing.T) {
+	db, err := inksqlite.Open(context.Background(), filepath.Join(t.TempDir(), "inkhub.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`INSERT INTO workspaces(id,name,data_dir,last_used_at,created_at,updated_at) VALUES('w1','测试','/tmp','2026-01-01','2026-01-01','2026-01-01'); INSERT INTO sources(id,workspace_id,provider_type,root_path,config_json,created_at,updated_at) VALUES('s1','w1','obsidian','/tmp','{}','2026-01-01','2026-01-01')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewRuntimeHandler(db, NewRouter(emptyRuntimeAPI{}), RuntimeOptions{})
+	view := httptest.NewRecorder()
+	handler.ServeHTTP(view, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/settings", nil))
+	if !strings.Contains(view.Body.String(), `"name":"AI","state":"未启用"`) {
+		t.Fatalf("未配置 AI 时诊断状态错误: %s", view.Body.String())
+	}
 }
 
 type memoryAISecretStore struct{ values map[string]string }

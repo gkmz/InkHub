@@ -209,12 +209,25 @@ func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Re
 		diagnostics = append(diagnostics, map[string]string{"name": "Obsidian 配置", "state": "正常", "message": obsidianSettings.AttachmentLocationLabel() + " · " + obsidianSettings.LinkFormatLabel()})
 		settings["diagnostics"] = diagnostics
 	}
+	diagnostics := settings["diagnostics"].([]map[string]string)
 	if aiConfig, enabled, found := loadStoredAIConfig(request.Context(), h.db, workspaceID); found {
 		settings["ai_enabled"] = enabled
 		settings["ai_base_url"] = aiConfig.BaseURL
 		settings["ai_model"] = aiConfig.Model
-		settings["ai_secret_saved"] = h.hasAISecret(request.Context(), aiConfig.SecretRef)
+		secretSaved := h.hasAISecret(request.Context(), aiConfig.SecretRef)
+		settings["ai_secret_saved"] = secretSaved
+		switch {
+		case !enabled:
+			diagnostics = append(diagnostics, map[string]string{"name": "AI", "state": "未启用", "message": "不影响手工审核"})
+		case strings.TrimSpace(aiConfig.BaseURL) == "" || strings.TrimSpace(aiConfig.Model) == "" || !secretSaved:
+			diagnostics = append(diagnostics, map[string]string{"name": "AI", "state": "需要处理", "message": "请补充服务地址、模型和 API Key"})
+		default:
+			diagnostics = append(diagnostics, map[string]string{"name": "AI", "state": "正常", "message": fmt.Sprintf("模型 %s 已配置", aiConfig.Model)})
+		}
+	} else {
+		diagnostics = append(diagnostics, map[string]string{"name": "AI", "state": "未启用", "message": "不影响手工审核"})
 	}
+	settings["diagnostics"] = diagnostics
 	if wechatConfig, enabled, found := loadStoredWeChatConfig(request.Context(), h.db, workspaceID); found {
 		settings["wechat_enabled"] = enabled
 		settings["default_template"] = "default"
