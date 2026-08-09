@@ -41,13 +41,20 @@ type XiaohongshuDraftView struct {
 
 // XiaohongshuView 汇总当前文章的小红书草稿和发布状态。
 type XiaohongshuView struct {
-	ArticleID          string                 `json:"article_id"`
-	CurrentContentHash string                 `json:"current_content_hash"`
-	TemplateID         string                 `json:"template_id"`
-	Mode               string                 `json:"mode"`
-	State              string                 `json:"state"`
-	Latest             *XiaohongshuDraftView  `json:"latest"`
-	History            []XiaohongshuDraftView `json:"history"`
+	ArticleID          string                      `json:"article_id"`
+	CurrentContentHash string                      `json:"current_content_hash"`
+	TemplateID         string                      `json:"template_id"`
+	Mode               string                      `json:"mode"`
+	State              string                      `json:"state"`
+	Latest             *XiaohongshuDraftView       `json:"latest"`
+	History            []XiaohongshuDraftView      `json:"history"`
+	Diagnostics        []xiaohongshuDiagnosticView `json:"diagnostics"`
+}
+
+type xiaohongshuDiagnosticView struct {
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	Blocking bool   `json:"blocking"`
 }
 
 type xiaohongshuDraftInput struct {
@@ -148,7 +155,7 @@ func parseXiaohongshuPath(path string) (string, string, bool) {
 }
 
 func (h *runtimeHandler) xiaohongshuView(response http.ResponseWriter, request *http.Request, articleID string) {
-	workspaceID, contentHash, _, rendered, err := h.xiaohongshuArticle(request.Context(), articleID)
+	workspaceID, contentHash, _, rendered, diagnostics, err := h.xiaohongshuArticle(request.Context(), articleID)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -184,7 +191,13 @@ func (h *runtimeHandler) xiaohongshuView(response http.ResponseWriter, request *
 	if latest != nil {
 		state = xiaohongshuState(*latest)
 	}
-	writeJSON(response, http.StatusOK, XiaohongshuView{ArticleID: articleID, CurrentContentHash: contentHash, TemplateID: settings.TemplateID, Mode: string(mode), State: state, Latest: latest, History: history})
+	diagnosticViews := make([]xiaohongshuDiagnosticView, 0, len(diagnostics))
+	for _, item := range diagnostics {
+		if item.Code == "publish.section_excluded" {
+			diagnosticViews = append(diagnosticViews, xiaohongshuDiagnosticView{Code: item.Code, Message: item.Message, Blocking: item.Blocking})
+		}
+	}
+	writeJSON(response, http.StatusOK, XiaohongshuView{ArticleID: articleID, CurrentContentHash: contentHash, TemplateID: settings.TemplateID, Mode: string(mode), State: state, Latest: latest, History: history, Diagnostics: diagnosticViews})
 }
 
 func requestedXiaohongshuMode(request *http.Request) (xiaohongshu.DraftMode, error) {
@@ -199,7 +212,7 @@ func requestedXiaohongshuMode(request *http.Request) (xiaohongshu.DraftMode, err
 }
 
 func (h *runtimeHandler) xiaohongshuGenerate(response http.ResponseWriter, request *http.Request, articleID string) {
-	workspaceID, contentHash, title, rendered, err := h.xiaohongshuArticle(request.Context(), articleID)
+	workspaceID, contentHash, title, rendered, _, err := h.xiaohongshuArticle(request.Context(), articleID)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -265,7 +278,7 @@ func parseXiaohongshuAIOutput(items []contracts.Suggestion) (xiaohongshuAIGenera
 }
 
 func (h *runtimeHandler) xiaohongshuSave(response http.ResponseWriter, request *http.Request, articleID string) {
-	workspaceID, contentHash, _, _, err := h.xiaohongshuArticle(request.Context(), articleID)
+	workspaceID, contentHash, _, _, _, err := h.xiaohongshuArticle(request.Context(), articleID)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -313,7 +326,7 @@ func (h *runtimeHandler) xiaohongshuSave(response http.ResponseWriter, request *
 }
 
 func (h *runtimeHandler) xiaohongshuRender(response http.ResponseWriter, request *http.Request, articleID string) {
-	workspaceID, contentHash, _, _, err := h.xiaohongshuArticle(request.Context(), articleID)
+	workspaceID, contentHash, _, _, _, err := h.xiaohongshuArticle(request.Context(), articleID)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -354,7 +367,7 @@ func (h *runtimeHandler) xiaohongshuRender(response http.ResponseWriter, request
 }
 
 func (h *runtimeHandler) xiaohongshuPublished(response http.ResponseWriter, request *http.Request, articleID string) {
-	workspaceID, contentHash, _, _, err := h.xiaohongshuArticle(request.Context(), articleID)
+	workspaceID, contentHash, _, _, _, err := h.xiaohongshuArticle(request.Context(), articleID)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -390,23 +403,28 @@ func (h *runtimeHandler) xiaohongshuPublished(response http.ResponseWriter, requ
 }
 
 // xiaohongshuArticle 读取当前文章版本并复用现有安全 Markdown 渲染器。
-func (h *runtimeHandler) xiaohongshuArticle(ctx context.Context, articleID string) (workspaceID, contentHash, title, rendered string, err error) {
+func (h *runtimeHandler) xiaohongshuArticle(ctx context.Context, articleID string) (workspaceID, contentHash, title, rendered string, diagnostics []contracts.Diagnostic, err error) {
 	var sourceID, stableID, relative string
 	if err = h.db.QueryRowContext(ctx, `SELECT workspace_id,source_id,stable_id,relative_path,title,content_hash FROM articles WHERE id=? AND deleted_at IS NULL`, articleID).Scan(&workspaceID, &sourceID, &stableID, &relative, &title, &contentHash); err != nil {
-		return "", "", "", "", ErrNotFound
+		return "", "", "", "", nil, ErrNotFound
 	}
 	source, sourceErr := h.buildSource(ctx, sourceID, nil)
 	if sourceErr != nil {
-		return "", "", "", "", sourceErr
+		return "", "", "", "", nil, sourceErr
 	}
 	document, readErr := source.Read(ctx, contracts.SourceRef{SourceID: sourceID, RelativePath: relative, StableID: stableID})
 	if readErr != nil {
-		return "", "", "", "", readErr
+		return "", "", "", "", nil, readErr
+	}
+	document, _, err = editorial.ApplyPublicationSectionExclusions(ctx, h.db, workspaceID, document)
+	if err != nil {
+		return "", "", "", "", nil, err
 	}
 	// wiki 链接预处理（小红书渠道），将交叉引用转为博客外链，未发布目标保留纯文本。
 	linkResolver := editorial.NewArticleLinkResolver(h.db, workspaceID)
 	document.Body = editorial.ProcessWebWikiLinks(ctx, linkResolver, document.Body, h.db, workspaceID).Body
 	rendered, err = h.renderArticlePreview(ctx, source, document, articleID)
+	diagnostics = document.Diagnostics
 	return
 }
 

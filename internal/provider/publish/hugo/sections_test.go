@@ -45,6 +45,20 @@ func TestFindBundleAcrossSectionsReturnsOriginalSection(t *testing.T) {
 	}
 }
 
+func TestFindPublishedBundleExcludesCascadeDrafts(t *testing.T) {
+	root := t.TempDir()
+	writeSectionFixture(t, filepath.Join(root, "content", "drafts", "_index.md"), "---\ncascade:\n  draft: true\n---\n")
+	writeSectionFixture(t, filepath.Join(root, "content", "drafts", "article", "index.md"), "---\nsource_id: article_DRAFT\n---\n")
+	writeSectionFixture(t, filepath.Join(root, "content", "posts", "article", "index.md"), "---\nsource_id: article_PUBLIC\n---\n")
+
+	if _, _, published, err := FindPublishedBundleBySourceID(root, "article_DRAFT"); err != nil || published {
+		t.Fatalf("继承 cascade.draft 的 Bundle 不应视为已发布: published=%v err=%v", published, err)
+	}
+	if _, _, published, err := FindPublishedBundleBySourceID(root, "article_PUBLIC"); err != nil || !published {
+		t.Fatalf("普通 Bundle 应视为已发布: published=%v err=%v", published, err)
+	}
+}
+
 func TestDiscoverSectionsReturnsPageBundleCategoryDirectories(t *testing.T) {
 	root := t.TempDir()
 	writeSectionFixture(t, filepath.Join(root, "hugo.toml"), "baseURL='https://example.com'\n")

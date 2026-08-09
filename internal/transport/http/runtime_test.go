@@ -99,6 +99,17 @@ func TestRuntimeHandlerCreatesWorkspaceIdempotentlyAndRestoresSession(t *testing
 	if metadataResponse.Code != http.StatusOK || readErr != nil || !strings.Contains(string(updated), "写回后的标题") {
 		t.Fatalf("元数据未原子写回: code=%d body=%s file=%s err=%v", metadataResponse.Code, metadataResponse.Body.String(), updated, readErr)
 	}
+	if !strings.Contains(string(updated), "tags: [go]") || !strings.Contains(metadataResponse.Body.String(), `"tags":["go"]`) {
+		t.Fatalf("Tag 未在写回边界规范化: body=%s file=%s", metadataResponse.Body.String(), updated)
+	}
+	invalidMetadata := httptest.NewRequest(http.MethodPut, "http://localhost/api/v1/articles/"+articleID+"/metadata", strings.NewReader(`{"metadata":{"title":"无效标签","tags":["---"]}}`))
+	invalidMetadata.Header.Set("Content-Type", "application/json")
+	invalidMetadata.Header.Set("Origin", "http://localhost")
+	invalidResponse := httptest.NewRecorder()
+	handler.ServeHTTP(invalidResponse, invalidMetadata)
+	if invalidResponse.Code != http.StatusBadRequest || !strings.Contains(invalidResponse.Body.String(), "metadata.tags_invalid") {
+		t.Fatalf("无效 Tag 未被拒绝: code=%d body=%s", invalidResponse.Code, invalidResponse.Body.String())
+	}
 	scopeRequest := httptest.NewRequest(http.MethodPut, "http://localhost/api/v1/settings/content-scope", strings.NewReader(`{"content_roots":["Areas"],"ignored_folders":[],"ignored_file_names":["toc.md"]}`))
 	scopeRequest.Header.Set("Content-Type", "application/json")
 	scopeRequest.Header.Set("Origin", "http://localhost")
@@ -244,7 +255,7 @@ func TestRuntimeMetadataSaveGeneratesStableIDWithoutChangingArticleID(t *testing
 		t.Fatal(err)
 	}
 	articlePath := filepath.Join(vault, "Areas", "待补充身份.md")
-	source := "---\ntitle: 待补充身份\ndescription: 已有摘要\ntags: [Go]\nkeywords: [InkHub]\npublish:\n  status: ready\n  slug: identity-repair\n---\n正文\n"
+	source := "---\ntitle: 待补充身份\ndescription: 已有摘要\ntags: [go]\nkeywords: [InkHub]\npublish:\n  status: ready\n  slug: identity-repair\n---\n正文\n"
 	if err := os.WriteFile(articlePath, []byte(source), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +280,7 @@ func TestRuntimeMetadataSaveGeneratesStableIDWithoutChangingArticleID(t *testing
 	if _, err := db.Exec(`INSERT INTO editorial_reviews(article_id,state,approved_content_hash,approved_frontmatter_hash,approved_at,approved_by,updated_at) VALUES(?,'approved',?,?,'2026-08-03T00:00:00Z','user','2026-08-03T00:00:00Z')`, articleID, contentHash, frontmatterHash); err != nil {
 		t.Fatal(err)
 	}
-	metadataBody := `{"metadata":{"title":"待补充身份","description":"已有摘要","category":"","series":"","tags":["Go"],"keywords":["InkHub"],"slug":"identity-repair","cover":""}}`
+	metadataBody := `{"metadata":{"title":"待补充身份","description":"已有摘要","category":"","series":"","tags":["go"],"keywords":["InkHub"],"slug":"identity-repair","cover":""}}`
 	responses := make([]*httptest.ResponseRecorder, 8)
 	var wait sync.WaitGroup
 	start := make(chan struct{})

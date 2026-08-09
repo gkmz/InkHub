@@ -42,11 +42,11 @@ func TestGenerateSuggestionsAppliesPrivacyAndEnrichesTagsFromSnapshot(t *testing
 	if len(result.Items) != 3 {
 		t.Fatalf("Tag 建议应拆分为可采纳字段项: %+v", result.Items)
 	}
-	goItem := findItem(result.Items, "tags", "Go")
+	goItem := findItem(result.Items, "tags", "go")
 	if goItem.NewTerm || goItem.UsageCount != 18 {
 		t.Fatalf("已有 Tag 未使用快照标准名称和数量: %+v", goItem)
 	}
-	if !findItem(result.Items, "tags", "Agent").NewTerm {
+	if !findItem(result.Items, "tags", "agent").NewTerm {
 		t.Fatalf("未知 Tag 未标记为新词: %+v", result.Items)
 	}
 	if store.saved.ID != "suggestion_1" || store.saved.State != SuggestionPending {
@@ -94,7 +94,7 @@ func TestAcceptSuggestionWritesOneFieldAndAllowsNewTag(t *testing.T) {
 	}
 
 	_, err = AcceptSuggestion(context.Background(), writer, store, current, record, "item_new_tag")
-	if err != nil || writer.command.Patch.Tags == nil || len(*writer.command.Patch.Tags) != 1 || (*writer.command.Patch.Tags)[0] != "Agent" {
+	if err != nil || writer.command.Patch.Tags == nil || len(*writer.command.Patch.Tags) != 1 || (*writer.command.Patch.Tags)[0] != "agent" {
 		t.Fatalf("新 Tag 应直接追加到文章: patch=%+v err=%v", writer.command.Patch, err)
 	}
 }

@@ -170,3 +170,26 @@ test("微信图片仓库保存到 Provider 且 Token 不留在表单", async () 
   expect(screen.getByLabelText("GitHub Token")).toHaveValue("");
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
+
+test("内容处理设置支持添加和删除多个排除章节", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (String(input).endsWith("/settings/publication-content")) {
+      expect(init?.method).toBe("PUT");
+      expect(init?.body).toBe(JSON.stringify({ excluded_sections: ["相关链接", "参考资料"] }));
+      return Response.json({ excluded_sections: ["相关链接", "参考资料"] });
+    }
+    return Response.json({
+      workspace_name: "极客老墨", vault_path: "/Users/me/Vault", content_roots: ["Areas"], ignored_folders: [], ignored_file_names: ["index.md"], excluded_sections: ["相关链接"], directories: [], ai_enabled: false, ai_secret_saved: false, hugo_enabled: true, wechat_enabled: true, wechat_secret_saved: false, default_template: "default", templates: [], diagnostics: [],
+    });
+  });
+  renderSettings();
+
+  await screen.findByText("极客老墨");
+  await userEvent.click(screen.getByRole("tab", { name: "内容处理" }));
+  expect(screen.getByText("相关链接")).toBeInTheDocument();
+  await userEvent.type(screen.getByRole("textbox", { name: "新增排除章节标题" }), "参考资料{Enter}");
+  await userEvent.click(screen.getByRole("button", { name: "保存内容处理规则" }));
+
+  expect(await screen.findByRole("status")).toHaveTextContent("发布内容规则已保存");
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});

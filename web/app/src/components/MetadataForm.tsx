@@ -1,6 +1,7 @@
 import { RotateCcw, Save } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ArticleMetadata } from "../api/types";
+import { normalizeTag, normalizeTags, tagNormalizationChanges } from "../domain/tagNormalization";
 import { SingleTaxonomyField, type TaxonomyFieldOption, type TaxonomyFieldState } from "./SingleTaxonomyField";
 import { TagMultiSelect, type TagOption } from "./TagMultiSelect";
 
@@ -53,13 +54,16 @@ export function MetadataForm({ value, sourceChanged, identityReady = true, onSav
     keywordsEditing.current = false;
     setKeywordsText(draft.keywords.join(", "));
   };
-  const changed = JSON.stringify(draft) !== JSON.stringify(value);
-  const changes = (Object.keys(value) as (keyof ArticleMetadata)[]).filter((field) => JSON.stringify(value[field]) !== JSON.stringify(draft[field]));
+  const normalizedDraft = { ...draft, tags: normalizeTags(draft.tags) };
+  const tagChanges = tagNormalizationChanges(draft.tags);
+  const hasInvalidTag = tagChanges.some((change) => change.target === "");
+  const changed = JSON.stringify(normalizedDraft) !== JSON.stringify(value);
+  const changes = (Object.keys(value) as (keyof ArticleMetadata)[]).filter((field) => JSON.stringify(value[field]) !== JSON.stringify(normalizedDraft[field]));
   const save = async () => {
-    if (saving) return;
+    if (saving || hasInvalidTag) return;
     setSaving(true);
     try {
-      await onSave(draft);
+      await onSave(normalizedDraft);
     } finally {
       setSaving(false);
     }
@@ -71,10 +75,11 @@ export function MetadataForm({ value, sourceChanged, identityReady = true, onSav
     <label>Description<textarea value={draft.description} onChange={(event) => update("description", event.target.value)} rows={3} /></label>
     <div className="field-pair"><SingleTaxonomyField label="Category" noun="类目" value={draft.category} options={categoryOptions} state={taxonomyState} emptyLabel="未分类" canCreate={canCreateTaxonomy} onChange={(next) => update("category", next)} onCreate={onCreateTaxonomy ? (select) => onCreateTaxonomy("category", select) : undefined} /><SingleTaxonomyField label="Series" noun="系列" value={draft.series} options={seriesOptions} state={taxonomyState} emptyLabel="无系列" canCreate={canCreateTaxonomy} onChange={(next) => update("series", next)} onCreate={onCreateTaxonomy ? (select) => onCreateTaxonomy("series", select) : undefined} /></div>
     <TagMultiSelect value={draft.tags} options={tagOptions} state={taxonomyState} onChange={(next) => update("tags", next)} />
+    {tagChanges.length > 0 && <div className="tag-normalization-note" role="status"><b>{hasInvalidTag ? "存在无法保存的标签" : "保存时将规范化标签"}</b>{tagChanges.map((change, index) => <span key={`${index}:${change.source}:${change.target}`}>{change.target ? <><code>{change.source}</code> → <code>{change.target}</code>{change.duplicate ? "（与已有标签重复，将合并）" : ""}</> : <><code>{change.source}</code> 无法形成有效标签，请删除后再保存</>}</span>)}</div>}
     <label>Keywords<input value={keywordsText} onChange={(event) => onKeywordsChange(event.target.value)} onBlur={onKeywordsBlur} /></label>
     <div className="field-pair"><label>Slug<input value={draft.slug} onChange={(event) => update("slug", event.target.value)} /></label><label>Cover<input value={draft.cover} onChange={(event) => update("cover", event.target.value)} /></label></div>
-    {changes.length > 0 && <div className="change-summary"><b>本次将写入</b>{changes.map((field) => <p key={field}>{fieldLabel(field)}：{formatValue(value[field]) || "未填写"} → {formatValue(draft[field]) || "未填写"}</p>)}</div>}
-    <button className="primary compact-button" type="button" disabled={saving || (!changed && identityReady) || sourceChanged} onClick={() => void save()}><Save size={15} />{saving ? "正在保存" : identityReady ? "保存到文章" : "保存并生成文章 ID"}</button>
+    {changes.length > 0 && <div className="change-summary"><b>本次将写入</b>{changes.map((field) => <p key={field}>{fieldLabel(field)}：{formatValue(value[field]) || "未填写"} → {formatValue(normalizedDraft[field]) || "未填写"}</p>)}</div>}
+    <button className="primary compact-button" type="button" disabled={saving || hasInvalidTag || (!changed && identityReady) || sourceChanged} onClick={() => void save()}><Save size={15} />{saving ? "正在保存" : identityReady ? "保存到文章" : "保存并生成文章 ID"}</button>
   </section>;
 }
 
@@ -82,7 +87,7 @@ export function MetadataForm({ value, sourceChanged, identityReady = true, onSav
 function applySuggestion(current: ArticleMetadata, suggestion: { field: keyof ArticleMetadata; value: string | string[] }) {
   if (suggestion.field === "tags") {
     if (typeof suggestion.value !== "string") return current;
-    const exists = current.tags.some((tag) => normalize(tag) === normalize(suggestion.value as string));
+    const exists = current.tags.some((tag) => normalizeTag(tag) === normalizeTag(suggestion.value as string));
     return exists ? current : { ...current, tags: [...current.tags, suggestion.value as string] };
   }
   if (suggestion.field === "keywords" && Array.isArray(suggestion.value)) {
@@ -98,5 +103,3 @@ function fieldLabel(field: keyof ArticleMetadata) {
 function formatValue(value: string | string[]) {
   return Array.isArray(value) ? value.join("、") : value;
 }
-
-function normalize(value: string) { return value.trim().toLocaleLowerCase(); }

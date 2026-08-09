@@ -30,7 +30,7 @@ func TestArticleSuggestionsUsesPersistedTagCounts(t *testing.T) {
 	request.Header.Set("Origin", "http://localhost")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"name":"Go"`) || !strings.Contains(response.Body.String(), `"usage_count":18`) || !strings.Contains(response.Body.String(), `"new_term":true`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"name":"go"`) || !strings.Contains(response.Body.String(), `"usage_count":18`) || !strings.Contains(response.Body.String(), `"new_term":true`) {
 		t.Fatalf("生成建议响应错误: %d %s", response.Code, response.Body.String())
 	}
 	if len(provider.request.Taxonomy.Tags) != 1 || provider.request.Taxonomy.Tags[0] != "Go" || provider.request.Article.Body != "" {

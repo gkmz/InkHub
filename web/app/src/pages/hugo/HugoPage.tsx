@@ -8,6 +8,7 @@ import type { HugoRenderPreview } from "../../components/HugoPublishFlow";
 import { MarkdownPreview } from "../../components/MarkdownPreview";
 import { PublicationPageFrame } from "../../components/PublicationPageFrame";
 import { PublicationHistory } from "../../components/PublicationHistory";
+import { renderHugoPreviewMermaid } from "./renderHugoPreviewMermaid";
 
 /** HugoPage 将 Hugo 目录选择、预览和交付放在独立渠道页面中。 */
 export function HugoPage({ articleID, onNavigate }: { articleID: string; onNavigate: (path: string) => void }) {
@@ -31,7 +32,7 @@ export function HugoPage({ articleID, onNavigate }: { articleID: string; onNavig
             <PublicationHistory articleID={articleID} refreshKey={refreshKey} />
           </aside>
           <article className={`hugo-document${renderPreview ? " hugo-render-mode" : ""}`} aria-label="Hugo 发布内容">
-            {renderPreview ? <div className="hugo-render-document"><header><div><p className="eyebrow">Hugo staging</p><h2>当前文章渲染结果</h2></div><span>{renderPreview.expired ? "已过期" : "待确认"}</span></header><iframe title="Hugo 当前文章渲染预览" src={renderPreview.url} loading="lazy" sandbox="" referrerPolicy="no-referrer" /></div> : <><p className="eyebrow">Hugo 页面预览</p>{showMetadataTitle && <h1>{article.metadata.title}</h1>}<p className="hugo-description">{article.metadata.description}</p><MarkdownPreview html={article.preview_html} className="prose" /></>}
+            {renderPreview ? <div className="hugo-render-document"><header><div><p className="eyebrow">Hugo 渲染</p><h2>当前文章渲染结果</h2></div><span>{renderPreview.published ? "已同步" : renderPreview.expired ? "已过期" : "待确认"}</span></header>{/* 允许同源资源加载，但不开放脚本执行能力。 */}<iframe title="Hugo 当前文章渲染预览" src={renderPreview.url} loading="lazy" sandbox="allow-same-origin" referrerPolicy="no-referrer" onLoad={(event) => { void renderHugoPreviewMermaid(event.currentTarget); }} /></div> : <><p className="eyebrow">Hugo 页面预览</p>{showMetadataTitle && <h1>{article.metadata.title}</h1>}<p className="hugo-description">{article.metadata.description}</p><MarkdownPreview html={article.preview_html} className="prose" /></>}
           </article>
         </div>
       </main>

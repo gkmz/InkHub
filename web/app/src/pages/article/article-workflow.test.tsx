@@ -14,7 +14,7 @@ const metadata = {
   description: "旧摘要",
   category: "工程实践",
   series: "InkHub",
-  tags: ["Go", "React"],
+  tags: ["go", "react"],
   keywords: ["本地优先"],
   slug: "local-first-content",
   cover: "",
@@ -49,6 +49,24 @@ test("保存元数据前展示字段级变更摘要", async () => {
   await userEvent.clear(screen.getByLabelText("Description"));
   await userEvent.type(screen.getByLabelText("Description"), "新摘要");
   expect(screen.getByText("Description：旧摘要 → 新摘要")).toBeInTheDocument();
+});
+
+test("保存前展示 Tag 规范化结果并写入标准名称", async () => {
+  const save = vi.fn();
+  render(<MetadataForm value={{ ...metadata, tags: ["Coding Agent", "Superpowers", "AI 编程"] }} sourceChanged={false} onSave={save} />);
+  expect(screen.getByText("保存时将规范化标签")).toBeInTheDocument();
+  expect(screen.getByText("Tags：Coding Agent、Superpowers、AI 编程 → coding-agent、superpowers、ai-编程")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "保存到文章" }));
+  expect(save).toHaveBeenCalledWith({ ...metadata, tags: ["coding-agent", "superpowers", "ai-编程"] });
+});
+
+test("无法形成有效名称的 Tag 会阻止保存", async () => {
+  const save = vi.fn();
+  render(<MetadataForm value={{ ...metadata, tags: [...metadata.tags, "---"] }} sourceChanged={false} onSave={save} />);
+  expect(screen.getByText("存在无法保存的标签")).toBeInTheDocument();
+  expect(screen.getByText(/无法形成有效标签/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "保存到文章" })).toBeDisabled();
+  expect(save).not.toHaveBeenCalled();
 });
 
 test("旧文章缺少稳定 ID 时允许直接保存并生成文章 ID", async () => {
@@ -93,7 +111,7 @@ test("Keywords 建议替换数组，Tags 建议大小写不敏感去重", async 
   const view = render(<MetadataForm value={metadata} sourceChanged={false} externalSuggestion={{ id: "keywords-1", field: "keywords", value: ["go", "ai"] }} onSave={vi.fn()} />);
   expect(await screen.findByDisplayValue("go, ai")).toBeInTheDocument();
   view.rerender(<MetadataForm value={metadata} sourceChanged={false} externalSuggestion={{ id: "tags-1", field: "tags", value: "go" }} onSave={vi.fn()} />);
-  expect(screen.getAllByText("Go")).toHaveLength(1);
+  expect(screen.getAllByText("go")).toHaveLength(1);
 });
 
 test("Keywords 输入框允许键入逗号并保留待输入的尾逗号", async () => {
@@ -118,7 +136,7 @@ test("批量采用多个 AI 建议时全部进入文章草稿", async () => {
   ]} onSave={vi.fn()} />);
   expect(await screen.findByDisplayValue("新的摘要")).toBeInTheDocument();
   expect(screen.getByRole("combobox", { name: "Category" })).toHaveValue("AI 应用开发");
-  expect(screen.getByText("AI")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "删除 Tag AI" })).toBeInTheDocument();
 });
 
 test("文章基线刷新与 AI 采用同时发生时不丢失建议值", async () => {
@@ -148,9 +166,9 @@ test("Tags 从 Hugo 快照多选并允许创建新 Tag", async () => {
   await userEvent.click(input);
   expect(screen.getByRole("option", { name: "SQLite，7 篇文章" })).toBeInTheDocument();
   await userEvent.click(screen.getByRole("option", { name: "SQLite，7 篇文章" }));
-  expect(screen.getByText("Tags：Go、React → Go、React、SQLite")).toBeInTheDocument();
+  expect(screen.getByText("Tags：go、react → go、react、sqlite")).toBeInTheDocument();
   await userEvent.type(input, "New Topic{Enter}");
-  expect(screen.getByText("Tags：Go、React → Go、React、SQLite、New Topic")).toBeInTheDocument();
+  expect(screen.getByText("Tags：go、react → go、react、sqlite、new-topic")).toBeInTheDocument();
   expect(save).not.toHaveBeenCalled();
 });
 
@@ -324,7 +342,7 @@ test("文章页生成 AI Tag 并逐项加入草稿", async () => {
   await userEvent.click(screen.getByRole("button", { name: "生成 AI 建议" }));
   expect(await screen.findByText("新 Tag")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "采用 SQLite" }));
-  expect(await screen.findByText("Tags：Go、React → Go、React、SQLite")).toBeInTheDocument();
+  expect(await screen.findByText("Tags：go、react → go、react、sqlite")).toBeInTheDocument();
 });
 
 test("文章页采用 AI 分类和描述建议后更新表单草稿", async () => {

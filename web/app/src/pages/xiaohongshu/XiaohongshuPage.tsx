@@ -145,6 +145,7 @@ export function XiaohongshuPage({ articleID, onNavigate }: { articleID: string; 
         </div>
         {showHistory && <aside id="xiaohongshu-history" className="xiaohongshu-history"><div className="tool-heading"><h2>版本历史</h2><button className="back" type="button" onClick={() => setShowHistory(false)}>关闭</button></div>{view.history.map((item) => <button key={item.id} type="button" className={`xiaohongshu-history-item${draft?.id === item.id ? " active" : ""}`} onClick={() => { setDraft(prepareXiaohongshuDraft(item, article.preview_html, template)); setShowHistory(false); }}><strong>{item.title || "未命名草稿"}</strong><span>{item.state}{item.stale ? " · 内容已更新" : ""}</span><time>{new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(item.created_at))}</time></button>)}</aside>}
       </section>
+      {view.diagnostics?.map((item) => <p className="inline-status" key={`${item.code}-${item.message}`}>{item.message}</p>)}
       <section className="xiaohongshu-settings" aria-label="小红书发布设置">
         <div className="tool-heading"><h2>{mode === "visual_script" ? "图片短文发布文案" : "小红书文案草稿"}</h2>{mode === "long_card" ? <span className="template-current"><LayoutTemplate size={15} />{getXiaohongshuTemplate(template).label}</span> : null}</div>
         {!draft ? <div className="empty-state compact wide"><Sparkles size={24} /><p>还没有小红书草稿</p><button className="primary" onClick={() => void generate()} disabled={rewriting}><Sparkles size={15} />{rewriteLabel}</button></div> : <>

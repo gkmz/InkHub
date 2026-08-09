@@ -9,6 +9,7 @@ import (
 
 	"github.com/gkmz/InkHub/internal/domain/article"
 	domaineditorial "github.com/gkmz/InkHub/internal/domain/editorial"
+	domaintaxonomy "github.com/gkmz/InkHub/internal/domain/taxonomy"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
 
@@ -124,10 +125,10 @@ func normalizeSuggestions(input []contracts.Suggestion, candidates []TagCandidat
 			if err := json.Unmarshal(suggestion.Value, &values); err != nil {
 				return nil, fmt.Errorf("%w: tags 必须是字符串数组", ErrInvalidSuggestion)
 			}
-			for _, value := range cleanStrings(values) {
+			for _, value := range domaintaxonomy.NormalizeTags(values, nil) {
 				candidate, exists := known[normalizeTerm(value)]
 				if exists {
-					value = candidate.Name
+					value = domaintaxonomy.NormalizeTag(candidate.Name)
 				}
 				item := newSuggestionItem(suggestionID, len(items), suggestion, mustRawJSON(value), !exists)
 				item.UsageCount = candidate.UsageCount
@@ -165,7 +166,7 @@ func cleanStrings(values []string) []string {
 	return result
 }
 
-func normalizeTerm(value string) string { return strings.ToLower(strings.TrimSpace(value)) }
+func normalizeTerm(value string) string { return domaintaxonomy.NormalizeTag(value) }
 
 func mustRawJSON(value any) json.RawMessage {
 	content, _ := json.Marshal(value)

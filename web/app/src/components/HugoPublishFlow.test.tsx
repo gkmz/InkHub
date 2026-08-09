@@ -57,25 +57,27 @@ test("刷新后直接恢复 Ready Hugo 预览", async () => {
 
   render(<ToastProvider><HugoPublishFlow articleID="a1" contentHash="hash" onRenderPreviewChange={renderChanged} onPublished={vi.fn()} /></ToastProvider>);
   expect(await screen.findByText("content/posts/restored")).toBeInTheDocument();
-  await waitFor(() => expect(renderChanged).toHaveBeenLastCalledWith({ url: "/api/v1/hugo-previews/preview_ready/render/posts/restored/", expired: false }));
+  await waitFor(() => expect(renderChanged).toHaveBeenLastCalledWith({ url: "/api/v1/hugo-previews/preview_ready/render/posts/restored/", expired: false, published: false }));
   expect(screen.getByRole("button", { name: "确认同步到 Hugo" })).toBeInTheDocument();
   expect(requests.some((url) => url.endsWith("/hugo-sections"))).toBe(false);
 });
 
 test("当前版本已经同步且 Bundle 仍存在时进入终态，不再显示同步按钮", async () => {
+  const renderChanged = vi.fn();
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
-    if (url.endsWith("/articles/a1/publication-workflow")) return Response.json({ article_id: "a1", hugo: { state: "published", progress: 100, stage: "已同步", error: "", preview: { preview_id: "preview_published", section: "posts", target_path: "content/posts/20260804-superpowers-workflow", change: "updated", files: [], diagnostics: [], state: "ready" } } });
+    if (url.endsWith("/articles/a1/publication-workflow")) return Response.json({ article_id: "a1", hugo: { state: "published", progress: 100, stage: "已同步", error: "", preview: { preview_id: "preview_published", section: "posts", target_path: "content/posts/20260804-superpowers-workflow", change: "updated", files: [], diagnostics: [], render_url: "/api/v1/hugo-previews/preview_published/render/posts/demo/", state: "ready" } } });
     if (url.endsWith("/articles/a1/hugo-sections")) return Response.json({ sections: [{ name: "posts", article_count: 8 }], existing_section: "posts", existing_directory: "", selection_locked: true });
     throw new Error(`未处理请求: ${url}`);
   });
 
-  render(<ToastProvider><HugoPublishFlow articleID="a1" contentHash="hash" onPublished={vi.fn()} /></ToastProvider>);
+  render(<ToastProvider><HugoPublishFlow articleID="a1" contentHash="hash" onRenderPreviewChange={renderChanged} onPublished={vi.fn()} /></ToastProvider>);
 
   expect(await screen.findByText("当前版本已同步到 Hugo")).toBeInTheDocument();
   expect(screen.getByText("content/posts/20260804-superpowers-workflow")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "确认同步到 Hugo" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /生成发布预览/ })).not.toBeInTheDocument();
+  await waitFor(() => expect(renderChanged).toHaveBeenLastCalledWith({ url: "/api/v1/hugo-previews/preview_published/render/posts/demo/", expired: false, published: true }));
 });
 
 test("已同步记录但 Hugo Bundle 被删除时重新扫描并生成新预览", async () => {
@@ -106,12 +108,17 @@ test("已同步记录但 Hugo Bundle 被删除时重新扫描并生成新预览"
 
 test("过期预览重新生成前会重新读取 Hugo 目录", async () => {
   const requests: string[] = [];
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+  let refreshKey = "";
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = String(input);
     requests.push(url);
     if (url.endsWith("/articles/a1/publication-workflow")) return Response.json({ article_id: "a1", hugo: { state: "expired", progress: 100, stage: "预览已过期", error: "", preview: { preview_id: "preview_expired", section: "posts", target_path: "content/posts/demo", change: "updated", files: [], diagnostics: [], state: "expired" } } });
     if (url.endsWith("/articles/a1/hugo-sections")) return Response.json({ sections: [{ name: "posts", article_count: 2 }], existing_section: "", existing_directory: "", selection_locked: false });
-    if (url.endsWith("/articles/a1/hugo-previews")) return Response.json({ id: "preview_new", job_id: "preview_new", state: "queued" }, { status: 202 });
+    if (url.endsWith("/articles/a1/hugo-previews")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { refresh_key?: string };
+      refreshKey = body.refresh_key ?? "";
+      return Response.json({ id: "preview_new", job_id: "preview_new", state: "queued" }, { status: 202 });
+    }
     if (url.endsWith("/hugo-previews/preview_new")) return Response.json({ id: "preview_new", content_hash: "hash", section: "posts", target_path: "content/posts/demo", change: "updated", files: [], diagnostics: [], state: "ready", job_id: "preview_new" });
     throw new Error(`未处理请求: ${url}`);
   });
@@ -122,6 +129,7 @@ test("过期预览重新生成前会重新读取 Hugo 目录", async () => {
   expect(await screen.findByText("content/posts/demo")).toBeInTheDocument();
   expect(requests.some((url) => url.endsWith("/articles/a1/hugo-sections"))).toBe(true);
   expect(requests.some((url) => url.endsWith("/articles/a1/hugo-previews"))).toBe(true);
+  expect(refreshKey).not.toBe("");
 });
 
 test("失败的 Hugo 预览显示阶段、原因和处理动作", async () => {

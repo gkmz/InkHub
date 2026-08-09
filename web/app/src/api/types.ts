@@ -343,6 +343,7 @@ export interface XiaohongshuView {
   state: string;
   latest: XiaohongshuDraft | null;
   history: XiaohongshuDraft[];
+  diagnostics: { code: string; message: string; blocking: boolean }[];
 }
 
 export interface ObsidianSettingsView {
@@ -413,6 +414,7 @@ export interface SettingsView {
   ignored_folders: string[];
   directories: DirectoryCandidate[];
   ignored_file_names: string[];
+  excluded_sections: string[];
   ai_enabled: boolean;
   ai_secret_saved: boolean;
   ai_base_url?: string;

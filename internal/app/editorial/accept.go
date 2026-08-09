@@ -8,6 +8,7 @@ import (
 
 	"github.com/gkmz/InkHub/internal/domain/article"
 	domaineditorial "github.com/gkmz/InkHub/internal/domain/editorial"
+	domaintaxonomy "github.com/gkmz/InkHub/internal/domain/taxonomy"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 )
 
@@ -107,7 +108,10 @@ func buildMetadataPatch(current article.Article, item SuggestionItem) (contracts
 		if err := json.Unmarshal(item.Value, &value); err != nil || value == "" {
 			return patch, fmt.Errorf("%w: tag 必须是非空字符串", ErrInvalidSuggestion)
 		}
-		valueList := cleanStrings(append(append([]string(nil), current.Tags...), value))
+		valueList, err := domaintaxonomy.NormalizeTagsStrict(append(append([]string(nil), current.Tags...), value), nil)
+		if err != nil {
+			return patch, fmt.Errorf("%w: %v", ErrInvalidSuggestion, err)
+		}
 		patch.Tags = &valueList
 		return patch, nil
 	default:

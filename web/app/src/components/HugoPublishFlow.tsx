@@ -16,6 +16,7 @@ interface HugoPublishFlowProps {
 export interface HugoRenderPreview {
   url: string;
   expired: boolean;
+  published: boolean;
 }
 
 /** HugoPublishFlow 管理 Section 选择、Artifact 预览和确认交付闭环。 */
@@ -42,10 +43,10 @@ export function HugoPublishFlow({ articleID, contentHash, manualPublished = fals
 
   useEffect(() => {
     const renderPreview = preview?.render_url && (preview.state === "ready" || preview.state === "expired")
-      ? { url: preview.render_url, expired: preview.state === "expired" }
+      ? { url: preview.render_url, expired: preview.state === "expired", published: published || workflow?.state === "published" }
       : null;
     onRenderPreviewChangeRef.current?.(renderPreview);
-  }, [preview?.render_url, preview?.state]);
+  }, [preview?.render_url, preview?.state, published, workflow?.state]);
 
   useEffect(() => () => onRenderPreviewChangeRef.current?.(null), []);
 
@@ -96,7 +97,7 @@ export function HugoPublishFlow({ articleID, contentHash, manualPublished = fals
         return;
       }
       setWorkflow(value.hugo);
-      if (value.hugo?.preview && value.hugo.state !== "published") setPreview(recoveredPreview(value.hugo.preview));
+      if (value.hugo?.preview) setPreview(recoveredPreview(value.hugo.preview));
       // 已同步状态也要重新扫描真实目录；外部删除 Bundle 后不能继续相信数据库状态。
       let currentDiscovery: HugoSectionView | null = null;
       if (!value.hugo || value.hugo.state === "failed" || value.hugo.state === "expired" || value.hugo.state === "published") {
@@ -116,7 +117,6 @@ export function HugoPublishFlow({ articleID, contentHash, manualPublished = fals
         // 当前版本已交付且真实 Bundle 仍存在时进入终态，避免重复点击再次同步。
         setPublished(true);
         setPublishedTarget(value.hugo.preview?.target_path ?? "");
-        setPreview(null);
         await onPublishedRef.current();
       }
       if (value.hugo?.state === "preparing" || value.hugo?.state === "delivering") timer.current = window.setTimeout(() => void pollWorkflow().catch(showError), 800);
@@ -133,7 +133,7 @@ export function HugoPublishFlow({ articleID, contentHash, manualPublished = fals
     if (next.state === "preparing") timer.current = window.setTimeout(() => void pollPreview(previewID).catch(showError), 800);
     if (next.state === "failed") toast.show({ kind: "error", message: next.error || "Hugo 发布预览生成失败" });
   };
-  const prepare = async () => {
+  const prepare = async (forceRefresh = false) => {
     if (busy) return;
     setBusy(true);
     setPreview(null);
@@ -154,7 +154,8 @@ export function HugoPublishFlow({ articleID, contentHash, manualPublished = fals
       if (availableDirectories.length > 0 && !availableDirectory) throw new Error("请选择 Hugo 分类目录后重试");
       setSection(availableSection);
       setDirectory(availableDirectory);
-      const refreshKey = filesystemStale ? `${Date.now()}` : "";
+      // 用户明确重新生成时必须绕过旧任务去重，确保最新转换逻辑真正进入 staging。
+      const refreshKey = forceRefresh || filesystemStale ? `${Date.now()}` : "";
       const queued = await createHugoPreview(articleID, contentHash, availableSection, availableDirectory, refreshKey);
       setFilesystemStale(false);
       await pollPreview(queued.id);
@@ -175,8 +176,7 @@ export function HugoPublishFlow({ articleID, contentHash, manualPublished = fals
         job = await getJob(delivery.job_id);
       }
       if (job.state !== "succeeded") throw new Error("Hugo 同步失败，请检查诊断后重试");
-      // 交付成功后清除可确认的旧 Artifact，避免用户重复确认同一份内容。
-      setPreview(null);
+      // 交付成功后保留只读渲染结果，确认按钮由 published 终态隐藏，避免重复交付。
       setWorkflow(null);
       setPublished(true);
       setPublishedTarget(preview.target_path);
@@ -233,14 +233,14 @@ export function HugoPublishFlow({ articleID, contentHash, manualPublished = fals
     {discovery?.selection_locked && <p className="hugo-section-lock">已有文章将继续更新 {discovery.existing_section}{discovery.existing_directory ? `/${discovery.existing_directory}` : ""}</p>}
     {failed && failure && <PublicationFailure failure={failure} />}
     {!preview && !failed && <button type="button" className="primary compact-button" disabled={!targetReady || busy} onClick={() => void prepare()}>{busy ? <LoaderCircle className="spin" size={16} /> : <CloudUpload size={16} />}生成发布预览</button>}
-    {failed && (!preview || preview.state === "failed") && <div className="hugo-failure-actions"><button type="button" className="primary compact-button" disabled={busy} onClick={() => void prepare()}>{busy ? <LoaderCircle className="spin" size={16} /> : <CloudUpload size={16} />}重新生成预览</button><button type="button" className="secondary compact-button" disabled={busy} onClick={() => setManualDialogOpen(true)}><Check size={16} />手动标记成功</button></div>}
+    {failed && (!preview || preview.state === "failed") && <div className="hugo-failure-actions"><button type="button" className="primary compact-button" disabled={busy} onClick={() => void prepare(true)}>{busy ? <LoaderCircle className="spin" size={16} /> : <CloudUpload size={16} />}重新生成预览</button><button type="button" className="secondary compact-button" disabled={busy} onClick={() => setManualDialogOpen(true)}><Check size={16} />手动标记成功</button></div>}
     {preview?.state === "preparing" && <p className="hugo-preview-state"><LoaderCircle className="spin" size={16} />正在构建真实 Hugo 预览…</p>}
     {preview && (preview.state === "ready" || preview.state === "expired") && <div className="hugo-artifact-summary">
       <div><span>{preview.change === "added" ? "新增" : "更新"}</span><code>{preview.target_path}</code></div>
       <ul>{preview.files.map((file) => <li key={file.relative_path}><FileText size={14} /><span>{file.relative_path}</span><small>{formatBytes(file.size)}</small></li>)}</ul>
       {preview.diagnostics.map((item) => <p key={item.code} className={`diagnostic-${item.level}`}>{item.message}</p>)}
       {discovery && discovery.sections.length === 0 && <p className="diagnostic-blocking">当前 Hugo content 目录未发现可用发布目录，请恢复文件夹后重新生成预览。</p>}
-      <div className="hugo-artifact-actions"><button type="button" className="secondary compact-button" disabled={busy} onClick={() => void prepare()}>重新生成预览</button>{preview.state === "ready" && <button type="button" className="primary compact-button" disabled={busy} onClick={() => void confirm()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}确认同步到 Hugo</button>}</div>
+      <div className="hugo-artifact-actions"><button type="button" className="secondary compact-button" disabled={busy} onClick={() => void prepare(true)}>重新生成预览</button>{preview.state === "ready" && <button type="button" className="primary compact-button" disabled={busy} onClick={() => void confirm()}>{busy ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}确认同步到 Hugo</button>}</div>
     </div>}
     {failed && preview && (preview.state === "ready" || preview.state === "expired") && <button type="button" className="secondary compact-button hugo-manual-success-button" disabled={busy} onClick={() => setManualDialogOpen(true)}><Check size={16} />手动标记成功</button>}
     {manualDialogOpen && <HugoManualSuccessDialog busy={busy} onClose={() => setManualDialogOpen(false)} onConfirm={() => void markManualSuccess()} />}

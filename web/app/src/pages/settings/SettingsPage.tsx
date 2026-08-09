@@ -1,6 +1,6 @@
-import { Activity, Bot, Check, Database, FolderOpen, Globe2, MessageCircle, NotebookPen, RefreshCw, Save, ScanSearch } from "lucide-react";
+import { Activity, Bot, Check, Database, FileOutput, FolderOpen, Globe2, MessageCircle, NotebookPen, Plus, RefreshCw, Save, ScanSearch, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { APIError, confirmHugoTakeover, getSettings, pickDirectory, previewContentScope, previewHugoTakeover, saveAISettings, saveContentScope, saveHugoSettings, saveWeChatSettings, saveXiaohongshuSettings } from "../../api/client";
+import { APIError, confirmHugoTakeover, getSettings, pickDirectory, previewContentScope, previewHugoTakeover, saveAISettings, saveContentScope, saveHugoSettings, savePublicationContentSettings, saveWeChatSettings, saveXiaohongshuSettings } from "../../api/client";
 import type { HugoTakeoverReport, SettingsView } from "../../api/types";
 import { ContentScopePicker } from "../../components/ContentScopePicker";
 import { SecretField } from "../../components/SecretField";
@@ -8,6 +8,7 @@ import { useToast } from "../../components/toast";
 
 const settingsTabs = [
   { id: "workspace", label: "工作区", icon: Database },
+  { id: "content", label: "内容处理", icon: FileOutput },
   { id: "hugo", label: "Hugo", icon: Globe2 },
   { id: "wechat", label: "微信", icon: MessageCircle },
   { id: "xiaohongshu", label: "小红书", icon: NotebookPen },
@@ -29,6 +30,7 @@ export function SettingsPage() {
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [scopeResult, setScopeResult] = useState("");
   const [savingScope, setSavingScope] = useState(false);
+  const [savingPublicationContent, setSavingPublicationContent] = useState(false);
   const [scopePreview, setScopePreview] = useState<{ added: number; removed: number } | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
   const [aiKey, setAIKey] = useState("");
@@ -121,6 +123,18 @@ export function SettingsPage() {
       toast.show({ kind: "error", message: reason instanceof Error ? reason.message : "AI 设置保存失败" });
     } finally {
       setSavingAI(false);
+    }
+  };
+  const persistPublicationContent = async () => {
+    setSavingPublicationContent(true);
+    try {
+      const result = await savePublicationContentSettings({ excluded_sections: settings.excluded_sections ?? [] });
+      setSettings({ ...settings, ...result });
+      toast.show({ kind: "success", message: "发布内容规则已保存" });
+    } catch (reason) {
+      toast.show({ kind: "error", message: reason instanceof Error ? reason.message : "发布内容规则保存失败" });
+    } finally {
+      setSavingPublicationContent(false);
     }
   };
   const persistWeChat = async () => {
@@ -239,6 +253,12 @@ export function SettingsPage() {
         </SettingsGroup>
         {settings.obsidian_settings && <SettingsGroup title="Obsidian 解析" description="InkHub 按这些 Vault 设置解析附件和内部链接。"><dl className="obsidian-settings-summary"><div><dt>附件位置</dt><dd>{settings.obsidian_settings.attachment_location}</dd></div><div><dt>链接类型</dt><dd>{settings.obsidian_settings.link_format}</dd></div><div><dt>图片语法</dt><dd>{settings.obsidian_settings.use_markdown_links ? "Markdown 图片" : "WikiLink"}</dd></div></dl></SettingsGroup>}
       </SettingsSection>}
+      {activeTab === "content" && <SettingsSection icon={<FileOutput />} title="内容处理" description="控制源文章进入各发布渠道前的统一转换规则">
+        <SettingsGroup title="发布时排除的章节" description="审核页仍展示完整原文；Hugo、微信和小红书会移除匹配标题及其全部子内容。">
+          <ExcludedSectionEditor value={settings.excluded_sections ?? []} onChange={(excluded_sections) => setSettings({ ...settings, excluded_sections })} />
+          <button className="secondary" disabled={savingPublicationContent} onClick={() => void persistPublicationContent()}><Save size={15} />{savingPublicationContent ? "正在保存…" : "保存内容处理规则"}</button>
+        </SettingsGroup>
+      </SettingsSection>}
       {activeTab === "hugo" && <SettingsSection icon={<Globe2 />} title="Hugo" description="博客目录和历史内容接管">
         <SettingsGroup title="发布状态" description="关闭后文章仍保留在内容库，但不会显示 Hugo 发布入口。"><label className="switch-line">启用 Hugo<input type="checkbox" checked={settings.hugo_enabled} onChange={(event) => { setTakeoverReport(null); setSettings({ ...settings, hugo_enabled: event.target.checked }); }} /></label></SettingsGroup>
         <SettingsGroup title="站点连接" description="选择 Hugo 项目根目录，并设置发布后使用的站点地址。">
@@ -287,4 +307,23 @@ function SettingsSection({ icon, title, description, children }: { icon: React.R
 /** SettingsGroup 为同一类设置提供稳定的标题、说明和操作区域。 */
 function SettingsGroup({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
   return <section className="settings-group"><header><div><h3>{title}</h3><p>{description}</p></div></header><div className="settings-group-body">{children}</div></section>;
+}
+
+/** ExcludedSectionEditor 以精确标题标签维护发布时需要裁剪的章节。 */
+function ExcludedSectionEditor({ value, onChange }: { value: string[]; onChange: (value: string[]) => void }) {
+  const [input, setInput] = useState("");
+  const add = () => {
+    const title = input.trim();
+    if (!title || value.includes(title)) return;
+    onChange([...value, title]);
+    setInput("");
+  };
+  return <div className="excluded-section-editor">
+    <div className="excluded-section-control">
+      {value.map((title) => <span className="excluded-section-chip" key={title}><span>{title}</span><button type="button" title={`删除 ${title}`} aria-label={`删除排除章节 ${title}`} onClick={() => onChange(value.filter((item) => item !== title))}><X size={12} /></button></span>)}
+      <input aria-label="新增排除章节标题" value={input} placeholder={value.length === 0 ? "输入标题，如：相关链接" : "继续添加标题"} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); add(); } }} />
+      <button type="button" className="add-section-title" title="添加章节标题" aria-label="添加排除章节" disabled={!input.trim() || value.includes(input.trim())} onClick={add}><Plus size={15} /></button>
+    </div>
+    <small>精确匹配标题文本，不区分标题级别；同名章节出现多次时会全部排除。</small>
+  </div>;
 }

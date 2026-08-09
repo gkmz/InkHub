@@ -257,6 +257,11 @@ export function saveAISettings(input: { enabled: boolean; base_url: string; mode
   return request<{ ai_enabled: boolean; ai_secret_saved: boolean }>("/settings/ai", { method: "PUT", body: JSON.stringify(input) });
 }
 
+/** savePublicationContentSettings 保存所有发布渠道共享的章节排除规则。 */
+export function savePublicationContentSettings(input: { excluded_sections: string[] }) {
+  return request<Pick<SettingsView, "excluded_sections">>("/settings/publication-content", { method: "PUT", body: JSON.stringify(input) });
+}
+
 /** saveWeChatSettings 保存微信图片仓库非敏感配置和可选的新 Token。 */
 export function saveWeChatSettings(input: { enabled: boolean; template: string; github_owner: string; github_repository: string; github_branch: string; github_prefix: string; github_token: string }) {
   return request<Partial<SettingsView>>("/settings/wechat", { method: "PUT", body: JSON.stringify(input) });

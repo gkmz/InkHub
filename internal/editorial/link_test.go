@@ -55,6 +55,17 @@ func TestProcessWikiLinksHandlesMultipleLinksAndAliases(t *testing.T) {
 	}
 }
 
+func TestProcessWikiLinksConvertsWikiLinksInsideListItems(t *testing.T) {
+	t.Parallel()
+	body := "- [[first|第一篇]]；\n- [[second]]；"
+	result := ProcessWikiLinks(body, func(target, alias string) string {
+		return "<" + DefaultLabel(target, alias) + ">"
+	})
+	if result != "- <第一篇>；\n- <second>；" {
+		t.Fatalf("列表项中的 WikiLink 应被转换: %q", result)
+	}
+}
+
 func TestProcessWikiLinksReturnsBodyWhenNoMatches(t *testing.T) {
 	t.Parallel()
 	body := "普通文本没有 WikiLink"

@@ -106,7 +106,7 @@ func (h *runtimeHandler) xiaohongshuOutline(response http.ResponseWriter, reques
 		writeError(response, http.StatusBadRequest, "request.invalid", "小红书知识提取请求无效")
 		return
 	}
-	workspaceID, contentHash, title, rendered, err := h.xiaohongshuArticle(request.Context(), articleID)
+	workspaceID, contentHash, title, rendered, _, err := h.xiaohongshuArticle(request.Context(), articleID)
 	if err != nil {
 		mapError(response, err)
 		return
@@ -140,7 +140,7 @@ func (h *runtimeHandler) xiaohongshuRewrite(response http.ResponseWriter, reques
 		mapError(response, err)
 		return
 	}
-	workspaceID, contentHash, title, rendered, err := h.xiaohongshuArticle(request.Context(), articleID)
+	workspaceID, contentHash, title, rendered, _, err := h.xiaohongshuArticle(request.Context(), articleID)
 	if err != nil {
 		mapError(response, err)
 		return

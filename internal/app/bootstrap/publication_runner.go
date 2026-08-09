@@ -165,6 +165,10 @@ func (h publicationJobHandler) loadInput(ctx context.Context, operationID string
 	document.Article.WorkspaceID = workspaceID
 	document.Article.ID = payload.ArticleID
 	document.Article.ContentHash = contentHash
+	document, _, err = editorial.ApplyPublicationSectionExclusions(ctx, h.db, workspaceID, document)
+	if err != nil {
+		return contracts.PublishInput{}, "", nil, err
+	}
 	input := contracts.PublishInput{OperationID: operationID, Article: document.Article, Body: document.Body, ResourceRefs: document.ResourceRefs, Diagnostics: document.Diagnostics, ContentHash: contentHash}
 	// wiki 链接预处理：按渠道将 [[target|label]] 转为对应格式，未发布目标保留纯文本 label。
 	linkResolver := editorial.NewArticleLinkResolver(h.db, workspaceID)

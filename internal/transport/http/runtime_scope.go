@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gkmz/InkHub/internal/editorial"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/provider/publish/hugo"
 	"github.com/gkmz/InkHub/internal/provider/source/folder"
@@ -244,6 +245,12 @@ func (h *runtimeHandler) settings(response http.ResponseWriter, request *http.Re
 	}
 	settings["xiaohongshu_enabled"] = xiaohongshuSettings.Enabled
 	settings["xiaohongshu_template"] = xiaohongshuSettings.TemplateID
+	publicationSettings, publicationSettingsErr := editorial.LoadPublicationSettings(request.Context(), h.db, workspaceID)
+	if publicationSettingsErr != nil {
+		writeError(response, http.StatusInternalServerError, "publication.settings_invalid", "发布内容设置损坏")
+		return
+	}
+	settings["excluded_sections"] = publicationSettings.ExcludedSections
 	if _, hugoConfig, enabled, found := loadStoredHugoConfig(request.Context(), h.db, workspaceID); found {
 		settings["hugo_enabled"] = enabled
 		settings["hugo_path"] = hugoConfig.Root

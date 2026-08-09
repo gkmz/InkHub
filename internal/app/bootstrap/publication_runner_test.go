@@ -17,7 +17,7 @@ func TestPublicationRunnerPreparesWeChatArtifact(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	_ = os.Mkdir(filepath.Join(root, ".obsidian"), 0o700)
-	content := "---\nid: article_RUNNER\ntitle: Runner 测试\ndescription: 微信准备\ntags: [Go]\nkeywords: [InkHub]\n---\n正文 [[target|相关文章]] 与 [[missing|未找到]]"
+	content := "---\nid: article_RUNNER\ntitle: Runner 测试\ndescription: 微信准备\ntags: [Go]\nkeywords: [InkHub]\n---\n正文 [[target|相关文章]] 与 [[missing|未找到]]\n\n## 相关链接\n[[target|应该被排除]]"
 	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -45,6 +45,7 @@ func TestPublicationRunnerPreparesWeChatArtifact(t *testing.T) {
 		{`INSERT INTO editorial_reviews(article_id,state,approved_content_hash,approved_frontmatter_hash,updated_at) VALUES('a1','approved','hash-current','front','2026-01-01')`, nil},
 		{`INSERT INTO provider_instances(id,workspace_id,provider_type,name,config_json,created_at,updated_at) VALUES('h1','w1','hugo','Hugo',?,'2026-01-01','2026-01-01')`, []any{`{"root":"` + filepath.ToSlash(site) + `","base_url":"https://blog.example.com"}`}},
 		{`INSERT INTO provider_instances(id,workspace_id,provider_type,name,config_json,created_at,updated_at) VALUES('wx1','w1','wechat','微信',?,'2026-01-01','2026-01-01')`, []any{`{"template":"default","staging_root":"` + filepath.ToSlash(filepath.Join(t.TempDir(), "wechat")) + `"}`}},
+		{`INSERT INTO settings(workspace_id,key,value_json,created_at,updated_at) VALUES('w1','publication_content','{"excluded_sections":["相关链接"]}','2026-01-01','2026-01-01')`, nil},
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement.query, statement.args...); err != nil {
@@ -65,8 +66,11 @@ func TestPublicationRunnerPreparesWeChatArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatalf("加载输入: %v", err)
 	}
-	if !strings.Contains(input.Body, "[相关文章](https://blog.example.com/target/)") || strings.Contains(input.Body, "[[") {
+	if !strings.Contains(input.Body, "[相关文章](https://blog.example.com/target/)") || strings.Contains(input.Body, "应该被排除") || strings.Contains(input.Body, "[[") {
 		t.Fatalf("微信内部链接转换不正确: %s", input.Body)
+	}
+	if !containsDiagnostic(input.Diagnostics, "publish.section_excluded", false) {
+		t.Fatalf("发布章节排除诊断缺失: %+v", input.Diagnostics)
 	}
 	if !containsDiagnostic(input.Diagnostics, "internal_link.converted", false) || !containsDiagnostic(input.Diagnostics, "internal_link.missing", false) {
 		t.Fatalf("微信内部链接诊断不完整: %+v", input.Diagnostics)

@@ -157,7 +157,7 @@ func ProcessHugoWikiLinks(ctx context.Context, resolver LinkResolver, body, conf
 		if !hasConfig {
 			return linkReplacement{Text: label, Status: LinkStatusUnavailable}
 		}
-		bundlePath, _, published, err := hugo.FindBundleBySourceID(cfg.Root, resolution.StableID)
+		bundlePath, _, published, err := hugo.FindPublishedBundleBySourceID(cfg.Root, resolution.StableID)
 		if err != nil {
 			return linkReplacement{Text: label, Status: LinkStatusUnavailable, Blocking: true}
 		}
@@ -185,7 +185,7 @@ func ProcessWebWikiLinks(ctx context.Context, resolver LinkResolver, body string
 		if cfg.BaseURL == "" || cfg.Root == "" {
 			return linkReplacement{Text: label, Status: LinkStatusUnavailable}
 		}
-		bundlePath, _, published, err := hugo.FindBundleBySourceID(cfg.Root, resolution.StableID)
+		bundlePath, _, published, err := hugo.FindPublishedBundleBySourceID(cfg.Root, resolution.StableID)
 		if err != nil {
 			return linkReplacement{Text: label, Status: LinkStatusUnavailable, Blocking: true}
 		}

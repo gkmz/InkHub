@@ -3,6 +3,7 @@ package hugo
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -83,6 +84,16 @@ func FindBundleBySourceID(root, sourceID string) (string, string, bool, error) {
 	return findBundleBySourceID(filepath.Join(root, "content"), sourceID)
 }
 
+// FindPublishedBundleBySourceID 仅返回会被 Hugo 默认构建的 Bundle，草稿目标不会用于生成公开链接。
+func FindPublishedBundleBySourceID(root, sourceID string) (string, string, bool, error) {
+	bundlePath, section, found, err := FindBundleBySourceID(root, sourceID)
+	if err != nil || !found {
+		return bundlePath, section, found, err
+	}
+	published, err := bundleIsPublished(filepath.Join(root, "content"), bundlePath)
+	return bundlePath, section, published, err
+}
+
 // findBundleBySourceID 按实际 contentDir 扫描 source_id。
 func findBundleBySourceID(contentRoot, sourceID string) (string, string, bool, error) {
 	if _, err := os.Stat(contentRoot); os.IsNotExist(err) {
@@ -129,23 +140,65 @@ func findBundleBySourceID(contentRoot, sourceID string) (string, string, bool, e
 }
 
 func fileHasSourceID(path, sourceID string) (bool, error) {
+	metadata, err := readBundleMetadata(path)
+	if err != nil {
+		return false, err
+	}
+	return metadata.SourceID == sourceID, nil
+}
+
+type bundleMetadata struct {
+	SourceID string `yaml:"source_id"`
+	Draft    *bool  `yaml:"draft"`
+	Cascade  struct {
+		Draft *bool `yaml:"draft"`
+	} `yaml:"cascade"`
+}
+
+func readBundleMetadata(path string) (bundleMetadata, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return false, fmt.Errorf("读取 Hugo bundle: %w", err)
+		return bundleMetadata{}, fmt.Errorf("读取 Hugo bundle: %w", err)
 	}
 	if !bytes.HasPrefix(content, []byte("---\n")) {
-		return false, nil
+		return bundleMetadata{}, nil
 	}
 	end := bytes.Index(content[4:], []byte("\n---"))
 	if end < 0 {
-		return false, fmt.Errorf("Hugo frontmatter 未闭合: %s", path)
+		return bundleMetadata{}, fmt.Errorf("Hugo frontmatter 未闭合: %s", path)
 	}
-	var metadata struct {
-		SourceID string `yaml:"source_id"`
-	}
+	var metadata bundleMetadata
 	decoder := yaml.NewDecoder(strings.NewReader(string(content[4 : 4+end])))
 	if err := decoder.Decode(&metadata); err != nil {
-		return false, fmt.Errorf("解析 Hugo frontmatter: %w", err)
+		return bundleMetadata{}, fmt.Errorf("解析 Hugo frontmatter: %w", err)
 	}
-	return metadata.SourceID == sourceID, nil
+	return metadata, nil
+}
+
+func bundleIsPublished(contentRoot, bundlePath string) (bool, error) {
+	relative, err := filepath.Rel(contentRoot, bundlePath)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
+		return false, fmt.Errorf("Hugo bundle 超出 content 目录: %s", bundlePath)
+	}
+	metadata, err := readBundleMetadata(filepath.Join(bundlePath, "index.md"))
+	if err != nil {
+		return false, err
+	}
+	if metadata.Draft != nil {
+		return !*metadata.Draft, nil
+	}
+	// 由近到远读取 Section 级 cascade；页面自身未声明 draft 时继承最近的设置。
+	for directory := filepath.Dir(bundlePath); ; directory = filepath.Dir(directory) {
+		sectionMetadata, readErr := readBundleMetadata(filepath.Join(directory, "_index.md"))
+		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+			return false, readErr
+		}
+		if readErr == nil && sectionMetadata.Cascade.Draft != nil {
+			return !*sectionMetadata.Cascade.Draft, nil
+		}
+		if directory == contentRoot {
+			break
+		}
+	}
+	return true, nil
 }

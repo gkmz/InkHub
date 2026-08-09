@@ -65,7 +65,8 @@ func markdownTextSpans(source []byte) ([]sourceSpan, []sourceSpan) {
 		if !entering {
 			return ast.WalkContinue, nil
 		}
-		if node.Kind() == ast.KindParagraph || node.Kind() == ast.KindHeading {
+		// Goldmark 使用 TextBlock 承载列表项正文，必须和普通段落、标题一起纳入 WikiLink 转换。
+		if node.Kind() == ast.KindParagraph || node.Kind() == ast.KindHeading || node.Kind() == ast.KindTextBlock {
 			lines := node.Lines()
 			for index := 0; lines != nil && index < lines.Len(); index++ {
 				segment := lines.At(index)

@@ -50,7 +50,7 @@ func (h *runtimeHandler) xiaohongshuStoryboard(response http.ResponseWriter, req
 		writeError(response, http.StatusBadRequest, "request.invalid", "小红书分镜生成请求无效")
 		return
 	}
-	workspaceID, contentHash, title, rendered, err := h.xiaohongshuArticle(request.Context(), articleID)
+	workspaceID, contentHash, title, rendered, _, err := h.xiaohongshuArticle(request.Context(), articleID)
 	if err != nil {
 		mapError(response, err)
 		return

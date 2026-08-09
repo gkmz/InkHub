@@ -18,6 +18,7 @@ import (
 	"github.com/gkmz/InkHub/internal/app/editorial"
 	workspaceapp "github.com/gkmz/InkHub/internal/app/workspace"
 	"github.com/gkmz/InkHub/internal/domain/article"
+	domaintaxonomy "github.com/gkmz/InkHub/internal/domain/taxonomy"
 	"github.com/gkmz/InkHub/internal/platform/dialog"
 	"github.com/gkmz/InkHub/internal/provider/contracts"
 	"github.com/gkmz/InkHub/internal/provider/publish/hugo"
@@ -157,6 +158,10 @@ func (h *runtimeHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/ai":
 		if validateWriteRequest(response, request) {
 			h.saveAISettings(response, request)
+		}
+	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/publication-content":
+		if validateWriteRequest(response, request) {
+			h.savePublicationSettings(response, request)
 		}
 	case request.Method == http.MethodPut && request.URL.Path == "/api/v1/settings/wechat":
 		if validateWriteRequest(response, request) {
@@ -299,8 +304,14 @@ func (h *runtimeHandler) writeMetadata(response http.ResponseWriter, request *ht
 		writeError(response, http.StatusBadRequest, "request.invalid", "元数据请求无效")
 		return
 	}
+	normalizedTags, err := domaintaxonomy.NormalizeTagsStrict(input.Metadata.Tags, nil)
+	if err != nil {
+		writeError(response, http.StatusBadRequest, "metadata.tags_invalid", err.Error())
+		return
+	}
+	input.Metadata.Tags = normalizedTags
 	var workspaceID, sourceID, stableID, relative, fingerprint string
-	err := h.db.QueryRowContext(request.Context(), `SELECT articles.workspace_id,articles.source_id,articles.stable_id,articles.relative_path,articles.source_fingerprint FROM articles WHERE articles.id=?`, articleID).Scan(&workspaceID, &sourceID, &stableID, &relative, &fingerprint)
+	err = h.db.QueryRowContext(request.Context(), `SELECT articles.workspace_id,articles.source_id,articles.stable_id,articles.relative_path,articles.source_fingerprint FROM articles WHERE articles.id=?`, articleID).Scan(&workspaceID, &sourceID, &stableID, &relative, &fingerprint)
 	if err != nil {
 		mapError(response, ErrNotFound)
 		return

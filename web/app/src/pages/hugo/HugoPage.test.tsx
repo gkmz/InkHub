@@ -48,7 +48,26 @@ test("Ready 预览在正文区域显示真实 Hugo 渲染页面", async () => {
 
   const rendered = await screen.findByTitle("Hugo 当前文章渲染预览");
   expect(rendered).toHaveAttribute("src", "/api/v1/hugo-previews/preview_ready/render/posts/demo/");
-  expect(rendered).toHaveAttribute("sandbox", "");
+  expect(rendered).toHaveAttribute("sandbox", "allow-same-origin");
+  expect(rendered.getAttribute("sandbox")).not.toContain("allow-scripts");
   expect(screen.getByRole("article", { name: "Hugo 发布内容" })).not.toHaveTextContent("正文");
   expect(screen.getByText("待确认")).toBeInTheDocument();
+});
+
+test("同步成功后继续显示 Hugo 渲染页面并标记已同步", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.endsWith("/articles/a1/publication-workflow")) return Response.json({ article_id: "a1", hugo: { state: "published", progress: 100, stage: "已同步", preview: { preview_id: "preview_published", section: "posts", target_path: "content/posts/demo", change: "updated", files: [], diagnostics: [], render_url: "/api/v1/hugo-previews/preview_published/render/posts/demo/", state: "ready" } } });
+    if (url.endsWith("/articles/a1/hugo-sections")) return Response.json({ sections: [{ name: "posts", article_count: 8 }], existing_section: "posts", existing_directory: "", selection_locked: true });
+    if (url.endsWith("/articles/a1/publication-history")) return Response.json({ items: [], next_cursor: "" });
+    if (url.endsWith("/articles/a1")) return Response.json({ ...article, hugo_state: "已同步" });
+    throw new Error(`未处理请求: ${url}`);
+  });
+
+  render(<ToastProvider><HugoPage articleID="a1" onNavigate={vi.fn()} /></ToastProvider>);
+
+  const rendered = await screen.findByTitle("Hugo 当前文章渲染预览");
+  expect(rendered).toHaveAttribute("src", "/api/v1/hugo-previews/preview_published/render/posts/demo/");
+  expect(rendered.closest(".hugo-render-document")).toHaveTextContent("已同步");
+  expect(screen.getByRole("article", { name: "Hugo 发布内容" })).not.toHaveTextContent("正文");
 });
